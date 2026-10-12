@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "$(id -u)" == 0 ]] || { echo 'Run with sudo or as root' >&2; exit 1; }
+read -r tag image < /opt/avari-jobs/current
+[[ "$image" =~ ^ghcr.io/ostkost/avari-job-applications@sha256:[0-9a-f]{64}$ ]] || exit 2
+export AVARI_IMAGE="$image"
+exec docker compose -f /opt/avari-jobs/compose.production.yaml run --rm admin "$@"

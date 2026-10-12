@@ -28,3 +28,4 @@ services:
 volumes:
   avari-data:
     name: avari-jobs-data
+    external: true
