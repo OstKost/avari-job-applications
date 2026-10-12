@@ -151,6 +151,17 @@ jobs:
           curl -fsS https://jobs.avari.dev/release.json | python3 -c 'import json,os,sys; assert json.load(sys.stdin)["version"] == os.environ["GITHUB_REF_NAME"][1:]'
           curl -fsS https://jobs.avari.dev/downloads/avari-extension.zip -o /tmp/avari-extension.zip
           cmp dist/avari-extension.zip /tmp/avari-extension.zip
+      - name: Record successful deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMAGE_DIGEST: ${{ steps.pinned.outputs.digest }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          with open('dist/deployed.json', 'w') as output:
+              json.dump({'tag': os.environ['GITHUB_REF_NAME'], 'commit': os.environ['GITHUB_SHA'], 'digest': os.environ['IMAGE_DIGEST']}, output)
+          PY
+          gh release upload "$GITHUB_REF_NAME" dist/deployed.json --clobber
       - name: Queue Chrome submission when enabled
         if: vars.CHROME_AUTO_PUBLISH == 'true'
         env:
