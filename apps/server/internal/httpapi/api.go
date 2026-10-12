@@ -199,6 +199,9 @@ func (s *Server) api(w http.ResponseWriter, r *http.Request) {
 		respond(s.calendarSubscription(token), e)
 	case p == "calendar/subscription" && method == "DELETE":
 		respond(s.calendarSubscription(""), s.Store.DisableCalendar(user))
+	case p == "extension/download" && (method == "GET" || method == "POST"):
+		token, e := s.Store.ExtensionDownloadToken(user)
+		respond(s.extensionDownloadLink(token), e)
 	case p == "calendar" && method == "GET":
 		loc, _ := time.LoadLocation(who.User.Timezone)
 		if loc == nil {

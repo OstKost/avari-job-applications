@@ -18,6 +18,7 @@ let host: HTMLDivElement | undefined;
 let frame: HTMLIFrameElement | undefined;
 let opened = false;
 let collapsed = false;
+let dismissed = "";
 let position = { x: Math.max(8, window.innerWidth - 356), y: 16 };
 function place() {
   if (!host) return;
@@ -53,7 +54,9 @@ function showPanel(snapshot: Snapshot) {
   const style = document.createElement("style");
   style.textContent = `
     :host { all: initial; position: fixed; z-index: 2147483647; width: min(348px, calc(100vw - 16px)); filter: drop-shadow(0 12px 28px rgba(0, 0, 0, 0.3)); }
-    :host { border-radius: 20px; overflow: hidden; }
+    :host { border-radius: 20px; overflow: hidden; animation: avari-enter 260ms ease-out both; }
+    @keyframes avari-enter { from { opacity: 0; transform: translateY(-8px) scale(.97); } to { opacity: 1; transform: none; } }
+    @media (prefers-reduced-motion: reduce) { :host { animation: none; } iframe { transition: none !important; } }
     :host([data-collapsed]) .handle { display: none; }
     :host([data-collapsed]) iframe { border-radius: 20px; border-top: 1px solid #38bdf833; }
     .handle { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: #151f2d; color: #f0f6fc; border: 1px solid #38bdf833; border-bottom: 0; border-radius: 20px 20px 0 0; font: 600 13px system-ui, -apple-system, sans-serif; cursor: move; touch-action: none; letter-spacing: -0.2px; box-shadow: none; }
@@ -63,7 +66,7 @@ function showPanel(snapshot: Snapshot) {
     :host([data-theme="light"]) button:hover { background: #eaf3fc; }
     button { background: transparent; color: inherit; border: 0; font-size: 20px; line-height: 1; cursor: pointer; padding: 2px 6px; border-radius: 6px; opacity: 0.8; transition: opacity 0.15s; }
     button:hover { opacity: 1; background: rgba(56, 189, 248, 0.15); }
-    iframe { display: block; box-sizing: border-box; width: 100%; height: 300px; max-height: calc(100vh - 64px); border: 1px solid #38bdf833; border-top: 0; border-radius: 0 0 20px 20px; background: #090d12; overflow: hidden; }
+    iframe { display: block; box-sizing: border-box; width: 100%; height: 300px; transition: height 240ms cubic-bezier(.22, 1, .36, 1); max-height: calc(100vh - 64px); border: 1px solid #38bdf833; border-top: 0; border-radius: 0 0 20px 20px; background: #090d12; overflow: hidden; }
   `;
   const handle = document.createElement("div");
   handle.className = "handle";
@@ -73,6 +76,7 @@ function showPanel(snapshot: Snapshot) {
   close.setAttribute("aria-label", "Закрыть мини-окно");
   close.onclick = () => {
     opened = false;
+    dismissed = last;
     showPanel(snapshot);
   };
   const minimize = document.createElement("button");
@@ -111,7 +115,11 @@ function showPanel(snapshot: Snapshot) {
   };
   frame = document.createElement("iframe");
   frame.title = "Avari.Jobs — быстрое сохранение";
-  frame.src = chrome.runtime.getURL("index.html?embedded=1");
+  host.toggleAttribute("data-collapsed", collapsed);
+  if (collapsed) frame.style.height = "56px";
+  frame.src = chrome.runtime.getURL(
+    "index.html?embedded=1" + (collapsed ? "&collapsed=1" : ""),
+  );
   shadow.append(style, handle, frame);
   document.documentElement.append(host);
   place();
@@ -133,6 +141,7 @@ window.addEventListener("message", (event) => {
   }
   if (event.data?.type === "AVARI_CLOSE") {
     opened = false;
+    dismissed = last;
     showPanel(parsePage(document, location.href));
   }
   if (event.data?.type === "AVARI_COLLAPSED") {
@@ -173,13 +182,21 @@ function send() {
   const fingerprint = JSON.stringify(snapshot);
   if (fingerprint === last) return;
   last = fingerprint;
-  const observedURL = panelURL;
+  const observedURL = location.href;
   chrome.runtime
     .sendMessage({ type: "PAGE_SNAPSHOT", snapshot })
     .then((reply) => {
       if (!contextAlive()) return;
       if (!reply?.ok) throw new Error("Observation failed");
-      if (observedURL === panelURL) {
+      if (observedURL === location.href && last === fingerprint) {
+        const vacancy = snapshot.vacancy;
+        const useful =
+          !!(vacancy?.company && vacancy?.position) || reply.data?.created > 0;
+        if (useful && !opened && dismissed !== fingerprint) {
+          opened = true;
+          collapsed = true;
+          showPanel(snapshot);
+        }
         frame?.contentWindow?.postMessage(
           { type: "AVARI_PAGE_UPDATED" },
           chrome.runtime.getURL("/").replace(/\/$/, ""),

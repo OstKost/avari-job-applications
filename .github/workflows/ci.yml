@@ -145,12 +145,12 @@ jobs:
           printf '%s\n' "$DEPLOY_HOST_KEY" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
           printf '%s' "$GHCR_TOKEN" | ssh -o StrictHostKeyChecking=yes avari-deploy@176.53.174.118 sudo -n /usr/local/sbin/avari-jobs-deploy "$GITHUB_REF_NAME" "$IMAGE_DIGEST" "$GITHUB_ACTOR"
-      - name: Check public site and archive
+      - name: Check public site and blocked direct downloads
         run: |
           curl -fsS --retry 8 --retry-delay 3 https://jobs.avari.dev/readyz
           curl -fsS https://jobs.avari.dev/release.json | python3 -c 'import json,os,sys; assert json.load(sys.stdin)["version"] == os.environ["GITHUB_REF_NAME"][1:]'
-          curl -fsS https://jobs.avari.dev/downloads/avari-extension.zip -o /tmp/avari-extension.zip
-          cmp dist/avari-extension.zip /tmp/avari-extension.zip
+          status=$(curl -s -o /dev/null -w "%{http_code}" https://jobs.avari.dev/downloads/avari-extension.zip)
+          test "$status" = "404"
       - name: Record successful deployment
         env:
           GH_TOKEN: ${{ github.token }}

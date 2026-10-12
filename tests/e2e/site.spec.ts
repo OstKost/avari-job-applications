@@ -1,18 +1,14 @@
 import { test, expect, type Page } from "@playwright/test";
-test("public extension download and privacy are available before login", async ({
+test("public extension page and privacy are available before login", async ({
   page,
 }) => {
   await page.goto("/extension");
   await expect(
     page.getByRole("heading", { name: "Расширение Avari.Jobs" }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Скачать ZIP расширения" }),
-  ).toHaveAttribute("href", "/downloads/avari-extension.zip");
-  const archive = await page.request.get("/downloads/avari-extension.zip");
-  expect(archive.status()).toBe(200);
-  expect((await archive.body()).subarray(0, 2).toString()).toBe("PK");
-  expect(archive.headers()["cache-control"]).toBe("no-cache");
+  // Direct public downloads are blocked to comply with Chrome Web Store and Safe Browsing requirements
+  const directDownload = await page.request.get("/downloads/avari-extension.zip");
+  expect(directDownload.status()).toBe(404);
   const release = await (await page.request.get("/release.json")).json();
   await expect(
     page.getByText(`Версия: ${release.version}`, { exact: true }),
@@ -377,7 +373,33 @@ test("calendar subscription: connect, update, rotate and disable on desktop and 
     page.getByRole("button", { name: "Создать ссылку подписки" }),
   ).toBeVisible();
   expect((await page.request.get(rotated)).status()).toBe(404);
+
+  // Test personal extension download link in settings
+  await page.getByRole("tab", { name: "Расширение", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Расширение для Chromium" }),
+  ).toBeVisible();
+  const tokenInput = page.getByLabel("Индивидуальная ссылка на ZIP-архив");
+  await expect(tokenInput).toBeVisible();
+  const downloadUrl = await tokenInput.inputValue();
+  expect(downloadUrl).toContain("/api/v1/extension/download/");
+  const dlRes = await page.request.get(downloadUrl);
+  expect(dlRes.status()).toBe(200);
+  expect((await dlRes.body()).subarray(0, 2).toString()).toBe("PK");
+  expect(dlRes.headers()["cache-control"]).toBe("private, no-cache");
+  expect(dlRes.headers()["x-robots-tag"]).toBe("noindex, nofollow, noarchive");
+
+  // Rotate token
+  await page.getByRole("button", { name: "Сменить ссылку" }).click();
+  await expect(page.getByText("Новая ссылка создана")).toBeVisible();
+  const newUrl = await tokenInput.inputValue();
+  expect(newUrl).not.toBe(downloadUrl);
+  expect((await page.request.get(downloadUrl)).status()).toBe(404);
+  const newRes = await page.request.get(newUrl);
+  expect(newRes.status()).toBe(200);
+  expect((await newRes.body()).subarray(0, 2).toString()).toBe("PK");
 });
+
 
 test("workspace design: dashboard, grouped table, density, pagination and monthly agenda", async ({
   page,

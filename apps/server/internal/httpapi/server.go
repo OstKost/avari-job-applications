@@ -52,6 +52,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/auth/login", s.login)
 	mux.HandleFunc("POST /api/v1/auth/recovery", s.recovery)
 	mux.HandleFunc("GET /api/v1/calendar/feed/{token}", s.calendarFeed)
+	mux.HandleFunc("GET /api/v1/extension/download/{token}/avari-extension.zip", s.extensionDownload)
 	mux.Handle("/api/v1/", s.auth(http.HandlerFunc(s.api)))
 	if s.Assets != nil {
 		mux.Handle("/", http.HandlerFunc(s.static))
@@ -290,6 +291,10 @@ func (s *Server) static(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := strings.TrimPrefix(path.Clean(r.URL.Path), "/")
+	if strings.HasPrefix(name, "downloads/") {
+		http.NotFound(w, r)
+		return
+	}
 	if name == "" || name == "." {
 		name = "index.html"
 	}
@@ -300,7 +305,7 @@ func (s *Server) static(w http.ResponseWriter, r *http.Request) {
 		}
 		name = "index.html"
 	}
-	if name == "index.html" || name == "release.json" || name == "downloads/avari-extension.zip" {
+	if name == "index.html" || name == "release.json" {
 		w.Header().Set("Cache-Control", "no-cache")
 	}
 	raw, e := fs.ReadFile(s.Assets, name)

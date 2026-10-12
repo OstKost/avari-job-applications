@@ -503,7 +503,7 @@ func TestSchemaUpgradeAndFutureVersionGuard(t *testing.T) {
 	u := testUser(t, s, "migration@example.com")
 	a := testApp(t, s, u, "123")
 	path := s.Path
-	if _, e := s.DB.Exec("DROP INDEX documents_application; DROP INDEX documents_status; DROP TABLE calendar_subscriptions; DROP TABLE password_resets; DELETE FROM schema_migrations WHERE version>=2"); e != nil {
+	if _, e := s.DB.Exec("DROP INDEX documents_application; DROP INDEX documents_status; DROP TABLE calendar_subscriptions; DROP TABLE password_resets; DROP TABLE extension_download_tokens; DELETE FROM schema_migrations WHERE version>=2"); e != nil {
 		t.Fatal(e)
 	}
 	backup, e := s.Backup(filepath.Join(filepath.Dir(path), "backups"))

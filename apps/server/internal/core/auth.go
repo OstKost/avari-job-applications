@@ -130,6 +130,29 @@ func (s *Store) Logout(user, id string) error {
 	_, e := s.DB.Exec("DELETE FROM sessions WHERE user_id=? AND id=?", user, id)
 	return e
 }
+func (s *Store) ExtensionDownloadToken(user string) (string, error) {
+	var token string
+	e := s.transaction(func(tx *sql.Tx) error {
+		candidate := ID() + ID()
+		_, e := tx.Exec("INSERT INTO extension_download_tokens(user_id,token) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET token=excluded.token", user, candidate)
+		if e != nil {
+			return e
+		}
+		return tx.QueryRow("SELECT token FROM extension_download_tokens WHERE user_id=?", user).Scan(&token)
+	})
+	return token, e
+}
+func (s *Store) VerifyExtensionDownloadToken(token string) (User, error) {
+	if raw, e := hex.DecodeString(token); e != nil || len(raw) != 32 {
+		return User{}, Fail(404, "Архив не найден")
+	}
+	var u User
+	e := s.DB.QueryRow(`SELECT u.id,u.email,u.status,u.timezone,u.created_at FROM extension_download_tokens t JOIN users u ON u.id=t.user_id WHERE t.token=? AND u.status='active'`, token).Scan(&u.ID, &u.Email, &u.Status, &u.Timezone, &u.CreatedAt)
+	if e == sql.ErrNoRows {
+		return u, Fail(404, "Архив не найден")
+	}
+	return u, e
+}
 func (s *Store) Sessions(user string) ([]Session, error) {
 	rows, e := s.DB.Query("SELECT id,kind,name,created_at,expires_at FROM sessions WHERE user_id=? AND expires_at>? ORDER BY created_at DESC", user, now())
 	if e != nil {
@@ -222,6 +245,9 @@ func (s *Store) Admin(action, user, password string) error {
 		}
 		if oneOf(action, "block", "reset_password") {
 			if _, e := tx.Exec("DELETE FROM calendar_subscriptions WHERE user_id=?", user); e != nil {
+				return e
+			}
+			if _, e := tx.Exec("DELETE FROM extension_download_tokens WHERE user_id=?", user); e != nil {
 				return e
 			}
 		}
@@ -342,6 +368,9 @@ func (s *Store) ApprovePasswordReset(requestID string) error {
 			return e
 		}
 		if _, e := tx.Exec("DELETE FROM calendar_subscriptions WHERE user_id=?", userID); e != nil {
+			return e
+		}
+		if _, e := tx.Exec("DELETE FROM extension_download_tokens WHERE user_id=?", userID); e != nil {
 			return e
 		}
 		return audit(tx, "approve_password_reset", userID, "Смена пароля одобрена администратором")

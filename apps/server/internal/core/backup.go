@@ -126,6 +126,9 @@ func (s *Store) Restore(path, dir string) error {
 		if e == nil && version >= 3 {
 			_, e = tx.Exec("DELETE FROM calendar_subscriptions")
 		}
+		if e == nil && version >= 5 {
+			_, e = tx.Exec("DELETE FROM extension_download_tokens")
+		}
 	}
 	if e == nil {
 		e = audit(tx, "restore", "", filepath.Base(path))

@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-const SchemaVersion = 4
+const SchemaVersion = 5
 
 type Store struct {
 	DB   *sql.DB
@@ -122,7 +122,7 @@ func (s *Store) migrate() error {
  CREATE UNIQUE INDEX IF NOT EXISTS unique_hh ON documents(user_id,json_extract(payload,'$.hhId')) WHERE kind='application' AND json_extract(payload,'$.hhId')!='';
  CREATE TABLE IF NOT EXISTS requests(user_id TEXT NOT NULL REFERENCES users(id),key TEXT NOT NULL,resource TEXT NOT NULL,PRIMARY KEY(user_id,key));
  CREATE TABLE IF NOT EXISTS audit(id TEXT PRIMARY KEY,action TEXT NOT NULL,user_id TEXT NOT NULL,detail TEXT NOT NULL,created_at TEXT NOT NULL);
-`, `CREATE INDEX IF NOT EXISTS documents_application ON documents(user_id,kind,json_extract(payload,'$.applicationId'),created_at); CREATE INDEX IF NOT EXISTS documents_status ON documents(user_id,kind,json_extract(payload,'$.status'),created_at);`, `CREATE TABLE IF NOT EXISTS calendar_subscriptions(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,token TEXT NOT NULL UNIQUE);`, `CREATE TABLE IF NOT EXISTS password_resets(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,password_hash TEXT NOT NULL,status TEXT NOT NULL CHECK(status IN ('pending','approved','rejected')),created_at TEXT NOT NULL); CREATE INDEX IF NOT EXISTS password_resets_user ON password_resets(user_id,status);`}
+`, `CREATE INDEX IF NOT EXISTS documents_application ON documents(user_id,kind,json_extract(payload,'$.applicationId'),created_at); CREATE INDEX IF NOT EXISTS documents_status ON documents(user_id,kind,json_extract(payload,'$.status'),created_at);`, `CREATE TABLE IF NOT EXISTS calendar_subscriptions(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,token TEXT NOT NULL UNIQUE);`, `CREATE TABLE IF NOT EXISTS password_resets(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,password_hash TEXT NOT NULL,status TEXT NOT NULL CHECK(status IN ('pending','approved','rejected')),created_at TEXT NOT NULL); CREATE INDEX IF NOT EXISTS password_resets_user ON password_resets(user_id,status);`, `CREATE TABLE IF NOT EXISTS extension_download_tokens(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,token TEXT NOT NULL UNIQUE);`}
 	for i, migration := range migrations {
 		if i+1 <= version {
 			continue

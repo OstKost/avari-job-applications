@@ -1,6 +1,6 @@
 # Первая публикация Avari.Jobs
 
-Сайт: https://jobs.avari.dev. Готовый ZIP: https://jobs.avari.dev/downloads/avari-extension.zip. Политика конфиденциальности: https://jobs.avari.dev/privacy. Инструкция установки: https://jobs.avari.dev/extension.
+Сайт: https://jobs.avari.dev. Политика конфиденциальности: https://jobs.avari.dev/privacy. Инструкция установки: https://jobs.avari.dev/extension.
 
 ## Карточка
 

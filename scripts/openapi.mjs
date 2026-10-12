@@ -71,6 +71,7 @@ const schemas = {
     createdAt: stamp,
   }),
   CalendarSubscription: object({ url: s }),
+  ExtensionDownload: object({ url: s }),
   Note: object({
     id: s,
     applicationId: s,
@@ -398,6 +399,44 @@ feedOperation.responses["200"].content = { "text/calendar": { schema: s } };
 feedOperation.responses["200"].headers = { ETag: { schema: s } };
 feedOperation.responses["304"] = {
   description: "Calendar has not changed (If-None-Match)",
+};
+operation(
+  "/extension/download",
+  "get",
+  "Get personal extension download URL",
+  "ExtensionDownload",
+);
+operation(
+  "/extension/download",
+  "post",
+  "Generate new personal extension download URL",
+  "ExtensionDownload",
+);
+operation(
+  "/extension/download/{token}/avari-extension.zip",
+  "get",
+  "Download personal extension zip using a secret token",
+  s,
+  undefined,
+  true,
+);
+const downloadOperation =
+  paths["/extension/download/{token}/avari-extension.zip"].get;
+downloadOperation.parameters = [
+  {
+    name: "token",
+    in: "path",
+    required: true,
+    schema: { type: "string", pattern: "^[0-9a-f]{64}$" },
+  },
+  { name: "If-None-Match", in: "header", schema: s },
+];
+downloadOperation.responses["200"].content = {
+  "application/zip": { schema: s },
+};
+downloadOperation.responses["200"].headers = { ETag: { schema: s } };
+downloadOperation.responses["304"] = {
+  description: "Archive has not changed (If-None-Match)",
 };
 const spec = {
   openapi: "3.1.0",

@@ -1,13 +1,16 @@
 import { expect, it, vi } from "vitest";
+const page = vi.hoisted(() => ({
+  vacancy: { url: "https://hh.ru/vacancy/123", company: "", position: "" },
+}));
 vi.mock("./parser", () => ({
   parsePage: () => ({
     supported: true,
     kind: "vacancy",
     observations: [],
-    vacancy: { url: "https://hh.ru/vacancy/123" },
+    vacancy: page.vacancy,
   }),
 }));
-it("opens only from the plugin, closes completely and can reopen", async () => {
+it("opens manually and auto-opens compactly for new content, respecting dismissal", async () => {
   vi.useFakeTimers();
   let receive: (
     message: unknown,
@@ -84,6 +87,38 @@ it("opens only from the plugin, closes completely and can reopen", async () => {
   expect(document.querySelector("#avari-quick-popup")).toBeNull();
   receive!({ type: "OPEN_PANEL" }, {}, vi.fn());
   expect(document.querySelector("#avari-quick-popup")).not.toBeNull();
+  (
+    document
+      .querySelector<HTMLElement>("#avari-quick-popup")!
+      .shadowRoot!.querySelector(
+        '[aria-label="Закрыть мини-окно"]',
+      ) as HTMLButtonElement
+  ).click();
+  page.vacancy.company = "Avari";
+  page.vacancy.position = "Developer";
+  receive!({ type: "READ_PAGE" }, {}, vi.fn());
+  await Promise.resolve();
+  const automatic = document.querySelector<HTMLElement>("#avari-quick-popup")!;
+  expect(automatic.hasAttribute("data-collapsed")).toBe(true);
+  expect(automatic.shadowRoot!.querySelector("iframe")!.src).toContain(
+    "collapsed=1",
+  );
+  (
+    automatic.shadowRoot!.querySelector(
+      '[aria-label="Закрыть мини-окно"]',
+    ) as HTMLButtonElement
+  ).click();
+  receive!({ type: "READ_PAGE" }, {}, vi.fn());
+  await Promise.resolve();
+  expect(document.querySelector("#avari-quick-popup")).toBeNull();
+  page.vacancy.position = "Senior developer";
+  receive!({ type: "READ_PAGE" }, {}, vi.fn());
+  await Promise.resolve();
+  expect(
+    document
+      .querySelector("#avari-quick-popup")!
+      .hasAttribute("data-collapsed"),
+  ).toBe(true);
   Object.defineProperty(chrome.runtime, "id", {
     value: undefined,
     configurable: true,

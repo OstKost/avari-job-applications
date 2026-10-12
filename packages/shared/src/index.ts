@@ -17,6 +17,7 @@ export type Application = Omit<
 export type Task = components["schemas"]["Task"];
 export type CalendarSubscription =
   components["schemas"]["CalendarSubscription"];
+export type ExtensionDownload = components["schemas"]["ExtensionDownload"];
 export type Note = components["schemas"]["Note"];
 export type Field = components["schemas"]["Field"];
 export type HistoryEvent = components["schemas"]["HistoryEvent"];

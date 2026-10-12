@@ -67,6 +67,7 @@ import {
   type Detail,
   type Session,
   type CalendarSubscription,
+  type ExtensionDownload,
   dateToday,
   dateLabel,
   emptyApplication,
@@ -194,33 +195,33 @@ function PublicPage({ privacy }: { privacy: boolean }) {
               журнал откликов.
             </p>
             <p>Версия: {version || "загрузка…"}</p>
-            {chromeStore && (
+            {chromeStore ? (
               <p>
-                <a href={chromeStore} target="_blank" rel="noopener noreferrer">
+                <a
+                  className="primary public-download"
+                  href={chromeStore}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
                   Установить из Chrome Web Store
                 </a>
               </p>
+            ) : (
+              <p className="notice">
+                Расширение находится на публикации в Chrome Web Store.
+              </p>
             )}
-            <a
-              className="primary public-download"
-              href="/downloads/avari-extension.zip"
-              download
-            >
-              Скачать ZIP расширения
-            </a>
             <ol className="instructions">
-              <li>Распакуйте архив.</li>
               <li>
-                Откройте <code>chrome://extensions</code> и включите режим
-                разработчика.
+                Установите расширение из официального каталога Chrome Web Store.
               </li>
               <li>
-                Нажмите «Загрузить распакованное расширение» и выберите
-                распакованную папку.
-              </li>
-              <li>
-                Войдите в аккаунт Avari.Jobs. Расширение с этого сайта уже
+                Войдите в ваш аккаунт Avari.Jobs. Расширение по умолчанию
                 подключено к <code>https://jobs.avari.dev</code>.
+              </li>
+              <li>
+                Для персонального сервера или ручной установки архива войдите в
+                аккаунт и перейдите в <strong>Настройки → Расширение</strong>.
               </li>
             </ol>
           </>
@@ -515,7 +516,7 @@ function Auth({ onLogin }: { onLogin: (u: User) => void }) {
                 : "Для начала работы используйте вашу учётную запись."}
           </p>
           <p className="auth-footnote">
-            <a href="/extension">Скачать расширение</a> ·{" "}
+            <a href="/extension">Расширение для браузера</a> ·{" "}
             <a href="/privacy">Конфиденциальность</a>
           </p>
         </div>
@@ -2934,6 +2935,100 @@ function CalendarSubscriptionPanel() {
     </div>
   );
 }
+function ExtensionDownloadPanel() {
+  const client = useQueryClient();
+  const download = useQuery({
+    queryKey: ["extension-download"],
+    queryFn: () => api<ExtensionDownload>("/extension/download"),
+  });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<unknown>();
+  const [notice, setNotice] = useState("");
+  const url = download.data?.url ?? "";
+  const generate = async () => {
+    setBusy(true);
+    setError(undefined);
+    setNotice("");
+    try {
+      const result = await api<ExtensionDownload>("/extension/download", "POST", {});
+      client.setQueryData(["extension-download"], result);
+      setNotice("Новая ссылка создана");
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="extension-download-box">
+      <ErrorBox error={error} />
+      {notice && (
+        <div className="success notice" role="status">
+          {notice}
+        </div>
+      )}
+      {download.isPending ? (
+        <Loading />
+      ) : url ? (
+        <>
+          <FieldInput
+            label="Индивидуальная ссылка на ZIP-архив"
+            hint="Ссылка привязана к вашей учётной записи. Не публикуйте её в открытом доступе."
+          >
+            <input
+              readOnly
+              value={url}
+              onFocus={(e) => e.currentTarget.select()}
+            />
+          </FieldInput>
+          <div className="actions">
+            <a className="button primary" href={url} download>
+              <Download size={14} /> Скачать ZIP расширения
+            </a>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(url);
+                  setNotice("Ссылка скопирована");
+                  setError(undefined);
+                } catch {
+                  setError(
+                    new Error(
+                      "Не удалось скопировать. Выделите ссылку и скопируйте её вручную.",
+                    ),
+                  );
+                }
+              }}
+            >
+              Скопировать ссылку
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={generate}
+            >
+              Сменить ссылку
+            </button>
+          </div>
+        </>
+      ) : (
+        <div className="actions">
+          <button
+            type="button"
+            className="primary"
+            disabled={busy}
+            onClick={generate}
+          >
+            Создать персональную ссылку скачивания
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 function SettingsPage() {
   const { user, data, refresh } = useApp();
   const client = useQueryClient();
@@ -3339,12 +3434,35 @@ function SettingsPage() {
                     Добавляйте вакансии с {jobSitesLabel} без копирования полей.
                   </p>
                 </div>
-                <ol className="instructions">
+                {import.meta.env.VITE_CHROME_STORE_URL ? (
+                  <div style={{ marginBottom: 20 }}>
+                    <p>
+                      Рекомендуемый способ: официальная установка из Chrome Web Store.
+                    </p>
+                    <a
+                      className="button primary"
+                      href={import.meta.env.VITE_CHROME_STORE_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <ExternalLink size={14} /> Установить из Chrome Web Store
+                    </a>
+                  </div>
+                ) : (
+                  <p className="notice">
+                    Расширение находится на проверке и публикации в Chrome Web Store.
+                  </p>
+                )}
+                <div className="panel-head" style={{ marginTop: 20 }}>
+                  <h3>Ручная установка (для разработчиков и тестирования)</h3>
+                  <p>
+                    Архив расширения для загрузки в распакованном виде в <code>chrome://extensions</code>.
+                  </p>
+                </div>
+                <ExtensionDownloadPanel />
+                <ol className="instructions" style={{ marginTop: 16 }}>
                   <li>
-                    <a href="/downloads/avari-extension.zip" download>
-                      Скачайте архив расширения
-                    </a>{" "}
-                    и распакуйте его.{" "}
+                    Скачайте ZIP-архив по индивидуальной ссылке выше и распакуйте его в удобную папку.{" "}
                     <a href="/extension">Подробная инструкция</a>.
                   </li>
                   <li>
