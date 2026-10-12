@@ -8,6 +8,7 @@ import {
   type CSSProperties,
   Fragment,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   NavLink,
   Link,
@@ -97,6 +98,7 @@ import {
   FieldInput,
   Select,
   CompanyAvatar,
+  UserAvatar,
 } from "@avari/shared/ui";
 import { PageTransition } from "./PageTransition";
 
@@ -175,6 +177,12 @@ function PublicPage({ privacy }: { privacy: boolean }) {
             <p>
               Удалить записи можно в приложении, а для удаления аккаунта и
               данных обратитесь к администратору вашего сервера.
+            </p>
+            <p>
+              Для отображения аватара сайт обращается к Gravatar. В адресе
+              запроса используется SHA-256 хеш email; запрос выполняется вашим
+              браузером к внешнему сервису. Переход по ссылке изменения аватара
+              открывает Gravatar с вашим email.
             </p>
           </>
         ) : (
@@ -669,22 +677,26 @@ function Workspace({ user }: { user: User }) {
             ))}
           </nav>
           <div className="sidebar-footer">
-            <span className="account-avatar">
-              {user.email[0].toUpperCase()}
-            </span>
-            <span className="account-label" title={user.email}>
-              {user.email}
-            </span>
-            <ThemeButton />
-            <button
-              type="button"
-              className="icon-button text-button"
-              title="Выйти из аккаунта"
-              aria-label="Выйти из аккаунта"
-              onClick={handleLogout}
+            <Link
+              to="/settings"
+              className="sidebar-account"
+              title={`Настройки аккаунта (${user.email})`}
             >
-              <LogOut size={16} />
-            </button>
+              <UserAvatar email={user.email} size={32} />
+              <span className="account-label">{user.email}</span>
+            </Link>
+            <div className="sidebar-footer-actions">
+              <ThemeButton />
+              <button
+                type="button"
+                className="icon-button text-button"
+                title="Выйти из аккаунта"
+                aria-label="Выйти из аккаунта"
+                onClick={handleLogout}
+              >
+                <LogOut size={15} />
+              </button>
+            </div>
           </div>
         </aside>
         <main className="main">
@@ -1346,6 +1358,56 @@ function Calendar() {
     </>
   );
 }
+function RowActionHint({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  const [anchor, setAnchor] = useState<DOMRect | null>(null);
+  const show = (element: HTMLElement) =>
+    setAnchor(element.getBoundingClientRect());
+  useEffect(() => {
+    if (!anchor) return;
+    const hide = () => setAnchor(null);
+    window.addEventListener("scroll", hide, true);
+    window.addEventListener("resize", hide);
+    return () => {
+      window.removeEventListener("scroll", hide, true);
+      window.removeEventListener("resize", hide);
+    };
+  }, [anchor]);
+  return (
+    <span
+      className="row-action-hint"
+      onMouseEnter={(event) => show(event.currentTarget)}
+      onMouseLeave={() => setAnchor(null)}
+      onFocus={(event) => show(event.currentTarget)}
+      onBlur={() => setAnchor(null)}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") setAnchor(null);
+      }}
+    >
+      {children}
+      {anchor &&
+        createPortal(
+          <span
+            className="row-action-tooltip"
+            role="tooltip"
+            style={{
+              top: anchor.top - 8,
+              right: Math.max(12, window.innerWidth - anchor.right),
+            }}
+          >
+            {label}
+          </span>,
+          document.body,
+        )}
+    </span>
+  );
+}
+
 function Applications() {
   const { user, data, editApplication } = useApp();
   const [vacancyGroup, setVacancyGroup] = useState("");
@@ -1547,7 +1609,15 @@ function Applications() {
               : "Вакансия";
 
     return (
-      <tr key={a.id}>
+      <tr
+        key={a.id}
+        className="application-data-row"
+        style={
+          {
+            "--row-index": visible.findIndex((item) => item.id === a.id),
+          } as CSSProperties
+        }
+      >
         <td>
           <div className="company-cell">
             <CompanyAvatar name={a.company} />
@@ -1592,25 +1662,27 @@ function Applications() {
         </td>
         <td>
           <div className="row-actions">
-            <Link
-              className="row-action-btn row-action-detail"
-              to={"/applications/" + a.id}
-              aria-label={"Открыть карточку: " + a.company}
-              data-tooltip="Открыть карточку отклика"
-            >
-              <ArrowRight size={14} />
-            </Link>
-            {a.url && (
-              <a
-                className={`row-action-btn row-action-site ${site ? `site-${site}` : ""}`}
-                href={a.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label={`Открыть вакансию на ${siteLabel}: ${a.company}`}
-                data-tooltip={`Открыть вакансию на ${siteLabel}`}
+            <RowActionHint label="Открыть карточку отклика">
+              <Link
+                className="row-action-btn row-action-detail"
+                to={"/applications/" + a.id}
+                aria-label={"Открыть карточку: " + a.company}
               >
-                <ExternalLink size={14} />
-              </a>
+                <ArrowRight size={14} />
+              </Link>
+            </RowActionHint>
+            {a.url && (
+              <RowActionHint label={`Открыть вакансию на ${siteLabel}`}>
+                <a
+                  className={`row-action-btn row-action-site ${site ? `site-${site}` : ""}`}
+                  href={a.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={`Открыть вакансию на ${siteLabel}: ${a.company}`}
+                >
+                  <ExternalLink size={14} />
+                </a>
+              </RowActionHint>
             )}
           </div>
         </td>
@@ -1780,6 +1852,22 @@ function Applications() {
               )}
             </div>
             <div className="register-toolbar-actions">
+              {activeFilters && (
+                <div className="register-filter-status">
+                  <span className="register-filter-count">
+                    Найдено: <strong>{list.length}</strong>
+                  </span>
+                  <button
+                    type="button"
+                    className="text-button register-filter-reset"
+                    onClick={reset}
+                    title="Сбросить все фильтры"
+                  >
+                    <X size={13} />
+                    Сбросить
+                  </button>
+                </div>
+              )}
               <button
                 type="button"
                 className={
@@ -1810,75 +1898,6 @@ function Applications() {
               </button>
             </div>
           </div>
-          {activeFilters && (
-            <div className="filter-summary">
-              <span>Найдено: {list.length}</span>
-              {search && (
-                <span className="filter-summary-tag">
-                  Поиск: «{search}»
-                  <button
-                    type="button"
-                    aria-label="Очистить поиск"
-                    onClick={() => setSearch("")}
-                  >
-                    <X size={11} />
-                  </button>
-                </span>
-              )}
-              {vacancyGroup && (
-                <span className="filter-summary-tag">
-                  {vacancyGroup === "__ungrouped" ? "Без группы" : vacancyGroup}
-                  <button
-                    type="button"
-                    aria-label="Сбросить группу"
-                    onClick={() => setVacancyGroup("")}
-                  >
-                    <X size={11} />
-                  </button>
-                </span>
-              )}
-              {stage && (
-                <span className="filter-summary-tag">
-                  Этап: {stages[stage] || stage}
-                  <button
-                    type="button"
-                    aria-label="Сбросить этап"
-                    onClick={() => setStage("")}
-                  >
-                    <X size={11} />
-                  </button>
-                </span>
-              )}
-              {priority && (
-                <span className="filter-summary-tag">
-                  Приоритет: {priority}
-                  <button
-                    type="button"
-                    aria-label="Сбросить приоритет"
-                    onClick={() => setPriority("")}
-                  >
-                    <X size={11} />
-                  </button>
-                </span>
-              )}
-              {hasTask && (
-                <span className="filter-summary-tag">
-                  С задачами
-                  <button
-                    type="button"
-                    aria-label="Сбросить фильтр задач"
-                    onClick={() => setHasTask(false)}
-                  >
-                    <X size={11} />
-                  </button>
-                </span>
-              )}
-              <button className="text-button" onClick={reset}>
-                <X size={13} />
-                Сбросить всё
-              </button>
-            </div>
-          )}
           {filterModalOpen && (
             <dialog
               ref={(node) => {
@@ -2034,6 +2053,76 @@ function Applications() {
                   </div>
                 )}
 
+                {filterCount > 0 && (
+                  <div className="spotlight-active-tags">
+                    <span className="spotlight-tags-label">
+                      Активные фильтры:
+                    </span>
+                    {search && (
+                      <span className="filter-summary-tag">
+                        Поиск: «{search}»
+                        <button
+                          type="button"
+                          aria-label="Очистить поиск"
+                          onClick={() => setSearch("")}
+                        >
+                          <X size={11} />
+                        </button>
+                      </span>
+                    )}
+                    {vacancyGroup && (
+                      <span className="filter-summary-tag">
+                        {vacancyGroup === "__ungrouped"
+                          ? "Без группы"
+                          : vacancyGroup}
+                        <button
+                          type="button"
+                          aria-label="Сбросить группу"
+                          onClick={() => setVacancyGroup("")}
+                        >
+                          <X size={11} />
+                        </button>
+                      </span>
+                    )}
+                    {stage && (
+                      <span className="filter-summary-tag">
+                        Этап: {stages[stage] || stage}
+                        <button
+                          type="button"
+                          aria-label="Сбросить этап"
+                          onClick={() => setStage("")}
+                        >
+                          <X size={11} />
+                        </button>
+                      </span>
+                    )}
+                    {priority && (
+                      <span className="filter-summary-tag">
+                        Приоритет: {priority}
+                        <button
+                          type="button"
+                          aria-label="Сбросить приоритет"
+                          onClick={() => setPriority("")}
+                        >
+                          <X size={11} />
+                        </button>
+                      </span>
+                    )}
+                    {hasTask && (
+                      <span className="filter-summary-tag">
+                        С задачами
+                        <button
+                          type="button"
+                          aria-label="Сбросить фильтр задач"
+                          onClick={() => setHasTask(false)}
+                        >
+                          <X size={11} />
+                        </button>
+                      </span>
+                    )}
+                  </div>
+                )}
+
                 <div className="spotlight-footer">
                   <div className="spotlight-hints">
                     <span>
@@ -2100,16 +2189,27 @@ function Applications() {
             <>
               <div className="table-wrap">
                 <table
-                  key={`${currentPage}-${state}-${stage}-${priority}-${order}-${selectedGroup}`}
+                  key={JSON.stringify([
+                    currentPage,
+                    state,
+                    stage,
+                    priority,
+                    order,
+                    selectedGroup,
+                    search,
+                    hasTask,
+                    vacancyGroup,
+                    preferences.group,
+                  ])}
                   className="table-page-layer"
                 >
                   <colgroup>
-                    <col style={{ width: "35%" }} />
+                    <col style={{ width: "33%" }} />
                     <col style={{ width: "13%" }} />
                     <col style={{ width: "12%" }} />
                     <col style={{ width: "21%" }} />
                     <col style={{ width: "11%" }} />
-                    <col style={{ width: "8%" }} />
+                    <col style={{ width: "10%" }} />
                   </colgroup>
                   <thead>
                     <tr>
@@ -2159,12 +2259,12 @@ function Applications() {
                                   <div className="group-collapsible-inner">
                                     <table>
                                       <colgroup>
-                                        <col style={{ width: "35%" }} />
+                                        <col style={{ width: "33%" }} />
                                         <col style={{ width: "13%" }} />
                                         <col style={{ width: "12%" }} />
                                         <col style={{ width: "21%" }} />
                                         <col style={{ width: "11%" }} />
-                                        <col style={{ width: "8%" }} />
+                                        <col style={{ width: "10%" }} />
                                       </colgroup>
                                       <tbody>{apps.map(renderRow)}</tbody>
                                     </table>
@@ -2182,7 +2282,18 @@ function Applications() {
                 </table>
               </div>
               <div
-                key={`${currentPage}-${state}-${stage}-${priority}-${order}-${selectedGroup}`}
+                key={JSON.stringify([
+                  currentPage,
+                  state,
+                  stage,
+                  priority,
+                  order,
+                  selectedGroup,
+                  search,
+                  hasTask,
+                  vacancyGroup,
+                  preferences.group,
+                ])}
                 className="application-cards cards-page-layer"
               >
                 {grouped.map(([key, apps]) => {
@@ -2939,9 +3050,24 @@ function SettingsPage() {
           {activeTab === "general" && (
             <>
               <section className="panel">
-                <div className="panel-head">
-                  <h2>Аккаунт</h2>
-                  <p>{user.email}</p>
+                <div className="panel-head account-panel-head">
+                  <div className="account-profile-row">
+                    <UserAvatar email={user.email} size={54} />
+                    <div className="account-profile-info">
+                      <h2>Аккаунт</h2>
+                      <p className="account-email">{user.email}</p>
+                    </div>
+                    <a
+                      href={`https://gravatar.com/connect/?email=${encodeURIComponent(user.email)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="account-avatar-edit-link"
+                      title="Изменить аватарку в Gravatar"
+                    >
+                      <span>Изменить аватарку на Gravatar</span>
+                      <ExternalLink size={14} />
+                    </a>
+                  </div>
                 </div>
                 <form
                   className="form"

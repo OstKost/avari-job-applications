@@ -1,4 +1,29 @@
 import { test, expect, type Page } from "@playwright/test";
+test("public extension download and privacy are available before login", async ({
+  page,
+}) => {
+  await page.goto("/extension");
+  await expect(
+    page.getByRole("heading", { name: "Расширение Avari.Jobs" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Скачать ZIP расширения" }),
+  ).toHaveAttribute("href", "/downloads/avari-extension.zip");
+  const archive = await page.request.get("/downloads/avari-extension.zip");
+  expect(archive.status()).toBe(200);
+  expect((await archive.body()).subarray(0, 2).toString()).toBe("PK");
+  expect(archive.headers()["cache-control"]).toBe("no-cache");
+  const release = await (await page.request.get("/release.json")).json();
+  await expect(
+    page.getByText(`Версия: ${release.version}`, { exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("link", { name: "Конфиденциальность", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Конфиденциальность" }),
+  ).toBeVisible();
+});
 const login = async (page: Page) => {
   await page.goto("/");
   await page.getByLabel("Email", { exact: true }).fill("browser@example.com");
@@ -489,7 +514,11 @@ test("workspace design: dashboard, grouped table, density, pagination and monthl
   await page.getByLabel("Поиск по компании и позиции").press("Enter");
   await expect(page.locator(".table-pagination")).toContainText("1 / 1");
   await expect(page.locator(".table-wrap tbody tr")).toHaveCount(3);
+  await page
+    .getByRole("button", { name: "Поиск и фильтры", exact: true })
+    .click();
   await page.getByRole("button", { name: "Сбросить всё", exact: true }).click();
+  await page.getByLabel("Поиск по компании и позиции").press("Enter");
   await page
     .getByRole("button", { name: "Высокие строки", exact: true })
     .click();

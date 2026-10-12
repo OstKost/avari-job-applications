@@ -320,17 +320,19 @@ export function pluralTasks(count: number, adjective?: string): string {
     return `${count} ${adj} ${noun}`;
   }
   if (adjective === "просроченная") {
-    const adj = pluralize(count, "просроченная", "просроченные", "просроченных");
+    const adj = pluralize(
+      count,
+      "просроченная",
+      "просроченные",
+      "просроченных",
+    );
     const noun = pluralize(count, "задача", "задачи", "задач");
     return `${count} ${adj} ${noun}`;
   }
   return `${count} ${pluralize(count, "задача", "задачи", "задач")}`;
 }
 
-export function pluralApplications(
-  count: number,
-  adjective?: string,
-): string {
+export function pluralApplications(count: number, adjective?: string): string {
   if (adjective === "активный") {
     const adj = pluralize(count, "активный", "активных", "активных");
     const noun = pluralize(count, "отклик", "отклика", "откликов");
@@ -339,3 +341,21 @@ export function pluralApplications(
   return `${count} ${pluralize(count, "отклик", "отклика", "откликов")}`;
 }
 
+export async function gravatarUrl(
+  email: string,
+  size = 80,
+  defaultParam = "404",
+): Promise<string> {
+  const normalized = (email || "").trim().toLowerCase();
+  if (!normalized) return "";
+  try {
+    const data = new TextEncoder().encode(normalized);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+    const hash = Array.from(new Uint8Array(hashBuffer))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+    return `https://www.gravatar.com/avatar/${hash}?s=${size}&d=${encodeURIComponent(defaultParam)}`;
+  } catch {
+    return "";
+  }
+}

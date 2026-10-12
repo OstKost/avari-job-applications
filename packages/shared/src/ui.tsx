@@ -38,6 +38,7 @@ import {
   sortTasks,
   companyColorIndex,
   companyInitials,
+  gravatarUrl,
 } from "./index";
 const themeSnapshot = () =>
   localStorage.getItem("avari-theme") === "light" ? "light" : "dark";
@@ -135,7 +136,9 @@ export function Badge({
   kind?: string;
 }) {
   return (
-    <span className={"badge badge-" + value}>{displayValue(kind, value)}</span>
+    <span className={`badge badge-${kind} badge-${value}`}>
+      {displayValue(kind, value)}
+    </span>
   );
 }
 export function Modal({
@@ -1117,6 +1120,55 @@ export function CompanyAvatar({
   return (
     <span className={classes} data-color={colorIndex} aria-hidden="true">
       {initials}
+    </span>
+  );
+}
+
+export function UserAvatar({
+  email,
+  size = 34,
+  className,
+}: {
+  email: string;
+  size?: number;
+  className?: string;
+}) {
+  const [gravatar, setGravatar] = useState<string>("");
+  const [imgFailed, setImgFailed] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    setImgFailed(false);
+    gravatarUrl(email, size * 2, "404").then((url) => {
+      if (active && url) {
+        setGravatar(url);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [email, size]);
+
+  const letter = (email || "?").trim()[0]?.toUpperCase() || "?";
+  const classes = ["account-avatar", className].filter(Boolean).join(" ");
+  const style = { width: size, height: size, minWidth: size, minHeight: size };
+
+  if (gravatar && !imgFailed) {
+    return (
+      <span className={classes} style={style} aria-hidden="true">
+        <img
+          src={gravatar}
+          alt=""
+          className="account-avatar-img"
+          onError={() => setImgFailed(true)}
+        />
+      </span>
+    );
+  }
+
+  return (
+    <span className={classes} style={style} aria-hidden="true">
+      {letter}
     </span>
   );
 }
