@@ -1,0 +1,16 @@
+node_modules/
+__pycache__/
+*.pyc
+.DS_Store
+dist/
+bin/
+data/
+.env
+*.db
+*.db-*
+*.lock.db
+playwright-report/
+test-results/
+apps/server/assets/*
+!apps/server/assets/.gitkeep
+!apps/server/assets/embed.go

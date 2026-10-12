@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+umask 077
+root=/opt/avari-jobs
+compose="$root/compose.production.yaml"
+image_repo=ghcr.io/ostkost/avari-job-applications
+tag=${1:?release tag required}
+digest=${2:?image digest required}
+registry_user=${3:?registry username required}
+if [[ ! "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ || ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+    echo 'Invalid tag or digest' >&2
+    exit 2
+fi
+[[ "$registry_user" =~ ^[a-zA-Z0-9_-]+$ ]] || exit 2
+exec 9>"$root/deploy.lock"
+flock -n 9 || { echo 'Another deploy is running' >&2; exit 1; }
+image="$image_repo@$digest"
+export AVARI_IMAGE="$image"
+state="$root/current"
+previous_image=''
+previous_tag=''
+if [[ -f "$state" ]]; then
+    read -r previous_tag previous_image < "$state"
+    [[ "$previous_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ && "$previous_image" =~ ^ghcr.io/ostkost/avari-job-applications@sha256:[0-9a-f]{64}$ ]] || exit 2
+    if [[ "$previous_tag" == "$tag" ]]; then
+        [[ "$previous_image" == "$image" ]] || { echo 'Tag already deployed with another image' >&2; exit 2; }
+        echo 'This release is already deployed'
+        exit 0
+    fi
+    if [[ "$(printf '%s\n%s\n' "$tag" "$previous_tag" | sort -V | head -1)" != "$previous_tag" ]]; then
+        echo 'Refusing to deploy an older version' >&2
+        exit 2
+    fi
+fi
+registry_config=$(mktemp -d)
+if ! DOCKER_CONFIG="$registry_config" docker login ghcr.io -u "$registry_user" --password-stdin >/dev/null; then rm -rf "$registry_config"; exit 1; fi
+if ! DOCKER_CONFIG="$registry_config" docker pull "$image"; then rm -rf "$registry_config"; exit 1; fi
+rm -rf "$registry_config"
+docker volume create avari-jobs-data >/dev/null
+data_dir=$(docker volume inspect avari-jobs-data --format '{{.Mountpoint}}')
+[[ "$data_dir" == /var/lib/docker/volumes/avari-jobs-data/_data ]] || { echo 'Unexpected data volume path' >&2; exit 2; }
+mkdir -p "$root/backups" "$root/failed" "$root/releases"
+backup="$root/backups/${previous_tag:-initial}-before-$tag-$(date -u +%Y%m%d%H%M%S).db"
+backup_tmp="$backup.tmp"
+rollback() {
+    result=$?
+    trap - ERR
+    echo "Deployment failed; restoring previous version" >&2
+    docker compose -f "$compose" down || true
+    rm -f "$backup_tmp"
+    if [[ -f "$backup" ]]; then
+        exec 8>"$data_dir/avari.db.lock"
+        if ! flock -n -x 8; then echo 'Database is open in an admin session; maintenance retained, manual recovery required' >&2; exit "$result"; fi
+        if [[ -f "$data_dir/avari.db" ]]; then
+            cp -a "$data_dir/avari.db" "$root/failed/$tag-$(date -u +%Y%m%d%H%M%S).db" || true
+        fi
+        rm -f "$data_dir/avari.db-wal" "$data_dir/avari.db-shm"
+        cp -a "$backup" "$data_dir/avari.db"
+        chown 10001:10001 "$data_dir/avari.db"
+        flock -u 8
+    fi
+    flock -u 8 2>/dev/null || true
+    if [[ -n "$previous_image" ]]; then
+        AVARI_IMAGE="$previous_image" docker compose -f "$compose" up -d app || true
+        for i in $(seq 1 30); do
+            if curl -fsS --max-time 3 http://127.0.0.1:18081/readyz >/dev/null; then rm -f "$root/maintenance"; break; fi
+            sleep 2
+        done
+    fi
+    exit "$result"
+}
+trap rollback ERR
+touch "$root/maintenance"
+docker compose -f "$compose" down
+if [[ -f "$data_dir/avari.db" ]]; then
+    exec 8>"$data_dir/avari.db.lock"
+    chown 10001:10001 "$data_dir/avari.db.lock"
+    flock -n -x 8
+    python3 - "$data_dir/avari.db" "$backup_tmp" <<'PY'
+import sqlite3, sys
+with sqlite3.connect(sys.argv[1]) as source, sqlite3.connect(sys.argv[2]) as target:
+    source.backup(target)
+    if target.execute('PRAGMA integrity_check').fetchone()[0] != 'ok':
+        raise RuntimeError('Invalid pre-release backup')
+PY
+    chmod 0600 "$backup_tmp"
+    mv "$backup_tmp" "$backup"
+    flock -u 8
+fi
+AVARI_IMAGE="$image" docker compose -f "$compose" up -d app
+ready=0
+for i in $(seq 1 45); do
+    if curl -fsS --max-time 2 http://127.0.0.1:18081/readyz >/dev/null; then ready=1; break; fi
+    sleep 2
+done
+[[ "$ready" == 1 ]] || { echo 'Application failed readiness check' >&2; false; }
+[[ "$(curl -fsS --max-time 5 http://127.0.0.1:18081/release.json | python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])')" == "${tag#v}" ]]
+printf '%s %s\n' "$tag" "$image" > "$state.tmp"
+cp "$state.tmp" "$root/releases/$tag"
+mv "$state.tmp" "$state"
+rm -f "$root/maintenance"
+trap - ERR
+find "$root/backups" -maxdepth 1 -type f -name '*.db' -printf '%T@ %p\n' | sort -nr | tail -n +6 | cut -d ' ' -f 2- | xargs -r rm -f
+while read -r old_tag; do
+    old_image=$(awk '{print $2}' "$root/releases/$old_tag")
+    rm -f "$root/releases/$old_tag"
+    if ! grep -Fq "$old_image" "$root"/releases/* && [[ "$(docker image inspect "$old_image" --format '{{ index .Config.Labels "io.avari.app" }}' 2>/dev/null || true)" == jobs ]]; then
+        docker image rm "$old_image" || true
+    fi
+done < <(find "$root/releases" -maxdepth 1 -type f -name 'v*' -printf '%f\n' | sort -Vr | tail -n +6)
+echo "Deployed $tag $digest"

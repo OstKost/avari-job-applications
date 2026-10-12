@@ -1,0 +1,48 @@
+services:
+  app:
+    build: .
+    image: avari:local
+    restart: unless-stopped
+    environment:
+      AVARI_DB: /data/avari.db
+      AVARI_BACKUPS: /data/backups
+      AVARI_ADDR: 0.0.0.0:8080
+      AVARI_ORIGIN: ${AVARI_ORIGIN:-http://localhost:8080}
+      AVARI_TRUST_PROXY: ${AVARI_TRUST_PROXY:-false}
+    volumes:
+      - avari-data:/data
+    ports:
+      - "127.0.0.1:8080:8080"
+    stop_grace_period: 15s
+  admin:
+    image: avari:local
+    profiles: [admin]
+    entrypoint: /app/avari-admin
+    environment:
+      AVARI_DB: /data/avari.db
+      AVARI_BACKUPS: /data/backups
+    volumes:
+      - avari-data:/data
+    stdin_open: true
+    tty: true
+  proxy:
+    image: caddy:2
+    profiles: [https]
+    restart: unless-stopped
+    environment:
+      AVARI_DOMAIN: ${AVARI_DOMAIN:-localhost}
+    volumes:
+      - ./deploy/Caddyfile.docker:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    depends_on:
+      app:
+        condition: service_healthy
+volumes:
+  avari-data:
+  caddy-data:
+  caddy-config:

@@ -1,0 +1,6 @@
+{$AVARI_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy app:8080 {
+		header_up X-Real-IP {remote_host}
+	}
+}

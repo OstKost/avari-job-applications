@@ -1,0 +1,50 @@
+name: Publish Chrome extension
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Successful Avari.Jobs release tag (vX.Y.Z)
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: chrome-web-store
+    concurrency:
+      group: avari-chrome-store
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate deployed release
+        env:
+          TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [[ "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft == false' | grep -qx true
+          curl -fsS https://jobs.avari.dev/release.json | python3 -c 'import json,os,sys; assert json.load(sys.stdin)["version"] == os.environ["TAG"][1:]'
+      - name: Download and check archive
+        env:
+          TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern 'avari-extension.zip' --pattern 'SHA256SUMS' --dir /tmp/avari-chrome
+          cd /tmp/avari-chrome
+          awk '$2 == "avari-extension.zip"' SHA256SUMS | sha256sum -c -
+          unzip -p avari-extension.zip manifest.json | python3 -c 'import json,os,sys; assert json.load(sys.stdin)["version"] == os.environ["TAG"][1:]'
+      - uses: google-github-actions/auth@v3
+        id: google
+        with:
+          credentials_json: ${{ secrets.CHROME_SERVICE_ACCOUNT_JSON }}
+          service_account: ${{ vars.CHROME_SERVICE_ACCOUNT_EMAIL }}
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/chromewebstore
+      - name: Submit to Chrome Web Store
+        env:
+          CHROME_ACCESS_TOKEN: ${{ steps.google.outputs.access_token }}
+          CHROME_PUBLISHER_ID: ${{ vars.CHROME_PUBLISHER_ID }}
+          CHROME_EXTENSION_ID: ${{ vars.CHROME_EXTENSION_ID }}
+          TAG: ${{ inputs.tag }}
+        run: node scripts/publish-chrome.mjs /tmp/avari-chrome/avari-extension.zip

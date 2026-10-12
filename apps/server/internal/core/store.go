@@ -1,0 +1,302 @@
+package core
+
+import (
+	"context"
+	"crypto/rand"
+	"database/sql"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"golang.org/x/sys/unix"
+	_ "modernc.org/sqlite"
+	"os"
+	"path/filepath"
+	"time"
+)
+
+const SchemaVersion = 4
+
+type Store struct {
+	DB   *sql.DB
+	Path string
+	lock *os.File
+}
+type queryer interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+func ID() string {
+	b := make([]byte, 16)
+	if _, e := rand.Read(b); e != nil {
+		panic(e)
+	}
+	return hex.EncodeToString(b)
+}
+func decode(raw string, v any) error { return json.Unmarshal([]byte(raw), v) }
+func Open(path string) (*Store, error) {
+	path, e := filepath.Abs(path)
+	if e != nil {
+		return nil, e
+	}
+	if e = os.MkdirAll(filepath.Dir(path), 0700); e != nil {
+		return nil, e
+	}
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		path = resolved
+	} else if !os.IsNotExist(err) {
+		return nil, err
+	} else {
+		parent, err := filepath.EvalSymlinks(filepath.Dir(path))
+		if err != nil {
+			return nil, err
+		}
+		path = filepath.Join(parent, filepath.Base(path))
+	}
+	file, e := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
+	if e != nil {
+		return nil, e
+	}
+	if e = file.Chmod(0600); e != nil {
+		file.Close()
+		return nil, e
+	}
+	if e = file.Close(); e != nil {
+		return nil, e
+	}
+	lock, e := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR, 0600)
+	if e != nil {
+		return nil, e
+	}
+	if e = unix.Flock(int(lock.Fd()), unix.LOCK_SH|unix.LOCK_NB); e != nil {
+		lock.Close()
+		return nil, fmt.Errorf("база занята восстановлением: %w", e)
+	}
+	db, e := sql.Open("sqlite", path+"?_pragma=busy_timeout(10000)&_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)")
+	if e != nil {
+		lock.Close()
+		return nil, e
+	}
+	db.SetMaxOpenConns(1)
+	s := &Store{DB: db, Path: path, lock: lock}
+	if e = s.migrate(); e != nil {
+		s.Close()
+		return nil, e
+	}
+	_ = os.Chmod(path, 0600)
+	return s, nil
+}
+func (s *Store) Close() error {
+	e := s.DB.Close()
+	if s.lock != nil {
+		_ = unix.Flock(int(s.lock.Fd()), unix.LOCK_UN)
+		_ = s.lock.Close()
+		s.lock = nil
+	}
+	return e
+}
+func (s *Store) migrate() error {
+	ctx := context.Background()
+	tx, e := s.DB.BeginTx(ctx, nil)
+	if e != nil {
+		return e
+	}
+	defer tx.Rollback()
+	if _, e = tx.ExecContext(ctx, "CREATE TABLE IF NOT EXISTS schema_migrations(version INTEGER PRIMARY KEY)"); e != nil {
+		return e
+	}
+	var version int
+	if e = tx.QueryRowContext(ctx, "SELECT coalesce(max(version),0) FROM schema_migrations").Scan(&version); e != nil {
+		return e
+	}
+	if version > SchemaVersion {
+		return fmt.Errorf("база создана более новой версией приложения (схема %d)", version)
+	}
+	migrations := []string{` CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY,email TEXT NOT NULL UNIQUE COLLATE NOCASE,password TEXT NOT NULL,status TEXT NOT NULL CHECK(status IN ('pending','active','blocked')),timezone TEXT NOT NULL,created_at TEXT NOT NULL);
+ CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,token_hash TEXT NOT NULL UNIQUE,kind TEXT NOT NULL,name TEXT NOT NULL,created_at TEXT NOT NULL,expires_at TEXT NOT NULL);
+ CREATE INDEX IF NOT EXISTS sessions_user ON sessions(user_id);
+ CREATE TABLE IF NOT EXISTS documents(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,kind TEXT NOT NULL,payload TEXT NOT NULL CHECK(json_valid(payload)),created_at TEXT NOT NULL);
+ CREATE INDEX IF NOT EXISTS documents_owner ON documents(user_id,kind,created_at);
+ CREATE UNIQUE INDEX IF NOT EXISTS unique_hh ON documents(user_id,json_extract(payload,'$.hhId')) WHERE kind='application' AND json_extract(payload,'$.hhId')!='';
+ CREATE TABLE IF NOT EXISTS requests(user_id TEXT NOT NULL REFERENCES users(id),key TEXT NOT NULL,resource TEXT NOT NULL,PRIMARY KEY(user_id,key));
+ CREATE TABLE IF NOT EXISTS audit(id TEXT PRIMARY KEY,action TEXT NOT NULL,user_id TEXT NOT NULL,detail TEXT NOT NULL,created_at TEXT NOT NULL);
+`, `CREATE INDEX IF NOT EXISTS documents_application ON documents(user_id,kind,json_extract(payload,'$.applicationId'),created_at); CREATE INDEX IF NOT EXISTS documents_status ON documents(user_id,kind,json_extract(payload,'$.status'),created_at);`, `CREATE TABLE IF NOT EXISTS calendar_subscriptions(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,token TEXT NOT NULL UNIQUE);`, `CREATE TABLE IF NOT EXISTS password_resets(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,password_hash TEXT NOT NULL,status TEXT NOT NULL CHECK(status IN ('pending','approved','rejected')),created_at TEXT NOT NULL); CREATE INDEX IF NOT EXISTS password_resets_user ON password_resets(user_id,status);`}
+	for i, migration := range migrations {
+		if i+1 <= version {
+			continue
+		}
+		if _, e = tx.ExecContext(ctx, migration); e != nil {
+			return e
+		}
+		if _, e = tx.ExecContext(ctx, "INSERT INTO schema_migrations(version) VALUES(?)", i+1); e != nil {
+			return e
+		}
+	}
+
+	return tx.Commit()
+}
+func get[T any](q queryer, user, kind, id string) (T, error) {
+	var out T
+	var raw string
+	e := q.QueryRowContext(context.Background(), "SELECT payload FROM documents WHERE id=? AND user_id=? AND kind=?", id, user, kind).Scan(&raw)
+	if errors.Is(e, sql.ErrNoRows) {
+		return out, Fail(404, "Запись не найдена")
+	}
+	if e != nil {
+		return out, e
+	}
+	e = json.Unmarshal([]byte(raw), &out)
+	return out, e
+}
+func list[T any](q queryer, user, kind string) ([]T, error) {
+	order := "DESC"
+	if kind == "field" {
+		order = "ASC"
+	}
+	rows, e := q.QueryContext(context.Background(), "SELECT payload FROM documents WHERE user_id=? AND kind=? ORDER BY created_at "+order+",id", user, kind)
+	if e != nil {
+		return nil, e
+	}
+	defer rows.Close()
+	out := []T{}
+	for rows.Next() {
+		var raw string
+		var v T
+		if e = rows.Scan(&raw); e != nil {
+			return nil, e
+		}
+		if e = json.Unmarshal([]byte(raw), &v); e != nil {
+			return nil, e
+		}
+		out = append(out, v)
+	}
+	return out, rows.Err()
+}
+func put(q queryer, user, kind, id string, v any) error {
+	raw, e := json.Marshal(v)
+	if e != nil {
+		return e
+	}
+	_, e = q.ExecContext(context.Background(), `INSERT INTO documents(id,user_id,kind,payload,created_at) VALUES(?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload WHERE documents.user_id=excluded.user_id AND documents.kind=excluded.kind`, id, user, kind, string(raw), now())
+	return e
+}
+func remove(q queryer, user, kind, id string) error {
+	r, e := q.ExecContext(context.Background(), "DELETE FROM documents WHERE id=? AND user_id=? AND kind=?", id, user, kind)
+	if e != nil {
+		return e
+	}
+	n, _ := r.RowsAffected()
+	if n == 0 {
+		return Fail(404, "Запись не найдена")
+	}
+	return nil
+}
+func event(q queryer, user, app, kind, source string, diff map[string]any) error {
+	e := Event{ID: ID(), ApplicationID: app, Kind: kind, Source: source, Changes: diff, CreatedAt: now()}
+	return put(q, user, "event", e.ID, e)
+}
+func (s *Store) transaction(fn func(*sql.Tx) error) error {
+	tx, e := s.DB.BeginTx(context.Background(), nil)
+	if e != nil {
+		return e
+	}
+	defer tx.Rollback()
+	if e = fn(tx); e != nil {
+		return e
+	}
+	return tx.Commit()
+}
+func (s *Store) Fields(user string) ([]Field, error) { return list[Field](s.DB, user, "field") }
+func (s *Store) Applications(user string) ([]Application, error) {
+	return list[Application](s.DB, user, "application")
+}
+func (s *Store) Application(user, id string) (Application, error) {
+	return get[Application](s.DB, user, "application", id)
+}
+func (s *Store) Tasks(user string) ([]Task, error)   { return list[Task](s.DB, user, "task") }
+func (s *Store) Notes(user string) ([]Note, error)   { return list[Note](s.DB, user, "note") }
+func (s *Store) Events(user string) ([]Event, error) { return list[Event](s.DB, user, "event") }
+func (s *Store) Proposals(user string) ([]Proposal, error) {
+	return list[Proposal](s.DB, user, "proposal")
+}
+func (s *Store) User(id string) (User, error) {
+	var u User
+	e := s.DB.QueryRow("SELECT id,email,status,timezone,created_at FROM users WHERE id=?", id).Scan(&u.ID, &u.Email, &u.Status, &u.Timezone, &u.CreatedAt)
+	return u, e
+}
+func localDate(q queryer, user string) string {
+	var tz string
+	_ = q.QueryRowContext(context.Background(), "SELECT timezone FROM users WHERE id=?", user).Scan(&tz)
+	loc, e := time.LoadLocation(tz)
+	if e != nil {
+		loc = time.UTC
+	}
+	return time.Now().In(loc).Format("2006-01-02")
+}
+
+func related[T any](q queryer, user, kind, appID string) ([]T, error) {
+	rows, e := q.QueryContext(context.Background(), "SELECT payload FROM documents WHERE user_id=? AND kind=? AND json_extract(payload,'$.applicationId')=? ORDER BY created_at DESC,id", user, kind, appID)
+	if e != nil {
+		return nil, e
+	}
+	return documentsFromRows[T](rows)
+}
+func documentsFromRows[T any](rows *sql.Rows) ([]T, error) {
+	defer rows.Close()
+	out := []T{}
+	for rows.Next() {
+		var raw string
+		var value T
+		if e := rows.Scan(&raw); e != nil {
+			return nil, e
+		}
+		if e := decode(raw, &value); e != nil {
+			return nil, e
+		}
+		out = append(out, value)
+	}
+	return out, rows.Err()
+}
+func (s *Store) PendingProposals(user string) ([]Proposal, error) {
+	rows, e := s.DB.Query("SELECT payload FROM documents WHERE user_id=? AND kind='proposal' AND json_extract(payload,'$.status')='pending' ORDER BY created_at DESC,id", user)
+	if e != nil {
+		return nil, e
+	}
+	return documentsFromRows[Proposal](rows)
+}
+func (s *Store) Detail(user, id string) (Detail, error) {
+	var d Detail
+	e := s.transaction(func(tx *sql.Tx) error {
+		var e error
+		d.Application, e = get[Application](tx, user, "application", id)
+		if e != nil {
+			return e
+		}
+		d.Notes, e = related[Note](tx, user, "note", id)
+		if e != nil {
+			return e
+		}
+		d.Events, e = related[Event](tx, user, "event", id)
+		if e != nil {
+			return e
+		}
+		d.Tasks, e = related[Task](tx, user, "task", id)
+		if e != nil {
+			return e
+		}
+		proposals, e := related[Proposal](tx, user, "proposal", id)
+		if e != nil {
+			return e
+		}
+		d.Proposals = []Proposal{}
+		for _, p := range proposals {
+			if p.Status == "pending" {
+				d.Proposals = append(d.Proposals, p)
+			}
+		}
+		return nil
+	})
+	return d, e
+}

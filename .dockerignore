@@ -1,0 +1,11 @@
+.git
+node_modules
+**/node_modules
+**/dist
+!dist/
+!dist/avari-extension.zip
+bin
+data
+.env
+test-results
+playwright-report

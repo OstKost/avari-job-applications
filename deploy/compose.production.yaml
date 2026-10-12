@@ -1,0 +1,30 @@
+name: avari-jobs
+services:
+  app:
+    image: ${AVARI_IMAGE:?Set AVARI_IMAGE to a pinned GHCR digest}
+    restart: unless-stopped
+    environment:
+      AVARI_DB: /data/avari.db
+      AVARI_BACKUPS: /data/backups
+      AVARI_ADDR: 0.0.0.0:8080
+      AVARI_ORIGIN: https://jobs.avari.dev
+      AVARI_TRUST_PROXY: "true"
+    volumes:
+      - avari-data:/data
+    ports:
+      - 127.0.0.1:18081:8080
+    stop_grace_period: 15s
+  admin:
+    image: ${AVARI_IMAGE:?Set AVARI_IMAGE to a pinned GHCR digest}
+    profiles: [admin]
+    entrypoint: /app/avari-admin
+    environment:
+      AVARI_DB: /data/avari.db
+      AVARI_BACKUPS: /data/backups
+    volumes:
+      - avari-data:/data
+    stdin_open: true
+    tty: true
+volumes:
+  avari-data:
+    name: avari-jobs-data

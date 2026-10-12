@@ -1,0 +1,318 @@
+import {
+  type Application,
+  type Proposal,
+  type User,
+  type Session,
+  jobIdentity,
+  jobSite,
+  observationBelongsToPage,
+} from "@avari/shared";
+import type { Snapshot } from "./parser";
+type Config = {
+  server?: string;
+  token?: string;
+  notifications?: boolean;
+  lastNotification?: string;
+};
+void chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
+const inFlight = new Map<string, Promise<unknown>>();
+async function config(): Promise<Config> {
+  return await chrome.storage.local.get([
+    "server",
+    "token",
+    "notifications",
+    "lastNotification",
+  ]);
+}
+async function request(
+  path: string,
+  method = "GET",
+  body?: unknown,
+  key?: string,
+) {
+  const c = await config();
+  if (!c.server) throw new Error("Укажите адрес сервиса");
+  const headers: Record<string, string> = {};
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+  if (c.token) headers.Authorization = "Bearer " + c.token;
+  if (key) headers["Idempotency-Key"] = key;
+  const response = await fetch(c.server + "/api/v1" + path, {
+    method,
+    headers,
+    credentials: "omit",
+    body: body === undefined ? undefined : JSON.stringify(body),
+  }).catch(() => {
+    throw new Error("Нет соединения с сервером. Проверьте адрес и повторите.");
+  });
+  const data = await response.json().catch(() => {
+    throw new Error("Некорректный ответ сервера. Проверьте адрес сервиса.");
+  });
+  if (!response.ok) {
+    if (response.status === 401) {
+      await chrome.storage.local.remove("token");
+      await chrome.action.setBadgeText({ text: "" });
+    }
+    const error = new Error(data.error ?? "Ошибка сервера") as Error & {
+      status: number;
+      current: unknown;
+    };
+    error.status = response.status;
+    error.current = data.current;
+    throw error;
+  }
+  return data;
+}
+async function updateBadge() {
+  const c = await config();
+  if (!c.token) return;
+  try {
+    const proposals = (await request("/proposals")) as Proposal[];
+    const pending = proposals.filter((p) => p.status === "pending");
+    await chrome.action.setBadgeBackgroundColor({ color: "#416fec" });
+    await chrome.action.setBadgeText({
+      text: pending.length ? String(pending.length) : "",
+    });
+    return pending;
+  } catch {
+    return [];
+  }
+}
+async function observe(snapshot: Snapshot, tabId?: number) {
+  const key = String(tabId);
+  const previous = inFlight.get(key) ?? Promise.resolve();
+  const work = previous
+    .catch(() => {})
+    .then(() => processObservation(snapshot));
+  inFlight.set(key, work);
+  try {
+    return await work;
+  } finally {
+    if (inFlight.get(key) === work) inFlight.delete(key);
+  }
+}
+async function processObservation(snapshot: Snapshot) {
+  const c = await config();
+  if (!c.token || !snapshot.supported) return;
+  try {
+    const apps = (await request("/applications")) as Application[];
+    const known = new Set(
+      apps.map((a) => jobIdentity(a.url)?.url).filter(Boolean),
+    );
+    let newest = "";
+    let created = 0;
+    for (const o of snapshot.observations.slice(0, 200)) {
+      const vacancyUrl =
+        o.vacancyUrl ?? (o.hhId ? "https://hh.ru/vacancy/" + o.hhId : "");
+      if (!known.has(vacancyUrl) && !o.candidate) continue;
+      const result = (await request("/observations", "POST", o)) as {
+        proposal?: Proposal;
+      };
+      if (result.proposal) {
+        newest = result.proposal.observationId;
+        created++;
+      }
+    }
+    const pending = await updateBadge();
+    if (
+      created &&
+      c.notifications &&
+      newest !== c.lastNotification &&
+      (await chrome.permissions.contains({ permissions: ["notifications"] }))
+    ) {
+      await chrome.notifications.create("avari-proposals", {
+        type: "basic",
+        iconUrl: "icon.png",
+        title: "Avari.Jobs",
+        message:
+          created === 1
+            ? "Найдено новое предложение для журнала откликов"
+            : `Найдено ${created} предложения обновления`,
+      });
+      await chrome.storage.local.set({ lastNotification: newest });
+    }
+    return pending;
+  } catch (error) {
+    throw error;
+  }
+}
+chrome.runtime.onMessage.addListener((message, sender, reply) => {
+  const fromPopup =
+    sender.id === chrome.runtime.id &&
+    ["index.html", "action.html"].some(
+      (page) => sender.url?.split("?")[0] === chrome.runtime.getURL(page),
+    );
+  const fromJobSite = !!sender.tab && !!sender.url && !!jobSite(sender.url);
+  const run = async () => {
+    if (message?.type === "PAGE_SNAPSHOT" && fromJobSite) {
+      const snapshot = message.snapshot as Snapshot;
+      if (
+        snapshot &&
+        Array.isArray(snapshot.observations) &&
+        snapshot.observations.length <= 200
+      ) {
+        const valid = snapshot.observations.every((o) =>
+          observationBelongsToPage(o, sender.url!),
+        );
+        if (!valid)
+          throw new Error("Наблюдение не соответствует открытой странице");
+        await observe(snapshot, sender.tab?.id);
+      }
+      return { ok: true };
+    }
+    if (!fromPopup) throw new Error("Недопустимый источник");
+    switch (message?.type) {
+      case "CONFIG":
+        return await config();
+      case "SAVE_SERVER": {
+        const u = new URL(message.server);
+        if (
+          u.protocol !== "https:" &&
+          !(
+            u.protocol === "http:" &&
+            ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname)
+          )
+        )
+          throw new Error(
+            "Используйте HTTPS; HTTP доступен только на localhost",
+          );
+        if (
+          u.username ||
+          u.password ||
+          u.pathname !== "/" ||
+          u.search ||
+          u.hash
+        )
+          throw new Error(
+            "Укажите только адрес сервиса, например https://avari.example.com",
+          );
+        const previous = await config();
+        if (previous.server !== u.origin) {
+          if (previous.token) {
+            try {
+              await request("/auth/logout", "POST", {});
+            } catch {}
+          }
+          await chrome.storage.local.remove(["token", "lastNotification"]);
+        }
+        await chrome.storage.local.set({ server: u.origin });
+        return { ok: true };
+      }
+      case "API": {
+        if (
+          typeof message.path !== "string" ||
+          !/^\/(?:auth\/(?:login|logout)|me|applications(?:\/[a-f0-9]+)?|tasks(?:\/[a-f0-9]+)?|notes(?:\/[a-f0-9]+)?|fields|proposals(?:\/[a-f0-9]+)?|observations)$/.test(
+            message.path,
+          )
+        )
+          throw new Error("Неподдерживаемый запрос");
+        const result = await request(
+          message.path,
+          message.method,
+          message.body,
+          message.key,
+        );
+        if (message.path === "/auth/login") {
+          const login = result as {
+            token: string;
+            user: User;
+            session: Session;
+          };
+          await chrome.storage.local.set({ token: login.token });
+          await updateBadge();
+          return { user: login.user, session: login.session };
+        }
+        if (message.path === "/auth/logout") {
+          await chrome.storage.local.remove("token");
+          await chrome.action.setBadgeText({ text: "" });
+        }
+        if (message.path.startsWith("/proposals") && message.method === "POST")
+          await updateBadge();
+        return result;
+      }
+      case "OPEN_PANEL": {
+        const [tab] = await chrome.tabs.query({
+          active: true,
+          currentWindow: true,
+        });
+        if (!tab?.id || !jobSite(tab.url ?? ""))
+          throw new Error(
+            "Эта страница не поддерживается. Откройте вакансию на hh.ru, LinkedIn, Getmatch или Hirify либо список откликов hh.ru, Getmatch или Hirify.",
+          );
+        let result;
+        try {
+          result = await chrome.tabs.sendMessage(tab.id, {
+            type: "OPEN_PANEL",
+          });
+        } catch {
+          // Existing tabs and SPA navigation may have no content script yet.
+          await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            files: ["content.js"],
+          });
+          result = await chrome.tabs.sendMessage(tab.id, {
+            type: "OPEN_PANEL",
+          });
+        }
+        if (!result?.supported)
+          throw new Error(
+            "Эта страница не поддерживается. Откройте карточку вакансии или список откликов.",
+          );
+        return result;
+      }
+      case "READ_ACTIVE": {
+        const tab =
+          (sender.tab && jobSite(sender.tab.url ?? "")
+            ? sender.tab
+            : undefined) ??
+          (
+            await chrome.tabs.query({
+              active: true,
+              currentWindow: true,
+            })
+          )[0];
+        if (!tab?.id)
+          return { supported: false, kind: "unsupported", observations: [] };
+        try {
+          const snapshot = (await chrome.tabs.sendMessage(tab.id, {
+            type: "READ_PAGE",
+          })) as Snapshot;
+          await observe(snapshot, tab.id);
+          return snapshot;
+        } catch {
+          return { supported: false, kind: "unsupported", observations: [] };
+        }
+      }
+      case "NOTIFICATIONS":
+        await chrome.storage.local.set({ notifications: !!message.enabled });
+        return { ok: true };
+      default:
+        throw new Error("Неизвестное действие");
+    }
+  };
+  run()
+    .then((data) => reply({ ok: true, data }))
+    .catch((e) =>
+      reply({
+        ok: false,
+        error: e.message,
+        status: e.status,
+        current: e.current,
+      }),
+    );
+  return true;
+});
+let notificationListenerAdded = false;
+function registerNotifications() {
+  if (chrome.notifications && !notificationListenerAdded) {
+    notificationListenerAdded = true;
+    chrome.notifications.onClicked.addListener(async () => {
+      const c = await config();
+      if (c.server) await chrome.tabs.create({ url: c.server + "/proposals" });
+    });
+  }
+}
+registerNotifications();
+chrome.permissions.onAdded.addListener(registerNotifications);
+chrome.runtime.onInstalled.addListener(() => {
+  void chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
+});
