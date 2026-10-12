@@ -17,12 +17,25 @@ type Config = {
 void chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
 const inFlight = new Map<string, Promise<unknown>>();
 async function config(): Promise<Config> {
-  return await chrome.storage.local.get([
+  const saved: Config = await chrome.storage.local.get([
     "server",
     "token",
     "notifications",
     "lastNotification",
   ]);
+  const defaultServer = import.meta.env.VITE_AVARI_DEFAULT_SERVER;
+  if (!saved.server && defaultServer) {
+    // Bind credentials to the chosen server, including across future updates.
+    await chrome.storage.local.remove(["token", "lastNotification"]);
+    await chrome.storage.local.set({ server: defaultServer });
+    return {
+      ...saved,
+      server: defaultServer,
+      token: undefined,
+      lastNotification: undefined,
+    };
+  }
+  return saved;
 }
 async function request(
   path: string,
@@ -130,7 +143,7 @@ async function processObservation(snapshot: Snapshot) {
       });
       await chrome.storage.local.set({ lastNotification: newest });
     }
-    return pending;
+    return { pending, created };
   } catch (error) {
     throw error;
   }
@@ -155,7 +168,7 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
         );
         if (!valid)
           throw new Error("Наблюдение не соответствует открытой странице");
-        await observe(snapshot, sender.tab?.id);
+        return { ok: true, data: await observe(snapshot, sender.tab?.id) };
       }
       return { ok: true };
     }

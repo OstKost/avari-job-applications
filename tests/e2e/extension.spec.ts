@@ -10,7 +10,9 @@ test("real MV3 extension: login, DOM capture, save, dedup, proposal confirmation
   const manifest = JSON.parse(
     await readFile(path.join(extension, "manifest.json"), "utf8"),
   );
+  const originalHosts: string[] = manifest.host_permissions ?? [];
   manifest.host_permissions = [
+    ...originalHosts,
     new URL(process.env.AVARI_TEST_URL!).origin + "/*",
   ];
   await writeFile(
@@ -33,13 +35,69 @@ test("real MV3 extension: login, DOM capture, save, dedup, proposal confirmation
       context.serviceWorkers()[0] ??
       (await context.waitForEvent("serviceworker"));
     const id = worker.url().split("/")[2];
-    await worker.evaluate(async (server) => {
-      await chrome.storage.local.set({ server });
-    }, process.env.AVARI_TEST_URL!);
+    if (process.env.VITE_AVARI_DEFAULT_SERVER) {
+      const defaultServer = new URL(process.env.VITE_AVARI_DEFAULT_SERVER)
+        .origin;
+      expect(originalHosts).toContain(defaultServer + "/*");
+      const fresh = await context.newPage();
+      await fresh.goto(`chrome-extension://${id}/index.html`);
+      await expect(fresh.getByLabel("Email", { exact: true })).toBeVisible();
+      await expect(
+        fresh.getByRole("textbox", { name: "Адрес сервиса", exact: true }),
+      ).toHaveCount(0);
+      expect(
+        await worker.evaluate(
+          async () => (await chrome.storage.local.get("server")).server,
+        ),
+      ).toBe(defaultServer);
+      await fresh
+        .getByRole("checkbox", {
+          name: "Использовать свой сервер",
+          exact: true,
+        })
+        .check();
+      await expect(
+        fresh.getByRole("textbox", { name: "Адрес сервиса", exact: true }),
+      ).toHaveValue(defaultServer);
+      await fresh
+        .getByRole("textbox", { name: "Адрес сервиса", exact: true })
+        .fill("https://custom.example.com");
+      await fresh
+        .getByRole("checkbox", {
+          name: "Использовать свой сервер",
+          exact: true,
+        })
+        .uncheck();
+      await expect(
+        fresh.getByRole("textbox", { name: "Адрес сервиса", exact: true }),
+      ).toHaveCount(0);
+      expect(
+        await worker.evaluate(
+          async () => (await chrome.storage.local.get("server")).server,
+        ),
+      ).toBe(defaultServer);
+      await fresh.close();
+    }
+    if (!process.env.VITE_AVARI_DEFAULT_SERVER) {
+      await worker.evaluate(async (server) => {
+        await chrome.storage.local.set({ server });
+      }, process.env.AVARI_TEST_URL!);
+    }
     let popup = await context.newPage();
     const errors: string[] = [];
     popup.on("pageerror", (e) => errors.push(e.message));
     await popup.goto(`chrome-extension://${id}/index.html`);
+    if (process.env.VITE_AVARI_DEFAULT_SERVER) {
+      await popup
+        .getByRole("checkbox", {
+          name: "Использовать свой сервер",
+          exact: true,
+        })
+        .check();
+      await popup
+        .getByRole("textbox", { name: "Адрес сервиса", exact: true })
+        .fill(process.env.AVARI_TEST_URL!);
+    }
     await popup
       .getByLabel("Email", { exact: true })
       .fill("extension@example.com");
@@ -50,6 +108,11 @@ test("real MV3 extension: login, DOM capture, save, dedup, proposal confirmation
     await expect(
       popup.getByRole("heading", { name: "Эта страница не поддерживается" }),
     ).toBeVisible();
+    expect(
+      await worker.evaluate(
+        async () => (await chrome.storage.local.get("server")).server,
+      ),
+    ).toBe(process.env.AVARI_TEST_URL!);
     await expect(popup.locator("html")).toHaveAttribute("data-theme", "dark");
     const hh = await context.newPage();
     await hh.route("https://hh.ru/vacancy/111222333", (route) =>

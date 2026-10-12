@@ -3,6 +3,22 @@ import react from "@vitejs/plugin-react";
 import { copyFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 const root = fileURLToPath(new URL(".", import.meta.url));
+let defaultServer = process.env.VITE_AVARI_DEFAULT_SERVER || "";
+if (defaultServer) {
+  const url = new URL(defaultServer);
+  if (
+    url.protocol !== "https:" ||
+    url.username ||
+    url.password ||
+    url.pathname !== "/" ||
+    url.search ||
+    url.hash
+  ) {
+    throw new Error("VITE_AVARI_DEFAULT_SERVER must be an HTTPS origin");
+  }
+  defaultServer = url.origin;
+  process.env.VITE_AVARI_DEFAULT_SERVER = defaultServer;
+}
 const version = process.env.AVARI_VERSION || "1.0.0";
 if (
   !/^\d{1,5}\.\d{1,5}\.\d{1,5}$/.test(version) ||
@@ -52,6 +68,7 @@ const manifest = {
     "Сохраняйте вакансии hh.ru, LinkedIn, Getmatch и Hirify в своём журнале.",
   permissions: ["storage", "activeTab", "scripting"],
   optional_permissions: ["notifications"],
+  ...(defaultServer ? { host_permissions: [defaultServer + "/*"] } : {}),
   optional_host_permissions: [
     "https://*/*",
     "http://localhost/*",

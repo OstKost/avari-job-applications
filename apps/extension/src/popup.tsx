@@ -72,7 +72,9 @@ type FormDraft = {
 };
 const embedded = new URLSearchParams(location.search).has("embedded");
 function Popup() {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(
+    embedded && new URLSearchParams(location.search).get("collapsed") === "1",
+  );
   const [server, setServer] = useState("");
   const [setup, setSetup] = useState(false);
   const [user, setUser] = useState<User>();
@@ -364,6 +366,9 @@ function Popup() {
         indicatorColor = "yellow";
         indicatorTitle = "Есть изменения: стоит посмотреть";
       }
+    } else if (snapshot.vacancy && !detail) {
+      indicatorColor = "yellow";
+      indicatorTitle = "Новая вакансия — можно сохранить в журнал";
     } else if (lastScanned) {
       indicatorTitle = `Проверено в ${timeStr}. Всё актуально`;
     }
@@ -492,7 +497,7 @@ function Popup() {
               <X size={17} />
             </button>
           )}
-          {server && (
+          {server && user && (
             <button
               className="icon-button"
               aria-label="Адрес сервиса"
@@ -544,6 +549,7 @@ function Popup() {
         {setup ? (
           <ServerSetup
             initial={server}
+            onCancel={server ? () => setSetup(false) : undefined}
             onSaved={() => {
               setSetup(false);
               void reload();
@@ -1041,9 +1047,11 @@ function Popup() {
 function ServerSetup({
   initial,
   onSaved,
+  onCancel,
 }: {
   initial: string;
   onSaved: () => void;
+  onCancel?: () => void;
 }) {
   const [server, setServer] = useState(
     initial ||
@@ -1060,23 +1068,7 @@ function ServerSetup({
         setBusy(true);
         setError(undefined);
         try {
-          const u = new URL(server);
-          if (
-            u.protocol !== "https:" &&
-            !(
-              u.protocol === "http:" &&
-              ["localhost", "127.0.0.1"].includes(u.hostname)
-            )
-          )
-            throw new Error("Используйте HTTPS или localhost");
-          const granted = await chrome.permissions.request({
-            origins: [u.origin + "/*"],
-          });
-          if (!granted)
-            throw new Error(
-              "Для подключения нужен доступ к выбранному сервису",
-            );
-          await message({ type: "SAVE_SERVER", server: u.origin });
+          await connectServer(server);
           onSaved();
         } catch (e) {
           setError(e);
@@ -1103,10 +1095,18 @@ function ServerSetup({
       <button className="primary" disabled={busy}>
         Подключить
       </button>
+      {onCancel && (
+        <button type="button" disabled={busy} onClick={onCancel}>
+          Отмена
+        </button>
+      )}
     </form>
   );
 }
 function Login({ server, onLogin }: { server: string; onLogin: () => void }) {
+  const defaultServer = import.meta.env.VITE_AVARI_DEFAULT_SERVER || server;
+  const [ownServer, setOwnServer] = useState(server !== defaultServer);
+  const [serverAddress, setServerAddress] = useState(server);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<unknown>();
@@ -1119,6 +1119,7 @@ function Login({ server, onLogin }: { server: string; onLogin: () => void }) {
         setBusy(true);
         setError(undefined);
         try {
+          await connectServer(ownServer ? serverAddress : defaultServer);
           await api("/auth/login", "POST", {
             email,
             password,
@@ -1166,12 +1167,41 @@ function Login({ server, onLogin }: { server: string; onLogin: () => void }) {
           }}
         />
       </FieldInput>
+      <label className="checkbox-label login-server-option">
+        <input
+          type="checkbox"
+          checked={ownServer}
+          disabled={busy}
+          onChange={(event) => {
+            setOwnServer(event.target.checked);
+            setError(undefined);
+          }}
+        />
+        Использовать свой сервер
+      </label>
+      {ownServer && (
+        <FieldInput label="Адрес сервиса">
+          <input
+            type="url"
+            required
+            value={serverAddress}
+            disabled={busy}
+            onChange={(event) => {
+              setServerAddress(event.target.value);
+              setError(undefined);
+            }}
+          />
+        </FieldInput>
+      )}
       <button className="primary" disabled={busy}>
         Войти <ArrowUpRight size={17} />
       </button>
       <a
         className="registration-link"
-        href={server}
+        href={registrationServer(
+          ownServer ? serverAddress : defaultServer,
+          defaultServer,
+        )}
         target="_blank"
         rel="noopener noreferrer"
       >
@@ -1183,5 +1213,41 @@ function Login({ server, onLogin }: { server: string; onLogin: () => void }) {
       </small>
     </form>
   );
+}
+function serverOrigin(address: string): string {
+  const url = new URL(address);
+  if (
+    url.protocol !== "https:" &&
+    !(
+      url.protocol === "http:" &&
+      ["localhost", "127.0.0.1"].includes(url.hostname)
+    )
+  )
+    throw new Error("Используйте HTTPS или localhost");
+  if (
+    url.username ||
+    url.password ||
+    url.pathname !== "/" ||
+    url.search ||
+    url.hash
+  )
+    throw new Error("Укажите только адрес сервера, без пути и параметров");
+  return url.origin;
+}
+async function connectServer(address: string) {
+  const origin = serverOrigin(address);
+  const granted = await chrome.permissions.request({
+    origins: [origin + "/*"],
+  });
+  if (!granted)
+    throw new Error("Для подключения нужен доступ к выбранному сервису");
+  await message({ type: "SAVE_SERVER", server: origin });
+}
+function registrationServer(address: string, fallback: string) {
+  try {
+    return serverOrigin(address);
+  } catch {
+    return fallback;
+  }
 }
 createRoot(document.getElementById("root")!).render(<Popup />);

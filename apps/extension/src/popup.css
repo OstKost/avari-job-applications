@@ -461,7 +461,10 @@ body:has(.popup-embedded) {
   cursor: pointer;
   background: var(--panel-2);
   border: 1px solid var(--line);
-  transition: transform 0.15s, background-color 0.15s, border-color 0.15s;
+  transition:
+    transform 0.15s,
+    background-color 0.15s,
+    border-color 0.15s;
 }
 .compact-actions .indicator-btn:hover {
   transform: translateY(-1px);
@@ -650,4 +653,65 @@ body:has(.popup-embedded) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.popup .login-server-option {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.popup .login-server-option input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  min-height: 16px;
+  padding: 0;
+  margin: 0;
+  flex: 0 0 16px;
+  box-shadow: none;
+}
+
+/* Motion for compact discovery, controls and feedback. */
+.popup button {
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+.popup button:active:not(:disabled) {
+  transform: scale(0.96);
+}
+.popup button svg {
+  transition: transform 180ms ease;
+}
+.compact-actions .expand-btn:hover svg {
+  transform: translate(2px, -2px);
+}
+.compact-actions {
+  animation: popup-enter 220ms ease-out both;
+}
+.compact-actions .indicator-yellow .indicator-dot,
+.compact-actions .indicator-red .indicator-dot {
+  animation: indicator-attention 1400ms ease-in-out 3;
+}
+.popup .error,
+.popup .notice {
+  animation: popup-enter 220ms ease-out both;
+}
+@keyframes indicator-attention {
+  50% {
+    transform: scale(1.25);
+    box-shadow: 0 0 14px currentColor;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .popup button:active:not(:disabled),
+  .compact-actions .expand-btn:hover svg {
+    transform: none;
+  }
 }
