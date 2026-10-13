@@ -36,6 +36,7 @@ const schemas = {
   }),
   Application: object({
     groups: array(s),
+    tags: array(s),
     id: s,
     company: s,
     position: s,

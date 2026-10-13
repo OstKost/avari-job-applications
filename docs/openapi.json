@@ -3670,6 +3670,12 @@
               "type": "string"
             }
           },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "id": {
             "type": "string"
           },
@@ -3741,6 +3747,7 @@
         },
         "required": [
           "groups",
+          "tags",
           "id",
           "company",
           "position",
@@ -4290,6 +4297,12 @@
         "type": "object",
         "properties": {
           "groups": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tags": {
             "type": "array",
             "items": {
               "type": "string"

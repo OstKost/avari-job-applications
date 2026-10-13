@@ -37,6 +37,9 @@ it("opens manually and auto-opens compactly for new content, respecting dismissa
   expect(host.shadowRoot!.querySelector("iframe")!.src).toContain("embedded=1");
   const iframe = host.shadowRoot!.querySelector("iframe")!;
   Object.defineProperty(iframe, "contentWindow", { value: window });
+  const postMessage = vi
+    .spyOn(window, "postMessage")
+    .mockImplementation(() => {});
   window.dispatchEvent(
     new MessageEvent("message", {
       source: iframe.contentWindow,
@@ -44,6 +47,22 @@ it("opens manually and auto-opens compactly for new content, respecting dismissa
       data: { type: "AVARI_COLLAPSED", collapsed: true },
     }),
   );
+  // The frame can initialize collapsed after OPEN_PANEL; resend expansion once it is ready.
+  expect(postMessage).toHaveBeenCalledWith(
+    { type: "AVARI_EXPAND" },
+    "chrome-extension://avari",
+  );
+  expect(host.hasAttribute("data-collapsed")).toBe(false);
+  for (const collapsed of [false, true]) {
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        source: iframe.contentWindow,
+        origin: "chrome-extension://avari",
+        data: { type: "AVARI_COLLAPSED", collapsed },
+      }),
+    );
+  }
+  postMessage.mockRestore();
   expect(host.hasAttribute("data-collapsed")).toBe(true);
   const initialLeft = host.style.left;
   const initialTop = host.style.top;
@@ -74,6 +93,79 @@ it("opens manually and auto-opens compactly for new content, respecting dismissa
     );
     expect(host.getAttribute("data-theme")).toBe(theme);
   }
+
+  // Toast notifications testing
+  window.dispatchEvent(
+    new MessageEvent("message", {
+      source: iframe.contentWindow,
+      origin: "chrome-extension://avari",
+      data: {
+        type: "AVARI_TOAST",
+        message: "Вакансия сохранена",
+        kind: "success",
+        subtitle: "Все изменения сохранены",
+      },
+    }),
+  );
+  const toastHost = document.querySelector<HTMLElement>("#avari-toast-host")!;
+  expect(toastHost).not.toBeNull();
+  expect(toastHost.getAttribute("data-theme")).toBe("dark");
+  const toastEl = toastHost.shadowRoot!.querySelector(".toast.kind-success")!;
+  expect(toastEl).not.toBeNull();
+  expect(toastEl.textContent).toContain("Вакансия сохранена");
+  expect(toastEl.textContent).toContain("Все изменения сохранены");
+
+  // Warning toast
+  window.dispatchEvent(
+    new MessageEvent("message", {
+      source: iframe.contentWindow,
+      origin: "chrome-extension://avari",
+      data: {
+        type: "AVARI_TOAST",
+        message: "Обнаружены изменения вакансии",
+        kind: "warning",
+        subtitle: "Найдено 1 предложение для обновления",
+      },
+    }),
+  );
+  const warningToast = toastHost.shadowRoot!.querySelector(
+    ".toast.kind-warning",
+  )!;
+  expect(warningToast).not.toBeNull();
+  expect(warningToast.textContent).toContain("Обнаружены изменения вакансии");
+
+  // Info toast
+  window.dispatchEvent(
+    new MessageEvent("message", {
+      source: iframe.contentWindow,
+      origin: "chrome-extension://avari",
+      data: {
+        type: "AVARI_TOAST",
+        message: "Вакансия уже в журнале",
+        kind: "info",
+        subtitle: "Компания: Acme",
+      },
+    }),
+  );
+  const infoToast = toastHost.shadowRoot!.querySelector(".toast.kind-info")!;
+  expect(infoToast).not.toBeNull();
+  expect(infoToast.textContent).toContain("Вакансия уже в журнале");
+
+  // Error toast
+  window.dispatchEvent(
+    new MessageEvent("message", {
+      source: iframe.contentWindow,
+      origin: "chrome-extension://avari",
+      data: {
+        type: "AVARI_TOAST",
+        message: "Сервер недоступен",
+        kind: "error",
+      },
+    }),
+  );
+  const errorToast = toastHost.shadowRoot!.querySelector(".toast.kind-error")!;
+  expect(errorToast).not.toBeNull();
+  expect(errorToast.textContent).toContain("Сервер недоступен");
 
   receive!({ type: "OPEN_PANEL" }, {}, vi.fn());
   expect(host.hasAttribute("data-collapsed")).toBe(false);

@@ -1,12 +1,12 @@
 # Первая публикация Avari.Jobs
 
-Сайт: https://jobs.avari.dev. Политика конфиденциальности: https://jobs.avari.dev/privacy. Инструкция установки: https://jobs.avari.dev/extension.
+Сайт: https://jobs.avari.dev. Политика конфиденциальности: https://jobs.avari.dev/privacy.html (статическая страница для CWS). Инструкция установки: https://jobs.avari.dev/extension.
 
 ## Карточка
 
 Название: **Avari.Jobs — журнал откликов**.
 
-Краткое описание: **Сохраняйте вакансии hh.ru, LinkedIn, Getmatch и Hirify в своём журнале.**
+Краткое описание: **Сохраняйте вакансии hh.ru, LinkedIn, Getmatch, Hirify, Geekjob и Habr Career в своём журнале.**
 
 Описание:
 

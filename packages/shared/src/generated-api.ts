@@ -437,6 +437,7 @@ export interface components {
         };
         Application: {
             groups: string[];
+            tags: string[];
             id: string;
             company: string;
             position: string;
@@ -602,6 +603,7 @@ export interface components {
         };
         ApplicationInput: {
             groups?: string[];
+            tags?: string[];
             id?: string;
             company: string;
             position: string;

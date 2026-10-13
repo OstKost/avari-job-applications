@@ -117,6 +117,7 @@ jobs:
           build-args: |
             AVARI_VERSION=${{ steps.version.outputs.number }}
             CHROME_STORE_URL=${{ vars.CHROME_STORE_URL }}
+            GA_MEASUREMENT_ID=${{ vars.GA_MEASUREMENT_ID || 'G-HWYGMZR8ZY' }}
       - name: Record pinned image
         id: pinned
         env:
@@ -148,6 +149,7 @@ jobs:
       - name: Check public site and blocked direct downloads
         run: |
           curl -fsS --retry 8 --retry-delay 3 https://jobs.avari.dev/readyz
+          curl -fsS https://jobs.avari.dev/privacy.html | python3 -c 'import sys; html=sys.stdin.read(); assert "Privacy Policy" in html and "web@ostkost.ru" in html and "id=\"ru\"" in html and "id=\"en\"" in html'
           curl -fsS https://jobs.avari.dev/release.json | python3 -c 'import json,os,sys; assert json.load(sys.stdin)["version"] == os.environ["GITHUB_REF_NAME"][1:]'
           status=$(curl -s -o /dev/null -w "%{http_code}" https://jobs.avari.dev/downloads/avari-extension.zip)
           test "$status" = "404"

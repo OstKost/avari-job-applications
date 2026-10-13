@@ -454,98 +454,104 @@ textarea {
   color: var(--accent);
   line-height: 1.4;
 }
+/* States (Состояния) */
 .badge-active {
-  background: color-mix(in srgb, #55d6be 14%, transparent);
-  color: #55d6be;
-  border: 1px solid color-mix(in srgb, #55d6be 32%, transparent);
+  color: #34d399;
+  background: color-mix(in srgb, #34d399 13%, transparent);
+  border: 1px solid color-mix(in srgb, #34d399 28%, transparent);
 }
+.badge-paused {
+  color: #fbbf24;
+  background: color-mix(in srgb, #fbbf24 13%, transparent);
+  border: 1px solid color-mix(in srgb, #fbbf24 28%, transparent);
+}
+.badge-closed {
+  color: #f87171;
+  background: color-mix(in srgb, #f87171 13%, transparent);
+  border: 1px solid color-mix(in srgb, #f87171 28%, transparent);
+}
+
+/* Stages (Этапы) */
 .badge-saved {
-  background: color-mix(in srgb, #94a3b8 14%, transparent);
   color: #94a3b8;
-  border: 1px solid color-mix(in srgb, #94a3b8 28%, transparent);
+  background: color-mix(in srgb, #94a3b8 12%, transparent);
+  border: 1px solid color-mix(in srgb, #94a3b8 26%, transparent);
 }
 .badge-applied {
-  background: color-mix(in srgb, #38bdf8 14%, transparent);
   color: #38bdf8;
-  border: 1px solid color-mix(in srgb, #38bdf8 30%, transparent);
+  background: color-mix(in srgb, #38bdf8 13%, transparent);
+  border: 1px solid color-mix(in srgb, #38bdf8 28%, transparent);
 }
 .badge-hr {
-  background: color-mix(in srgb, #22d3ee 14%, transparent);
-  color: #22d3ee;
-  border: 1px solid color-mix(in srgb, #22d3ee 30%, transparent);
+  color: #2dd4bf;
+  background: color-mix(in srgb, #2dd4bf 13%, transparent);
+  border: 1px solid color-mix(in srgb, #2dd4bf 28%, transparent);
 }
 .badge-interview {
-  background: color-mix(in srgb, #818cf8 14%, transparent);
   color: #818cf8;
+  background: color-mix(in srgb, #818cf8 14%, transparent);
   border: 1px solid color-mix(in srgb, #818cf8 30%, transparent);
 }
 .badge-final {
-  background: color-mix(in srgb, #c084fc 14%, transparent);
   color: #c084fc;
+  background: color-mix(in srgb, #c084fc 14%, transparent);
   border: 1px solid color-mix(in srgb, #c084fc 30%, transparent);
 }
 .badge-offer,
 .badge-done {
-  background: color-mix(in srgb, #34d399 15%, transparent);
-  color: #34d399;
-  border: 1px solid color-mix(in srgb, #34d399 32%, transparent);
+  color: #4ade80;
+  background: color-mix(in srgb, #4ade80 14%, transparent);
+  border: 1px solid color-mix(in srgb, #4ade80 30%, transparent);
 }
-.badge-paused {
-  background: color-mix(in srgb, #fbbf24 14%, transparent);
-  color: #fbbf24;
-  border: 1px solid color-mix(in srgb, #fbbf24 32%, transparent);
-}
-.badge-closed {
-  background: color-mix(in srgb, #f87171 14%, transparent);
-  color: #f87171;
-  border: 1px solid color-mix(in srgb, #f87171 32%, transparent);
-}
+
+/* Light Theme */
 :root[data-theme="light"] .badge-active {
-  background: #def7ee;
-  color: #0d826a;
-  border-color: #a7e7d2;
+  color: #059669;
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+}
+:root[data-theme="light"] .badge-paused {
+  color: #b45309;
+  background: #fef3c7;
+  border-color: #fde68a;
+}
+:root[data-theme="light"] .badge-closed {
+  color: #b91c1c;
+  background: #fee2e2;
+  border-color: #fecaca;
 }
 :root[data-theme="light"] .badge-saved {
-  background: #f1f5f9;
   color: #475569;
+  background: #f1f5f9;
   border-color: #cbd5e1;
 }
 :root[data-theme="light"] .badge-applied {
-  background: #e0f2fe;
   color: #0284c7;
+  background: #e0f2fe;
   border-color: #bae6fd;
 }
 :root[data-theme="light"] .badge-hr {
-  background: #ecfeff;
-  color: #0891b2;
-  border-color: #a5f3fc;
+  color: #0f766e;
+  background: #f0fdfa;
+  border-color: #99f6e4;
 }
 :root[data-theme="light"] .badge-interview {
+  color: #4338ca;
   background: #eef2ff;
-  color: #4f46e5;
   border-color: #c7d2fe;
 }
 :root[data-theme="light"] .badge-final {
-  background: #f5f3ff;
   color: #7e22ce;
+  background: #f5f3ff;
   border-color: #ddd6fe;
 }
 :root[data-theme="light"] .badge-offer,
 :root[data-theme="light"] .badge-done {
-  background: #ecfdf5;
-  color: #059669;
-  border-color: #a7f3d0;
+  color: #15803d;
+  background: #dcfce7;
+  border-color: #bbf7d0;
 }
-:root[data-theme="light"] .badge-paused {
-  background: #fef3c7;
-  color: #b45309;
-  border-color: #fde68a;
-}
-:root[data-theme="light"] .badge-closed {
-  background: #fee2e2;
-  color: #b91c1c;
-  border-color: #fecaca;
-}
+
 .company-avatar {
   display: inline-grid;
   place-items: center;
@@ -1756,4 +1762,412 @@ code {
   .modal[open]::backdrop {
     animation: none;
   }
+}
+
+.status-select {
+  position: relative;
+  width: 100%;
+}
+.status-select-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+.status-select-trigger .badge {
+  margin: 0;
+}
+.status-select-trigger > svg {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+.status-select-menu {
+  position: absolute;
+  top: calc(100% + 5px);
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  display: grid;
+  gap: 3px;
+  padding: 5px;
+  max-height: 280px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 8px 24px #0002;
+  animation: status-menu-expand 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes status-menu-expand {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scaleY(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scaleY(1);
+  }
+}
+.status-select-menu.status-workflow-menu {
+  position: absolute;
+  top: calc(100% + 5px);
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  max-height: 380px;
+  overflow-y: auto;
+  padding: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow: 0 10px 28px #00000030;
+}
+.status-workflow-flow {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.status-workflow-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 6px 8px;
+  border-bottom: 1px dashed var(--line);
+  margin-bottom: 4px;
+}
+.status-workflow-header span {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+}
+.status-workflow-header small {
+  font-size: 11px;
+  color: var(--muted);
+}
+.status-workflow-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.status-workflow-item {
+  display: flex;
+  flex-direction: column;
+}
+.status-workflow-connector {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding-left: 17px;
+  height: 18px;
+  gap: 6px;
+  color: var(--line);
+  position: relative;
+}
+.status-workflow-connector .status-workflow-line {
+  position: absolute;
+  left: 20px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--line);
+  transition: background-color 0.2s ease;
+}
+.status-workflow-connector .status-workflow-arrow {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%) rotate(90deg);
+  background: var(--panel);
+  color: var(--muted);
+  border-radius: 50%;
+  padding: 1px;
+  transition: color 0.2s ease;
+}
+.status-workflow-connector.is-passed .status-workflow-line {
+  background: color-mix(in srgb, var(--accent) 70%, var(--line));
+}
+.status-workflow-connector.is-passed .status-workflow-arrow {
+  color: var(--accent);
+}
+.status-workflow-node {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 6px 8px;
+  min-height: 38px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.12s ease,
+    box-shadow 0.15s ease;
+}
+.status-workflow-node:hover,
+.status-workflow-node:focus-visible {
+  background: color-mix(in srgb, var(--panel-2) 80%, var(--accent) 20%);
+  border-color: var(--accent);
+  transform: translateX(3px);
+}
+.status-workflow-node.is-active {
+  background: color-mix(in srgb, var(--accent-soft) 80%, var(--panel-2) 20%);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.status-workflow-node-start {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.status-workflow-num {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--line);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  flex-shrink: 0;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+.status-workflow-node:hover .status-workflow-num,
+.status-workflow-node.is-active .status-workflow-num {
+  background: var(--accent);
+  color: #fff;
+}
+.status-workflow-node .badge {
+  margin: 0;
+}
+.status-workflow-current-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: var(--accent-soft);
+}
+.status-select-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 7px 9px;
+  background: transparent;
+  border: 1px solid transparent;
+  text-align: left;
+}
+.status-select-option:hover,
+.status-select-option:focus-visible,
+.status-select-option[aria-checked="true"] {
+  background: var(--panel-2);
+  border-color: var(--line);
+}
+.status-select-option .badge {
+  margin: 0;
+}
+.status-select-option > svg {
+  color: var(--accent);
+}
+.badge::before {
+  margin-right: 5px;
+  content: "";
+  width: 5px;
+  height: 5px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: currentColor;
+}
+.tag-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.3;
+}
+.tag-chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: var(--muted);
+  cursor: pointer;
+  border-radius: 4px;
+  width: 16px;
+  height: 16px;
+  min-height: 16px;
+}
+.tag-chip-remove:hover {
+  color: var(--danger, #f87171);
+  background: var(--line);
+}
+.tag-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+}
+.tag-input-row input {
+  flex: 1;
+  min-width: 0;
+}
+.group-select-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.submit-shortcut-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 6px;
+  opacity: 0.8;
+  vertical-align: middle;
+}
+.submit-shortcut-hint kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  font-size: 10px;
+  font-family: inherit;
+  font-weight: 600;
+  border-radius: 4px;
+  background: color-mix(in srgb, currentColor 18%, transparent);
+  border: 1px solid color-mix(in srgb, currentColor 28%, transparent);
+  color: inherit;
+  line-height: 1;
+}
+.submit-shortcut-hint .shortcut-plus {
+  font-size: 9px;
+  opacity: 0.7;
+}
+
+/* Muted tag palette with matching contrast in both themes. */
+.tag-color-0 {
+  color: #79d8c8;
+}
+:root[data-theme="light"] .tag-color-0 {
+  color: #23786b;
+}
+.tag-color-1 {
+  color: #83d5e7;
+}
+:root[data-theme="light"] .tag-color-1 {
+  color: #24758a;
+}
+.tag-color-2 {
+  color: #8fc7f1;
+}
+:root[data-theme="light"] .tag-color-2 {
+  color: #326fa0;
+}
+.tag-color-3 {
+  color: #a3baf5;
+}
+:root[data-theme="light"] .tag-color-3 {
+  color: #4c66a3;
+}
+.tag-color-4 {
+  color: #b4acf2;
+}
+:root[data-theme="light"] .tag-color-4 {
+  color: #69569f;
+}
+.tag-color-5 {
+  color: #c9a5ec;
+}
+:root[data-theme="light"] .tag-color-5 {
+  color: #80529a;
+}
+.tag-color-6 {
+  color: #dda6e0;
+}
+:root[data-theme="light"] .tag-color-6 {
+  color: #964f91;
+}
+.tag-color-7 {
+  color: #eea8ca;
+}
+:root[data-theme="light"] .tag-color-7 {
+  color: #a34c7e;
+}
+.tag-color-8 {
+  color: #f1aaa9;
+}
+:root[data-theme="light"] .tag-color-8 {
+  color: #a74e4d;
+}
+.tag-color-9 {
+  color: #eeb997;
+}
+:root[data-theme="light"] .tag-color-9 {
+  color: #995b35;
+}
+.tag-color-10 {
+  color: #e6ca8d;
+}
+:root[data-theme="light"] .tag-color-10 {
+  color: #876b26;
+}
+.tag-color-11 {
+  color: #d5d58e;
+}
+:root[data-theme="light"] .tag-color-11 {
+  color: #747524;
+}
+.tag-color-12 {
+  color: #b8d99b;
+}
+:root[data-theme="light"] .tag-color-12 {
+  color: #557c36;
+}
+.tag-color-13 {
+  color: #9ed6b3;
+}
+:root[data-theme="light"] .tag-color-13 {
+  color: #347950;
+}
+.tag-color-14 {
+  color: #8dcac4;
+}
+:root[data-theme="light"] .tag-color-14 {
+  color: #31766f;
+}
+.tag-color-15 {
+  color: #b4c8da;
+}
+:root[data-theme="light"] .tag-color-15 {
+  color: #526f86;
 }

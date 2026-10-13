@@ -40,6 +40,7 @@ type Salary struct {
 }
 type Application struct {
 	Groups         []string       `json:"groups"`
+	Tags           []string       `json:"tags"`
 	ID             string         `json:"id"`
 	Company        string         `json:"company"`
 	Position       string         `json:"position"`
@@ -170,23 +171,36 @@ func NormalizeURL(raw string) (string, string, error) {
 	return raw, "", nil
 }
 func (a *Application) Validate() error {
-	if len(a.Groups) > 30 {
-		return Fail(400, "Можно указать до 30 групп")
+	if len(a.Groups) > 1 {
+		return Fail(400, "Можно выбрать только одну группу")
 	}
 	groups := []string{}
-	seenGroups := map[string]bool{}
 	for _, group := range a.Groups {
 		group = strings.TrimSpace(group)
 		if group == "" || textLength(group) > 100 {
 			return Fail(400, "Название группы должно содержать от 1 до 100 символов")
 		}
-		key := strings.ToLower(group)
-		if !seenGroups[key] {
-			groups = append(groups, group)
-			seenGroups[key] = true
-		}
+		groups = append(groups, group)
 	}
 	a.Groups = groups
+
+	if len(a.Tags) > 30 {
+		return Fail(400, "Можно указать до 30 тегов")
+	}
+	tags := []string{}
+	seenTags := map[string]bool{}
+	for _, tag := range a.Tags {
+		tag = strings.TrimSpace(tag)
+		if tag == "" || textLength(tag) > 100 {
+			return Fail(400, "Название тега должно содержать от 1 до 100 символов")
+		}
+		key := strings.ToLower(tag)
+		if !seenTags[key] {
+			tags = append(tags, tag)
+			seenTags[key] = true
+		}
+	}
+	a.Tags = tags
 	a.Company = strings.TrimSpace(a.Company)
 	a.Position = strings.TrimSpace(a.Position)
 	if a.Company == "" || a.Position == "" || textLength(a.Company) > 500 || textLength(a.Position) > 500 {

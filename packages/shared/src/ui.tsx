@@ -9,6 +9,7 @@ import {
   type ReactElement,
   type ReactNode,
   type FormEvent,
+  type KeyboardEvent,
 } from "react";
 import {
   Moon,
@@ -19,6 +20,7 @@ import {
   Check,
   ArrowRight,
   CalendarDays,
+  ChevronDown,
 } from "lucide-react";
 import {
   type Application,
@@ -37,6 +39,8 @@ import {
   dateLabel,
   sortTasks,
   companyColorIndex,
+  tagColorIndex,
+  tagLabel,
   companyInitials,
   gravatarUrl,
 } from "./index";
@@ -64,6 +68,37 @@ export function useTheme() {
       window.dispatchEvent(new Event("avari-theme-change"));
     },
   };
+}
+
+export function handleFormSubmitShortcut(e: KeyboardEvent<HTMLFormElement>) {
+  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+    if (e.isDefaultPrevented()) return;
+    e.preventDefault();
+    if (typeof e.currentTarget.requestSubmit === "function") {
+      e.currentTarget.requestSubmit();
+    } else {
+      e.currentTarget.dispatchEvent(
+        new Event("submit", { bubbles: true, cancelable: true }),
+      );
+    }
+  }
+}
+
+export function SubmitShortcutHint() {
+  const isMac =
+    typeof navigator !== "undefined" &&
+    /Mac|iPod|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+  return (
+    <span
+      className="submit-shortcut-hint"
+      aria-hidden="true"
+      title={isMac ? "Cmd + Enter" : "Ctrl + Enter"}
+    >
+      <kbd>{isMac ? "⌘" : "Ctrl"}</kbd>
+      <span className="shortcut-plus">+</span>
+      <kbd>↵</kbd>
+    </span>
+  );
 }
 export function ThemeButton() {
   const { theme, toggle } = useTheme();
@@ -145,10 +180,12 @@ export function Modal({
   title,
   onClose,
   children,
+  className = "",
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
+  className?: string;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
@@ -159,8 +196,12 @@ export function Modal({
   return (
     <dialog
       ref={ref}
-      className="modal"
-      onCancel={onClose}
+      className={`modal ${className}`}
+      aria-label={title}
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -205,16 +246,32 @@ export function Select({
   empty,
   id,
   "aria-label": ariaLabel,
+  disabled = false,
 }: {
   value: string;
   onChange: (value: string) => void;
   items: Record<string, string>;
   empty?: string;
+  disabled?: boolean;
   id?: string;
   "aria-label"?: string;
 }) {
+  if (items === stages || items === states) {
+    return (
+      <StatusSelect
+        value={value}
+        onChange={onChange}
+        items={items}
+        empty={empty}
+        id={id}
+        aria-label={ariaLabel}
+        disabled={disabled}
+      />
+    );
+  }
   return (
     <select
+      disabled={disabled}
       id={id}
       aria-label={ariaLabel}
       value={value}
@@ -227,6 +284,205 @@ export function Select({
         </option>
       ))}
     </select>
+  );
+}
+function StatusSelect({
+  value,
+  onChange,
+  items,
+  empty,
+  id,
+  disabled,
+  "aria-label": ariaLabel,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  items: Record<string, string>;
+  empty?: string;
+  id?: string;
+  disabled?: boolean;
+  "aria-label"?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const menuId = useId();
+  const options = [
+    ...(empty !== undefined ? [["", empty]] : []),
+    ...Object.entries(items),
+  ];
+  const close = () => {
+    setOpen(false);
+    trigger.current?.focus();
+  };
+  useEffect(() => {
+    if (!open) return;
+    const outside = (event: PointerEvent) => {
+      if (!root.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", outside);
+    const buttons = root.current?.querySelectorAll<HTMLButtonElement>(
+      '[role="menuitemradio"]',
+    );
+    const selected = Array.from(buttons ?? []).find(
+      (button) => button.dataset.value === value,
+    );
+    (selected ?? buttons?.[0])?.focus();
+    return () => document.removeEventListener("pointerdown", outside);
+  }, [open]);
+  return (
+    <div
+      className="status-select"
+      ref={root}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node))
+          setOpen(false);
+      }}
+    >
+      <button
+        type="button"
+        id={id}
+        ref={trigger}
+        className="status-select-trigger"
+        disabled={disabled}
+        aria-label={ariaLabel}
+        aria-haspopup="menu"
+        aria-expanded={open && !disabled}
+        aria-controls={open ? menuId : undefined}
+        onClick={() => setOpen(!open)}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            event.preventDefault();
+            setOpen(true);
+          }
+        }}
+      >
+        {value && items[value] ? (
+          <Badge value={value} kind={items === states ? "state" : "stage"} />
+        ) : (
+          <span>{empty ?? "Выберите"}</span>
+        )}
+        <ChevronDown size={16} />
+      </button>
+      {open && !disabled && (
+        <div
+          id={menuId}
+          role="menu"
+          aria-label={ariaLabel}
+          className={`status-select-menu${items === stages ? " status-workflow-menu" : ""}`}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              event.stopPropagation();
+              close();
+            }
+            const buttons = Array.from(
+              event.currentTarget.querySelectorAll<HTMLButtonElement>(
+                '[role="menuitemradio"]',
+              ),
+            );
+            const index = buttons.indexOf(
+              document.activeElement as HTMLButtonElement,
+            );
+            let next: number | undefined;
+            if (event.key === "ArrowDown") next = (index + 1) % buttons.length;
+            if (event.key === "ArrowUp")
+              next = (index - 1 + buttons.length) % buttons.length;
+            if (event.key === "Home") next = 0;
+            if (event.key === "End") next = buttons.length - 1;
+            if (next !== undefined) {
+              event.preventDefault();
+              buttons[next]?.focus();
+            }
+          }}
+        >
+          {items === stages ? (
+            <div className="status-workflow-flow">
+              <div className="status-workflow-header">
+                <span>Пайплайн этапов</span>
+                <small>Нажмите на этап для выбора</small>
+              </div>
+              <ol className="status-workflow-list">
+                {options.map(([key, label], idx) => {
+                  const isCurrent = value === key;
+                  const stepNum = empty !== undefined ? idx : idx + 1;
+                  return (
+                    <li key={key || "empty"} className="status-workflow-item">
+                      {idx > 0 && (
+                        <div
+                          className={`status-workflow-connector${
+                            Object.keys(stages).indexOf(value) >=
+                            (empty !== undefined ? idx - 1 : idx)
+                              ? " is-passed"
+                              : ""
+                          }`}
+                          aria-hidden="true"
+                        >
+                          <span className="status-workflow-line" />
+                          <ArrowRight
+                            size={14}
+                            className="status-workflow-arrow"
+                          />
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={isCurrent}
+                        data-value={key}
+                        className={`status-workflow-node${isCurrent ? " is-active" : ""}`}
+                        onClick={() => {
+                          onChange(key);
+                          close();
+                        }}
+                      >
+                        <div className="status-workflow-node-start">
+                          <span className="status-workflow-num">{stepNum}</span>
+                          {key ? (
+                            <Badge value={key} kind="stage" />
+                          ) : (
+                            <span className="status-workflow-label">
+                              {label}
+                            </span>
+                          )}
+                        </div>
+                        {isCurrent && (
+                          <span className="status-workflow-current-pill">
+                            <Check size={14} /> Текущий
+                          </span>
+                        )}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ol>
+            </div>
+          ) : (
+            options.map(([key, label]) => (
+              <button
+                type="button"
+                role="menuitemradio"
+                aria-checked={value === key}
+                data-value={key}
+                key={key}
+                className="status-select-option"
+                onClick={() => {
+                  onChange(key);
+                  close();
+                }}
+              >
+                {key ? (
+                  <Badge value={key} kind="state" />
+                ) : (
+                  <span>{label}</span>
+                )}
+                {value === key && <Check size={16} />}
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 export function ConflictComparison({
@@ -292,15 +548,19 @@ function useDraftState<T>(
 }
 export function ApplicationForm({
   groupOptions = [],
+  tagOptions = [],
   initial,
   fields,
   api,
   onSaved,
   onCancel,
   onDraftChange,
+  actionsAtTop = false,
 }: {
   initial: Application;
+  actionsAtTop?: boolean;
   groupOptions?: string[];
+  tagOptions?: string[];
   fields: Field[];
   api: Transport;
   onSaved: (a: Application) => void;
@@ -312,7 +572,7 @@ export function ApplicationForm({
     onDraftChange,
   );
   const [error, setError] = useState<unknown>();
-  const [newGroup, setNewGroup] = useState("");
+  const [newTag, setNewTag] = useState("");
   const [current, setCurrent] = useState<Application>();
   const [busy, setBusy] = useState(false);
   const requestKey = useRef(crypto.randomUUID());
@@ -342,8 +602,24 @@ export function ApplicationForm({
       setBusy(false);
     }
   };
+  const actions = (
+    <footer className="form-actions">
+      <button type="button" onClick={onCancel}>
+        Отмена
+      </button>
+      <button className="primary" disabled={busy || !!current}>
+        {busy ? "Сохраняем…" : "Сохранить"}
+        <SubmitShortcutHint />
+      </button>
+    </footer>
+  );
   return (
-    <form onSubmit={submit} className="form">
+    <form
+      onSubmit={submit}
+      onKeyDown={handleFormSubmitShortcut}
+      className="form"
+    >
+      {actionsAtTop && actions}
       <ErrorBox error={error} />
       {current && (
         <ConflictComparison
@@ -358,56 +634,122 @@ export function ApplicationForm({
           label="Загрузить актуальную запись"
         />
       )}
-      <FieldInput label="Группы вакансии">
-        <div className="actions">
-          {Array.from(new Set([...groupOptions, ...(a.groups ?? [])])).map(
-            (group) => (
-              <label className="checkbox-label" key={group}>
-                <input
-                  type="checkbox"
-                  checked={(a.groups ?? []).includes(group)}
-                  onChange={(e) =>
+      <FieldInput
+        label="Группа вакансии"
+        hint="Основное направление или папка для группировки"
+      >
+        <input
+          list="application-group-options"
+          aria-label="Группа вакансии"
+          placeholder="Например: Удалёнка или Руководство"
+          maxLength={100}
+          value={a.groups?.[0] ?? ""}
+          onChange={(e) => {
+            const val = e.target.value;
+            set("groups", val.trim() ? [val] : []);
+          }}
+        />
+        <datalist id="application-group-options">
+          {Array.from(new Set([...groupOptions, ...(a.groups ?? [])]))
+            .filter(Boolean)
+            .map((g) => (
+              <option key={g} value={g} />
+            ))}
+        </datalist>
+      </FieldInput>
+      <FieldInput
+        label="Теги"
+        hint="Метки компетенций, технологий, условий работы"
+      >
+        {!!a.tags?.length && (
+          <div className="tag-chips" style={{ marginBottom: 8 }}>
+            {a.tags.map((tag) => (
+              <span
+                className={`tag-chip tag-color-${tagColorIndex(tag)}`}
+                key={tag}
+              >
+                <span>{tagLabel(tag)}</span>
+                <button
+                  type="button"
+                  className="tag-chip-remove"
+                  aria-label={`Удалить тег ${tag}`}
+                  onClick={() =>
                     set(
-                      "groups",
-                      e.target.checked
-                        ? [...(a.groups ?? []), group]
-                        : (a.groups ?? []).filter((v) => v !== group),
+                      "tags",
+                      (a.tags ?? []).filter((t) => t !== tag),
                     )
                   }
-                />
-                {group}
-              </label>
-            ),
-          )}
-        </div>
-        <div className="actions">
+                >
+                  <X size={12} />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+        <div className="tag-input-row">
           <input
-            aria-label="Название новой группы"
-            placeholder="Например: Дизайн, Удалённая работа"
+            list="application-tag-options"
+            aria-label="Название нового тега"
+            placeholder="Например: React, AI, Гибрид, Релокация"
             maxLength={100}
-            value={newGroup}
-            onChange={(e) => setNewGroup(e.target.value)}
+            value={newTag}
+            onChange={(e) => setNewTag(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                const tag = newTag.trim();
+                if (
+                  tag &&
+                  (a.tags ?? []).length < 30 &&
+                  !(a.tags ?? []).some(
+                    (v) => v.toLocaleLowerCase() === tag.toLocaleLowerCase(),
+                  )
+                ) {
+                  set("tags", [...(a.tags ?? []), tag]);
+                  setNewTag("");
+                }
+              }
+            }}
           />
+          <datalist id="application-tag-options">
+            {Array.from(new Set([...tagOptions, ...(a.tags ?? [])]))
+              .filter(
+                (t) =>
+                  !(a.tags ?? []).some(
+                    (existing) =>
+                      existing.toLocaleLowerCase() === t.toLocaleLowerCase(),
+                  ),
+              )
+              .map((t) => (
+                <option key={t} value={t} />
+              ))}
+          </datalist>
           <button
             type="button"
-            disabled={!newGroup.trim() || (a.groups ?? []).length >= 30}
-            onClick={() => {
-              const group = newGroup.trim();
-              if (
-                !(a.groups ?? []).some(
-                  (v) => v.toLocaleLowerCase() === group.toLocaleLowerCase(),
-                )
+            disabled={
+              !newTag.trim() ||
+              (a.tags ?? []).length >= 30 ||
+              (a.tags ?? []).some(
+                (v) =>
+                  v.toLocaleLowerCase() === newTag.trim().toLocaleLowerCase(),
               )
-                set("groups", [...(a.groups ?? []), group]);
-              setNewGroup("");
+            }
+            onClick={() => {
+              const tag = newTag.trim();
+              if (
+                tag &&
+                !(a.tags ?? []).some(
+                  (v) => v.toLocaleLowerCase() === tag.toLocaleLowerCase(),
+                )
+              ) {
+                set("tags", [...(a.tags ?? []), tag]);
+              }
+              setNewTag("");
             }}
           >
-            Добавить группу
+            Добавить тег
           </button>
         </div>
-        <small className="muted">
-          Можно выбрать несколько групп. Названия вы задаёте сами.
-        </small>
       </FieldInput>
       <div className="form-grid">
         <FieldInput label="Компания *">
@@ -611,14 +953,7 @@ export function ApplicationForm({
           </div>
         </>
       )}
-      <footer className="form-actions">
-        <button type="button" onClick={onCancel}>
-          Отмена
-        </button>
-        <button className="primary" disabled={busy || !!current}>
-          {busy ? "Сохраняем…" : "Сохранить"}
-        </button>
-      </footer>
+      {!actionsAtTop && actions}
     </form>
   );
 }
@@ -657,6 +992,7 @@ export function TaskForm({
   return (
     <form
       className="form"
+      onKeyDown={handleFormSubmitShortcut}
       onSubmit={async (e) => {
         e.preventDefault();
         setBusy(true);
@@ -750,6 +1086,7 @@ export function TaskForm({
         </button>
         <button className="primary" disabled={busy || !!current}>
           {busy ? "Сохраняем…" : "Сохранить задачу"}
+          <SubmitShortcutHint />
         </button>
       </footer>
     </form>
@@ -784,6 +1121,7 @@ export function NoteForm({
   return (
     <form
       className="form"
+      onKeyDown={handleFormSubmitShortcut}
       onSubmit={async (e) => {
         e.preventDefault();
         setBusy(true);
@@ -836,6 +1174,7 @@ export function NoteForm({
         </button>
         <button className="primary" disabled={busy || !!current}>
           {base ? "Сохранить заметку" : "Добавить заметку"}
+          <SubmitShortcutHint />
         </button>
       </footer>
     </form>
@@ -905,7 +1244,7 @@ export function ProposalCard({
   proposal: Proposal;
   application?: Application;
   api: Transport;
-  onResolved: () => void;
+  onResolved: (action?: string) => void;
 }) {
   const [p, setP] = useState(proposal);
   const [edit, setEdit] = useState(false);
@@ -937,7 +1276,7 @@ export function ProposalCard({
         version: p.current.version,
         ...(edit ? { changes: patch } : {}),
       });
-      onResolved();
+      onResolved(action);
     } catch (e) {
       setError(e);
       if (e instanceof APIError && e.current) {
@@ -1077,7 +1416,7 @@ export function TaskList({
   tasks: Task[];
   applications: Application[];
   api: Transport;
-  onChanged: () => void;
+  onChanged: (updatedTask?: Task) => void;
   onEdit: (t: Task) => void;
 }) {
   const [error, setError] = useState<unknown>();
@@ -1092,11 +1431,14 @@ export function TaskList({
           onEdit={() => onEdit(t)}
           onToggle={async () => {
             try {
-              await api("/tasks/" + t.id, "PUT", {
+              const nextState: Task["state"] =
+                t.state === "open" ? "done" : "open";
+              const updated = {
                 ...t,
-                state: t.state === "open" ? "done" : "open",
-              });
-              onChanged();
+                state: nextState,
+              };
+              await api("/tasks/" + t.id, "PUT", updated);
+              onChanged(updated);
             } catch (e) {
               setError(e);
             }

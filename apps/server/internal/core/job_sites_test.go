@@ -16,6 +16,8 @@ func TestAdditionalSitesDedupAndObservations(t *testing.T) {
 		"https://ru.linkedin.com/jobs/view/developer-at-example-123/?trackingId=x",
 		"https://getmatch.ru/vacancies/123-developer?s=offers",
 		"https://hirify.me/jobs/123-developer?utm_source=x",
+		"https://geekjob.ru/vacancy/6acce1f84f35ccbd760b3413?from=search",
+		"https://career.habr.com/vacancies/1000169149?s=search",
 	} {
 		t.Run(raw, func(t *testing.T) {
 			a, e := s.SaveApplication(u.ID, Application{Company: "Example", Position: "Developer", URL: raw}, "", "extension")
@@ -71,7 +73,7 @@ func TestAdditionalSitesDedupAndObservations(t *testing.T) {
 		})
 	}
 	apps, e := s.Applications(u.ID)
-	if e != nil || len(apps) != 4 {
+	if e != nil || len(apps) != 6 {
 		t.Fatal(apps, e)
 	}
 }

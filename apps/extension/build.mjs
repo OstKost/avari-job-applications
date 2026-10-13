@@ -3,7 +3,8 @@ import react from "@vitejs/plugin-react";
 import { copyFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 const root = fileURLToPath(new URL(".", import.meta.url));
-let defaultServer = process.env.VITE_AVARI_DEFAULT_SERVER || "";
+let defaultServer =
+  process.env.VITE_AVARI_DEFAULT_SERVER || "https://jobs.avari.dev";
 if (defaultServer) {
   const url = new URL(defaultServer);
   if (
@@ -65,7 +66,7 @@ const manifest = {
   name: "Avari.Jobs — журнал откликов",
   version,
   description:
-    "Сохраняйте вакансии hh.ru, LinkedIn, Getmatch и Hirify в своём журнале.",
+    "Сохраняйте вакансии hh.ru, LinkedIn, Getmatch, Hirify, Geekjob и Habr Career в своём журнале.",
   permissions: ["storage", "activeTab", "scripting"],
   optional_permissions: ["notifications"],
   ...(defaultServer ? { host_permissions: [defaultServer + "/*"] } : {}),
@@ -95,6 +96,8 @@ const manifest = {
         "https://*.getmatch.ru/applications*",
         "https://*.hirify.me/jobs/*",
         "https://*.hirify.me/applications*",
+        "https://*.geekjob.ru/vacancy/*",
+        "https://*.career.habr.com/vacancies/*",
       ],
       js: ["content.js"],
       run_at: "document_idle",
@@ -108,6 +111,8 @@ const manifest = {
         "https://*.linkedin.com/*",
         "https://*.getmatch.ru/*",
         "https://*.hirify.me/*",
+        "https://*.geekjob.ru/*",
+        "https://*.career.habr.com/*",
       ],
     },
   ],

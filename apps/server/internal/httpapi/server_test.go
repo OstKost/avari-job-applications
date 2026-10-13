@@ -73,6 +73,24 @@ func TestHTTPAuthCSRFAndIsolation(t *testing.T) {
 	if status != 200 {
 		t.Fatal(status, a)
 	}
+	// The detail page sends the full application when editing tags or vacancy fields.
+	a["tags"] = []string{"React", "Гибрид"}
+	a["position"] = "Senior Go"
+	status, updated, _ := call(t, server, "PUT", "/api/v1/applications/"+a["id"].(string), a, headers)
+	if status != 200 {
+		t.Fatal("save vacancy with tags", status, updated)
+	}
+	if updated["position"] != "Senior Go" || len(updated["tags"].([]any)) != 2 {
+		t.Fatal("vacancy fields or tags were not saved", updated)
+	}
+	status, detail, _ := call(t, server, "GET", "/api/v1/applications/"+a["id"].(string), nil, headers)
+	if status != 200 {
+		t.Fatal("read updated vacancy", status, detail)
+	}
+	persisted := detail["application"].(map[string]any)
+	if persisted["position"] != "Senior Go" || len(persisted["tags"].([]any)) != 2 {
+		t.Fatal("vacancy update was not persisted", persisted)
+	}
 	headers["Origin"] = "https://evil.example"
 	status, _, _ = call(t, server, "POST", "/api/v1/applications", body, headers)
 	if status != 403 {
@@ -188,4 +206,3 @@ func TestHTTPPasswordChangeAndRecovery(t *testing.T) {
 		t.Fatal("failed to login with approved reset password")
 	}
 }
-

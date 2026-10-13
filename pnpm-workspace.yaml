@@ -1,0 +1,6 @@
+packages:
+  - apps/web
+  - apps/extension
+  - packages/shared
+allowBuilds:
+  esbuild: true

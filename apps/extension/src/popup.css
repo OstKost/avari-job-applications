@@ -1,5 +1,4 @@
-/* Compact extension surfaces. Keep component sizing independent of the web app. */
-.popup {
+:root {
   --bg: #0e1520;
   --panel: #151f2d;
   --panel-2: #1c293a;
@@ -9,6 +8,55 @@
   --accent: #79c7ff;
   --accent-strong: #1672c4;
   --accent-soft: #79c7ff14;
+}
+:root[data-theme="light"] {
+  --bg: #f5f7fb;
+  --panel: #fff;
+  --panel-2: #edf2f8;
+  --line: #dce4ee;
+  --text: #1e293b;
+  --muted: #5b6b80;
+  --accent: #1769b3;
+  --accent-strong: #1769b3;
+  --accent-soft: #eaf3fc;
+  --danger: #b4233c;
+  --danger-bg: #fff1f3;
+}
+
+html,
+body {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--accent) 70%, var(--line))
+    transparent;
+  scrollbar-gutter: stable;
+}
+
+/* Custom scrollbar styling matching group-chips filter from Applications page */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--accent) 70%, var(--line));
+  border-radius: 999px;
+  box-shadow: 0 0 6px color-mix(in srgb, var(--accent) 40%, transparent);
+  transition: background-color 0.15s ease;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}
+
+.popup {
+  box-sizing: border-box;
   width: 390px;
   max-width: 100vw;
   min-height: 0;
@@ -21,20 +69,9 @@
   font-size: 13px;
   line-height: 1.45;
   scrollbar-width: thin;
-  scrollbar-color: var(--line) transparent;
-}
-:root[data-theme="light"] .popup {
-  --bg: #f5f7fb;
-  --panel: #fff;
-  --panel-2: #edf2f8;
-  --line: #dce4ee;
-  --text: #1e293b;
-  --muted: #5b6b80;
-  --accent: #1769b3;
-  --accent-strong: #1769b3;
-  --accent-soft: #eaf3fc;
-  --danger: #b4233c;
-  --danger-bg: #fff1f3;
+  scrollbar-color: color-mix(in srgb, var(--accent) 70%, var(--line))
+    color-mix(in srgb, var(--line) 40%, transparent);
+  scrollbar-gutter: stable;
 }
 .popup * {
   min-width: 0;
@@ -408,7 +445,9 @@
   max-width: none;
   max-height: none;
   padding: 14px;
-  overflow: visible;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
 }
 .popup-embedded .popup-header {
   display: none;
@@ -424,9 +463,14 @@
 }
 html:has(.popup-embedded),
 body:has(.popup-embedded) {
-  background: transparent;
+  background: var(--bg);
   margin: 0;
   min-width: 0;
+  scrollbar-gutter: stable;
+}
+html:has(.popup-collapsed),
+body:has(.popup-collapsed) {
+  background: transparent;
 }
 .popup-collapsed {
   padding: 8px 10px;
@@ -552,15 +596,13 @@ body:has(.popup-embedded) {
 @keyframes popup-enter {
   from {
     opacity: 0;
-    transform: translateY(3px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
   }
 }
 .popup-screen {
-  animation: popup-enter 160ms ease-out both;
+  animation: popup-enter 140ms ease-out both;
 }
 @media (prefers-reduced-motion: reduce) {
   .popup *,
@@ -714,4 +756,57 @@ body:has(.popup-embedded) {
   .compact-actions .expand-btn:hover svg {
     transform: none;
   }
+}
+
+.popup-nav {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  margin-bottom: 14px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+.popup .popup-nav button {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px 2px;
+  font-size: 11px;
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+}
+.popup .popup-nav button[aria-current="page"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--line);
+}
+.popup-back {
+  margin-bottom: 12px;
+}
+.section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.popup .section-heading h2 {
+  margin: 0;
+}
+.journal-item {
+  margin-bottom: 10px;
+}
+.popup .journal-item h3 {
+  margin: 0 0 4px;
+}
+.popup .journal-item .actions {
+  grid-template-columns: 1fr;
+}
+.journal-item a {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }

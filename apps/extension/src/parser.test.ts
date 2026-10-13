@@ -259,6 +259,44 @@ describe("additional job sites", () => {
     ]);
     expect(JSON.stringify(p)).not.toContain("secret");
   });
+  it("reads Geekjob public vacancy details and salary", () => {
+    const p = parsePage(
+      doc(
+        `<article class="row vacancy"><section class="col s12 m12 main"><header><h1>Игровой партнёр</h1><h5 class="company-name">Прямой работодатель <a href="/company/123">Soulmate.gg</a></h5><div class="location">Новороссийск, Россия</div><div class="jobinfo"><span class="jobformat">Релокация • Удаленная работа<br>Опыт работы любой</span><span class="salary">от 40 000 до 60 000 ₽</span></div></header><div class="description"><div id="vacancy-description">private text</div></div></section></article>`,
+      ),
+      "https://geekjob.ru/vacancy/6accdf12a0f2fb0465068852?from=search",
+    );
+    expect(p.vacancy).toMatchObject({
+      company: "Soulmate.gg",
+      position: "Игровой партнёр",
+      hhId: "",
+      url: "https://geekjob.ru/vacancy/6accdf12a0f2fb0465068852",
+      location: "Новороссийск, Россия",
+      workFormat: "Релокация, Удаленная работа",
+      salary: { min: 40000, max: 60000, currency: "RUB" },
+    });
+    expect(p.observations).toEqual([]);
+    expect(JSON.stringify(p)).not.toContain("private text");
+  });
+  it("reads Habr Career public vacancy details and salary", () => {
+    const p = parsePage(
+      doc(
+        `<div class="basic-section vacancy-header"><div class="vacancy-header__title"><div class="page-title"><h1 class="page-title__title">Data Engineer</h1></div></div><div class="vacancy-header__salary"><div class="basic-salary">от 270 000 до 285 000 ₽</div></div><div class="content-section"><div class="vacancy-meta"><div class="basic-chip"><div class="chip-with-icon__text">Можно удалённо</div></div></div></div></div><div class="company_name"><a href="/companies/top-selection">Top Selection</a></div><script type="application/ld+json">{"@type":"JobPosting","title":"Data Engineer","hiringOrganization":{"name":"Top Selection"},"jobLocation":{"address":{"addressLocality":"Москва"}},"description":"private text"}</script>`,
+      ),
+      "https://career.habr.com/vacancies/1000168817?s=search",
+    );
+    expect(p.vacancy).toMatchObject({
+      company: "Top Selection",
+      position: "Data Engineer",
+      hhId: "",
+      url: "https://career.habr.com/vacancies/1000168817",
+      location: "Москва",
+      workFormat: "Можно удалённо",
+      salary: { min: 270000, max: 285000, currency: "RUB" },
+    });
+    expect(p.observations).toEqual([]);
+    expect(JSON.stringify(p)).not.toContain("private text");
+  });
   it("rejects stale LinkedIn selections during SPA navigation", () => {
     const html = `<ul><li data-job-id="123">Search result</li></ul><div data-job-id="456"><div class="job-details-jobs-unified-top-card__job-title"><h1>Developer</h1><a href="/jobs/view/456">Developer</a></div></div>`;
     expect(

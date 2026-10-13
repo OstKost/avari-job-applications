@@ -15,7 +15,9 @@ export function exportApplicationsToCSV(
   fields: Field[] = [],
   tasks: Task[] = [],
 ): string {
-  const customFields = [...fields].sort((a, b) => a.name.localeCompare(b.name, "ru"));
+  const customFields = [...fields].sort((a, b) =>
+    a.name.localeCompare(b.name, "ru"),
+  );
 
   const headers = [
     "Компания",
@@ -32,7 +34,8 @@ export function exportApplicationsToCSV(
     "Налог",
     "Формат работы",
     "Локация",
-    "Группы",
+    "Группа",
+    "Теги",
     "Ссылка",
     "ID на hh.ru",
     "Контакт рекрутера",
@@ -66,15 +69,24 @@ export function exportApplicationsToCSV(
       escapeCSV(app.workFormat || ""),
       escapeCSV(app.location || ""),
       escapeCSV((app.groups || []).join("; ")),
+      escapeCSV((app.tags || []).join("; ")),
       escapeCSV(app.url || ""),
       escapeCSV(app.hhId || ""),
       escapeCSV(app.recruiter || ""),
-      escapeCSV(externalStatuses[app.externalStatus] ?? app.externalStatus ?? ""),
+      escapeCSV(
+        externalStatuses[app.externalStatus] ?? app.externalStatus ?? "",
+      ),
       escapeCSV(nextTask ? nextTask.title : ""),
-      escapeCSV(nextTask ? `${nextTask.date}${nextTask.time ? " " + nextTask.time : ""}` : ""),
+      escapeCSV(
+        nextTask
+          ? `${nextTask.date}${nextTask.time ? " " + nextTask.time : ""}`
+          : "",
+      ),
       ...customFields.map((f) => {
         const val = app.custom?.[f.id];
-        return escapeCSV(val == null ? "" : Array.isArray(val) ? val.join("; ") : String(val));
+        return escapeCSV(
+          val == null ? "" : Array.isArray(val) ? val.join("; ") : String(val),
+        );
       }),
     ];
 

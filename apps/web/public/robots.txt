@@ -1,0 +1,13 @@
+User-agent: *
+Allow: /
+Allow: /extension
+Allow: /privacy
+Disallow: /api/
+Disallow: /calendar
+Disallow: /applications
+Disallow: /proposals
+Disallow: /settings
+Disallow: /readyz
+Disallow: /healthz
+
+Sitemap: https://jobs.avari.dev/sitemap.xml

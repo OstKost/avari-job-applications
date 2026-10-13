@@ -237,7 +237,8 @@ function salaryFromJob(job: Record<string, any> | undefined) {
           ? value.value
           : null;
   salary.max = typeof value?.maxValue === "number" ? value.maxValue : null;
-  salary.currency = typeof base.currency === "string" ? base.currency : "";
+  const curr = typeof base.currency === "string" ? base.currency : "";
+  salary.currency = curr.toUpperCase() === "RUR" ? "RUB" : curr;
   salary.period =
     ({ HOUR: "hour", YEAR: "year", MONTH: "month" } as Record<string, string>)[
       value?.unitText
@@ -431,6 +432,32 @@ function parseOtherSite(doc: Document, rawURL: string): Snapshot {
       salary: [],
       status: ['.vacancy-header [data-qa="vacancy-response-status"]'],
     },
+    geekjob: {
+      position: [".vacancy h1", "h1"],
+      company: [
+        ".vacancy .company-name a[href*='/company/']",
+        ".company-name a",
+        ".vacancy .company-name",
+      ],
+      location: [".vacancy .location"],
+      salary: [".vacancy .salary", ".serp-list .salary"],
+      status: [] as string[],
+    },
+    habr: {
+      position: [".page-title__title", ".vacancy-header__title h1", "h1"],
+      company: [
+        ".company_name a[href*='/companies/']",
+        ".company_name",
+        ".company-name",
+      ],
+      location: [".vacancy-header .location", ".basic-section .location"],
+      salary: [
+        ".vacancy-header__salary .basic-salary",
+        ".basic-salary",
+        ".vacancy-header__salary",
+      ],
+      status: [] as string[],
+    },
     hh: { position: [], company: [], location: [], salary: [], status: [] },
   }[site];
   vacancy.position =
@@ -481,6 +508,42 @@ function parseOtherSite(doc: Document, rawURL: string): Snapshot {
       if (["страна", "country", "локация", "location"].includes(label))
         vacancy.location = text(row, [".value"]);
     }
+  } else if (site === "geekjob") {
+    const loc = text(doc, selectors.location);
+    if (loc) vacancy.location = loc;
+    const formatEl = doc.querySelector<HTMLElement>(
+      ".vacancy .jobinfo .jobformat, .jobformat",
+    );
+    if (formatEl) {
+      const cloned = formatEl.cloneNode(true) as HTMLElement;
+      for (const br of cloned.querySelectorAll("br")) {
+        br.replaceWith(doc.createTextNode("\n"));
+      }
+      const rawText = cloned.textContent ?? "";
+      const formats = [
+        ...new Set(
+          rawText
+            .split(/[•\n\r,]+/)
+            .map((s) => clean(s))
+            .filter((s) =>
+              /удаленн|удалённ|гибрид|офис|релокац|remote|hybrid|relocation/i.test(
+                s,
+              ),
+            ),
+        ),
+      ];
+      if (formats.length) vacancy.workFormat = formats.join(", ");
+    }
+  } else if (site === "habr") {
+    const chips = [
+      ...doc.querySelectorAll(".vacancy-meta .basic-chip, .basic-chip"),
+    ]
+      .filter((el) => !el.closest('[hidden], [aria-hidden="true"]'))
+      .map((el) => clean(el.textContent ?? ""));
+    const workFormats = chips.filter((c) =>
+      /удален|удалён|гибрид|офис|remote|hybrid/i.test(c),
+    );
+    if (workFormats.length) vacancy.workFormat = workFormats.join(", ");
   } else {
     vacancy.location =
       linkedin?.location || text(doc, selectors.location) || vacancy.location;

@@ -35,9 +35,10 @@ test("real MV3 extension: login, DOM capture, save, dedup, proposal confirmation
       context.serviceWorkers()[0] ??
       (await context.waitForEvent("serviceworker"));
     const id = worker.url().split("/")[2];
-    if (process.env.VITE_AVARI_DEFAULT_SERVER) {
-      const defaultServer = new URL(process.env.VITE_AVARI_DEFAULT_SERVER)
-        .origin;
+    {
+      const defaultServer = new URL(
+        process.env.VITE_AVARI_DEFAULT_SERVER || "https://jobs.avari.dev",
+      ).origin;
       expect(originalHosts).toContain(defaultServer + "/*");
       const fresh = await context.newPage();
       await fresh.goto(`chrome-extension://${id}/index.html`);
@@ -78,16 +79,11 @@ test("real MV3 extension: login, DOM capture, save, dedup, proposal confirmation
       ).toBe(defaultServer);
       await fresh.close();
     }
-    if (!process.env.VITE_AVARI_DEFAULT_SERVER) {
-      await worker.evaluate(async (server) => {
-        await chrome.storage.local.set({ server });
-      }, process.env.AVARI_TEST_URL!);
-    }
     let popup = await context.newPage();
     const errors: string[] = [];
     popup.on("pageerror", (e) => errors.push(e.message));
     await popup.goto(`chrome-extension://${id}/index.html`);
-    if (process.env.VITE_AVARI_DEFAULT_SERVER) {
+    {
       await popup
         .getByRole("checkbox", {
           name: "Использовать свой сервер",
@@ -402,7 +398,7 @@ test("real MV3 extension: login, DOM capture, save, dedup, proposal confirmation
       expect(JSON.stringify(result)).not.toContain("Private");
       await page.close();
     }
-    // Mini panel opens explicitly and uses its owning tab.
+    // Detected vacancies show a collapsed panel; explicit opening uses its owning tab.
     const quick = await context.newPage();
     await quick.route("https://hh.ru/vacancy/999888777", (route) =>
       route.fulfill({
@@ -411,7 +407,10 @@ test("real MV3 extension: login, DOM capture, save, dedup, proposal confirmation
       }),
     );
     await quick.goto("https://hh.ru/vacancy/999888777");
-    await expect(quick.locator("#avari-quick-popup")).toHaveCount(0);
+    await expect(quick.locator("#avari-quick-popup")).toHaveAttribute(
+      "data-collapsed",
+      "",
+    );
     const openMini = async () => {
       await quick.bringToFront();
       await worker.evaluate(async () => {
@@ -446,16 +445,22 @@ test("real MV3 extension: login, DOM capture, save, dedup, proposal confirmation
     await expect(
       inline.getByText("Уже сохранена", { exact: true }),
     ).toBeVisible();
-    await inline.getByLabel("Этап", { exact: true }).selectOption("applied");
-    await expect(inline.getByLabel("Этап", { exact: true })).toHaveValue(
-      "applied",
-    );
+    await inline.getByRole("button", { name: "Этап", exact: true }).click();
+    await inline
+      .locator('[role="menuitemradio"][data-value="applied"]')
+      .click();
+    await expect(
+      inline.getByRole("button", { name: "Этап", exact: true }),
+    ).toContainText("Отклик");
     await quick.reload();
-    await expect(quick.locator("#avari-quick-popup")).toHaveCount(0);
-    await openMini();
-    await expect(inline.getByLabel("Этап", { exact: true })).toHaveValue(
-      "applied",
+    await expect(quick.locator("#avari-quick-popup")).toHaveAttribute(
+      "data-collapsed",
+      "",
     );
+    await openMini();
+    await expect(
+      inline.getByRole("button", { name: "Этап", exact: true }),
+    ).toContainText("Отклик");
     await quick.screenshot({ path: "test-results/extension-quick-popup.png" });
     await quick.close();
 

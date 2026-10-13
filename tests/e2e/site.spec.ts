@@ -2,12 +2,25 @@ import { test, expect, type Page } from "@playwright/test";
 test("public extension page and privacy are available before login", async ({
   page,
 }) => {
+  const privacyResponse = await page.goto("/privacy.html");
+  expect(privacyResponse?.status()).toBe(200);
+  await expect(
+    page.getByRole("heading", {
+      name: "Политика конфиденциальности / Privacy Policy",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(page.locator("#ru")).toContainText("web@ostkost.ru");
+  await page.getByRole("link", { name: "English", exact: true }).click();
+  await expect(page.locator("#en")).toContainText("web@ostkost.ru");
   await page.goto("/extension");
   await expect(
     page.getByRole("heading", { name: "Расширение Avari.Jobs" }),
   ).toBeVisible();
   // Direct public downloads are blocked to comply with Chrome Web Store and Safe Browsing requirements
-  const directDownload = await page.request.get("/downloads/avari-extension.zip");
+  const directDownload = await page.request.get(
+    "/downloads/avari-extension.zip",
+  );
   expect(directDownload.status()).toBe(404);
   const release = await (await page.request.get("/release.json")).json();
   await expect(
@@ -65,15 +78,15 @@ test("site: real API, vacancy, note, interview, themes, custom fields and mobile
   await dialog
     .getByLabel("Ссылка на вакансию")
     .fill("https://hh.ru/vacancy/987654321");
-  await dialog.getByLabel("Название новой группы").fill("Разработка");
   await dialog
-    .getByRole("button", { name: "Добавить группу", exact: true })
-    .click();
-  await dialog.getByLabel("Название новой группы").fill("Удалённая работа");
+    .getByLabel("Группа вакансии", { exact: true })
+    .fill("Разработка");
+  await dialog.getByLabel("Название нового тега").fill("Удалённая работа");
   await dialog
-    .getByRole("button", { name: "Добавить группу", exact: true })
+    .getByRole("button", { name: "Добавить тег", exact: true })
     .click();
-  await dialog.getByLabel("Этап", { exact: true }).selectOption("applied");
+  await dialog.getByLabel("Этап", { exact: true }).click();
+  await dialog.getByRole("menuitemradio", { name: /Отклик/ }).click();
   await dialog.getByLabel("Приоритет", { exact: true }).selectOption("Высокий");
   await dialog.getByRole("button", { name: "Сохранить", exact: true }).click();
   await expect(
@@ -84,8 +97,8 @@ test("site: real API, vacancy, note, interview, themes, custom fields and mobile
   ).toBeVisible();
   await expect(
     page
-      .locator(".detail-badges")
-      .getByText("Удалённая работа", { exact: true }),
+      .locator(".detail-tags")
+      .getByText("#Удалённая работа", { exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Заметка", exact: true }).click();
   await page
@@ -241,21 +254,20 @@ test("site: real API, vacancy, note, interview, themes, custom fields and mobile
   await page
     .getByRole("button", { name: "Редактировать", exact: true })
     .click();
-  await expect(page.getByRole("dialog")).toBeVisible();
-  await page
-    .getByRole("dialog")
-    .getByLabel("Контакт рекрутера")
-    .fill("hr@example.com");
-  await page
-    .getByRole("dialog")
-    .getByRole("button", { name: "Сохранить", exact: true })
-    .click();
+  await page.getByLabel("Контакт рекрутера").fill("hr@example.com");
+  await page.getByRole("button", { name: "Сохранить", exact: true }).click();
   await expect(
     page.getByText("hr@example.com", { exact: true }).first(),
   ).toBeVisible();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Редактировать", exact: true }),
+  ).toBeVisible();
   await page.getByRole("link", { name: "Настройки", exact: true }).click();
   await page.getByRole("button", { name: "Выйти", exact: true }).click();
+  await page
+    .getByRole("dialog", { name: "Выйти из аккаунта?" })
+    .getByRole("button", { name: "Выйти", exact: true })
+    .click();
   await expect(
     page.getByRole("button", { name: "Войти", exact: true }),
   ).toBeVisible();
@@ -400,8 +412,7 @@ test("calendar subscription: connect, update, rotate and disable on desktop and 
   expect((await newRes.body()).subarray(0, 2).toString()).toBe("PK");
 });
 
-
-test("workspace design: dashboard, grouped table, density, pagination and monthly agenda", async ({
+test("workspace design: dashboard, grouped table, cards, pagination and monthly agenda", async ({
   page,
 }) => {
   const errors: string[] = [];
@@ -492,7 +503,8 @@ test("workspace design: dashboard, grouped table, density, pagination and monthl
     fullPage: true,
   });
   await page.getByRole("link", { name: "Отклики", exact: true }).click();
-  await page.getByLabel("Группировка", { exact: true }).selectOption("stage");
+  await page.getByRole("button", { name: "Группировка", exact: true }).click();
+  await page.getByRole("option", { name: "По этапу", exact: true }).click();
   await expect(page.locator(".group-row")).toHaveCount(6);
   const folder = page
     .locator(".group-chips")
@@ -518,10 +530,11 @@ test("workspace design: dashboard, grouped table, density, pagination and monthl
     path: "test-results/design-table-grouped.png",
     fullPage: true,
   });
-  await page.getByLabel("Группировка", { exact: true }).selectOption("");
+  await page.getByRole("button", { name: "Группировка", exact: true }).click();
   await page
-    .getByRole("button", { name: "Высокие строки", exact: true })
+    .getByRole("option", { name: "Без группировки", exact: true })
     .click();
+
   await expect(page.locator(".application-register")).toHaveClass(
     /compact-rows/,
   );
@@ -542,12 +555,16 @@ test("workspace design: dashboard, grouped table, density, pagination and monthl
   await page.getByRole("button", { name: "Сбросить всё", exact: true }).click();
   await page.getByLabel("Поиск по компании и позиции").press("Enter");
   await page
-    .getByRole("button", { name: "Высокие строки", exact: true })
+    .getByRole("button", { name: "Карточки откликов", exact: true })
     .click();
   await page.reload();
   await expect(
-    page.getByRole("button", { name: "Высокие строки", exact: true }),
+    page.getByRole("button", { name: "Карточки откликов", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".application-register")).toHaveClass(/card-view/);
+  await page
+    .getByRole("button", { name: "Карточки откликов", exact: true })
+    .click();
   await page.screenshot({
     path: "test-results/design-table-dark.png",
     fullPage: true,
@@ -602,7 +619,8 @@ test("workspace design: dashboard, grouped table, density, pagination and monthl
     ),
   ).toBeTruthy();
   await page.getByRole("link", { name: "Отклики", exact: true }).click();
-  await page.getByLabel("Группировка", { exact: true }).selectOption("company");
+  await page.getByRole("button", { name: "Группировка", exact: true }).click();
+  await page.getByRole("option", { name: "По этапу", exact: true }).click();
   await expect(
     page.locator(".application-cards .mobile-group").first(),
   ).toBeVisible();

@@ -1,5 +1,7 @@
-export const jobSitesLabel = "hh.ru, LinkedIn, Getmatch и Hirify";
-export type JobSite = "hh" | "linkedin" | "getmatch" | "hirify";
+export const jobSitesLabel =
+  "hh.ru, LinkedIn, Getmatch, Hirify, Geekjob и Хабр Карьера";
+export type JobSite =
+  "hh" | "linkedin" | "getmatch" | "hirify" | "geekjob" | "habr";
 
 export function jobSite(raw: string): JobSite | undefined {
   try {
@@ -11,6 +13,8 @@ export function jobSite(raw: string): JobSite | undefined {
       linkedin: "linkedin.com",
       getmatch: "getmatch.ru",
       hirify: "hirify.me",
+      geekjob: "geekjob.ru",
+      habr: "career.habr.com",
     })) {
       if (url.hostname === domain || url.hostname.endsWith("." + domain))
         return site as JobSite;
@@ -38,6 +42,9 @@ export function jobIdentity(raw: string) {
     id = url.pathname.match(/^\/vacancies\/(\d+)(?:-[^/]+)?\/?$/)?.[1];
   if (site === "hirify")
     id = url.pathname.match(/^\/jobs\/(\d+)(?:-[^/]+)?\/?$/)?.[1];
+  if (site === "geekjob")
+    id = url.pathname.match(/^\/vacancy\/([a-zA-Z0-9]+)\/?$/)?.[1];
+  if (site === "habr") id = url.pathname.match(/^\/vacancies\/(\d+)\/?$/)?.[1];
   if (!id) return;
   const canonical =
     {
@@ -45,6 +52,8 @@ export function jobIdentity(raw: string) {
       linkedin: "https://www.linkedin.com/jobs/view/",
       getmatch: "https://getmatch.ru/vacancies/",
       hirify: "https://hirify.me/jobs/",
+      geekjob: "https://geekjob.ru/vacancy/",
+      habr: "https://career.habr.com/vacancies/",
     }[site] + id;
   return { site, id, url: canonical };
 }

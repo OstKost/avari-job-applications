@@ -18,6 +18,7 @@ import {
   Pencil,
   GripVertical,
   Clock,
+  ArrowLeft,
 } from "lucide-react";
 import {
   APIError,
@@ -47,6 +48,9 @@ import {
   TaskList,
   Badge,
   FieldInput,
+  Select,
+  handleFormSubmitShortcut,
+  SubmitShortcutHint,
 } from "@avari/shared/ui";
 import type { Snapshot } from "./parser";
 import "@avari/shared/styles.css";
@@ -75,6 +79,9 @@ function Popup() {
   const [collapsed, setCollapsed] = useState(
     embedded && new URLSearchParams(location.search).get("collapsed") === "1",
   );
+  const [section, setSection] = useState<
+    "page" | "applications" | "tasks" | "changes"
+  >("page");
   const [server, setServer] = useState("");
   const [setup, setSetup] = useState(false);
   const [user, setUser] = useState<User>();
@@ -99,6 +106,33 @@ function Popup() {
   const [captureGroup, setCaptureGroup] = useState("");
   const [busy, setBusy] = useState(false);
   const [lastScanned, setLastScanned] = useState<Date>();
+  const notifiedVacancyUrl = useRef<string>("");
+  const sendToast = (
+    msg: string,
+    kind: "success" | "warning" | "error" | "info" = "success",
+    subtitle?: string,
+  ) => {
+    if (!embedded) return;
+    window.parent.postMessage(
+      { type: "AVARI_TOAST", message: msg, kind, subtitle },
+      "*",
+    );
+  };
+  const notify = (
+    msg: string,
+    subtitle = "Все изменения сохранены",
+    kind: "success" | "warning" | "error" | "info" = "success",
+  ) => {
+    if (!embedded) setNotice(msg);
+    sendToast(msg, kind, subtitle);
+  };
+  const notifyError = (err: unknown) => {
+    setError(err);
+    if (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      sendToast(msg, "error", "Ошибка операции");
+    }
+  };
   const setForm = (value: FormDraft | undefined) => {
     try {
       if (draftKey.current) {
@@ -107,7 +141,7 @@ function Popup() {
         else localStorage.removeItem(draftKey.current);
       }
     } catch {
-      setError(new Error("Не удалось сохранить черновик на устройстве"));
+      notifyError(new Error("Не удалось сохранить черновик на устройстве"));
     }
     updateForm(value);
   };
@@ -207,6 +241,23 @@ function Popup() {
           : undefined,
       );
       setLastScanned(new Date());
+
+      // Notify if an existing saved vacancy was detected on the current page
+      if (page.vacancy?.url && existing) {
+        const canonicalUrl =
+          jobIdentity(page.vacancy.url)?.url || page.vacancy.url;
+        if (notifiedVacancyUrl.current !== canonicalUrl) {
+          notifiedVacancyUrl.current = canonicalUrl;
+          const stageName = stages[existing.stage] || existing.stage;
+          sendToast(
+            "Вакансия уже в журнале",
+            "info",
+            `Компания: ${existing.company} · Этап: ${stageName}`,
+          );
+        }
+      } else if (!page.vacancy) {
+        notifiedVacancyUrl.current = "";
+      }
     } catch (e) {
       setError(e);
       if (e instanceof APIError && e.status === 401) setUser(undefined);
@@ -252,9 +303,9 @@ function Popup() {
       "*",
     );
   }, [collapsed]);
-  const saved = () => {
+  const saved = (msg?: unknown) => {
     setForm(undefined);
-    setNotice("Сохранено в журнале");
+    notify(typeof msg === "string" ? msg : "Сохранено в журнале");
     void reload();
   };
   const quickSave = async (stage = "saved") => {
@@ -275,9 +326,9 @@ function Popup() {
         },
         crypto.randomUUID(),
       );
-      saved();
+      saved(stage === "applied" ? "Отклик сохранён" : "Вакансия сохранена");
     } catch (e) {
-      setError(e);
+      notifyError(e);
     } finally {
       setBusy(false);
     }
@@ -295,9 +346,9 @@ function Popup() {
             ? dateToday(user?.timezone)
             : detail.application.appliedDate,
       });
-      saved();
+      saved("Этап успешно обновлён");
     } catch (e) {
-      setError(e);
+      notifyError(e);
     } finally {
       setBusy(false);
     }
@@ -311,7 +362,7 @@ function Popup() {
       setUser(undefined);
       setData({ applications: [], fields: [], proposals: [], tasks: [] });
     } catch (e) {
-      setError(e);
+      notifyError(e);
     }
   };
   if (embedded && collapsed) {
@@ -513,8 +564,42 @@ function Popup() {
           )}
         </div>
       </header>
+      {user?.status === "active" && (
+        <nav className="popup-nav" aria-label="Разделы плагина">
+          {(
+            [
+              ["page", "Страница", BriefcaseBusiness],
+              ["applications", "Вакансии", Bookmark],
+              ["tasks", "Задачи", CalendarDays],
+              ["changes", "Изменения", RefreshCw],
+            ] as const
+          ).map(([value, label, Icon]) => (
+            <button
+              key={value}
+              type="button"
+              aria-current={!setup && section === value ? "page" : undefined}
+              disabled={!!form}
+              onClick={() => {
+                setSection(value);
+                setSetup(false);
+              }}
+            >
+              <Icon size={16} />
+              <span>{label}</span>
+            </button>
+          ))}
+        </nav>
+      )}
+      {form && !setup && user?.status === "active" && (
+        <button
+          className="text-button popup-back"
+          onClick={() => setForm(undefined)}
+        >
+          <ArrowLeft size={16} /> Назад
+        </button>
+      )}
       <ErrorBox error={error} retry={() => reload()} />
-      {notice && (
+      {!embedded && notice && (
         <div className="success notice" role="status">
           <CheckCheck size={20} />
           <span>
@@ -543,7 +628,7 @@ function Popup() {
                   ? user.status
                   : form
                     ? form.kind
-                    : "journal"
+                    : section
         }
       >
         {setup ? (
@@ -552,13 +637,28 @@ function Popup() {
             onCancel={server ? () => setSetup(false) : undefined}
             onSaved={() => {
               setSetup(false);
+              sendToast(
+                "Адрес сервера сохранён",
+                "success",
+                "Подключение установлено",
+              );
               void reload();
             }}
           />
         ) : loading ? (
           <Loading />
         ) : !user ? (
-          <Login server={server} onLogin={() => reload()} />
+          <Login
+            server={server}
+            onLogin={() => {
+              sendToast(
+                "Вход выполнен успешно",
+                "success",
+                "Сессия активирована",
+              );
+              void reload();
+            }}
+          />
         ) : user.status !== "active" ? (
           <>
             <h1>
@@ -576,26 +676,168 @@ function Popup() {
               Проверить статус
             </button>
           </>
-        ) : embedded ? (
+        ) : !form && section === "applications" ? (
+          <>
+            <div className="section-heading">
+              <h2>Вакансии · {data.applications.length}</h2>
+              <button
+                onClick={() =>
+                  setForm({
+                    kind: "application",
+                    value: {
+                      ...emptyApplication(),
+                      savedDate: dateToday(user.timezone),
+                    },
+                  })
+                }
+              >
+                <Plus size={16} /> Добавить
+              </button>
+            </div>
+            {data.applications.length ? (
+              data.applications.map((application) => (
+                <article
+                  className="vacancy-card journal-item"
+                  key={application.id}
+                >
+                  <h3>{application.company}</h3>
+                  <p>{application.position}</p>
+                  <div className="detail-badges">
+                    <Badge value={application.stage} />
+                    <Badge value={application.state} kind="state" />
+                  </div>
+                  <div className="actions">
+                    <button
+                      onClick={() =>
+                        setForm({ kind: "application", value: application })
+                      }
+                    >
+                      <Pencil size={15} /> Редактировать
+                    </button>
+                    <a
+                      href={server + "/applications/" + application.id}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Подробнее <ArrowUpRight size={15} />
+                    </a>
+                  </div>
+                </article>
+              ))
+            ) : (
+              <Empty title="Вакансий пока нет">
+                Сохраните вакансию со страницы или добавьте вручную.
+              </Empty>
+            )}
+          </>
+        ) : !form && section === "tasks" ? (
+          <>
+            <div className="section-heading">
+              <h2>Задачи</h2>
+              <button
+                onClick={() =>
+                  setForm({
+                    kind: "task",
+                    value: { date: dateToday(user.timezone) },
+                  })
+                }
+              >
+                <Plus size={16} /> Добавить
+              </button>
+            </div>
+            {data.tasks.some((task) => task.state === "open") ? (
+              <TaskList
+                tasks={data.tasks.filter((task) => task.state === "open")}
+                applications={data.applications}
+                api={api}
+                onChanged={(updated) => {
+                  if (updated) {
+                    if (updated.state === "done") {
+                      sendToast("Задача выполнена", "success", updated.title);
+                    } else {
+                      sendToast(
+                        "Задача возвращена в работу",
+                        "info",
+                        updated.title,
+                      );
+                    }
+                  }
+                  void reload();
+                }}
+                onEdit={(task) => setForm({ kind: "task", value: task })}
+              />
+            ) : (
+              <Empty title="Открытых задач нет">
+                Здесь будут ваши следующие действия и интервью.
+              </Empty>
+            )}
+          </>
+        ) : !form && section === "changes" ? (
+          <>
+            <h2>Изменения · {pending.length}</h2>
+            {pending.length ? (
+              pending.map((proposal) => (
+                <ProposalCard
+                  key={proposal.id}
+                  proposal={proposal}
+                  application={data.applications.find(
+                    (application) => application.id === proposal.applicationId,
+                  )}
+                  api={api}
+                  onResolved={(action) => {
+                    if (action === "dismiss") {
+                      sendToast(
+                        "Предложение отклонено",
+                        "info",
+                        "Изменения не применены",
+                      );
+                    } else {
+                      sendToast(
+                        "Изменения применены",
+                        "success",
+                        "Данные вакансии обновлены",
+                      );
+                    }
+                    void reload();
+                  }}
+                />
+              ))
+            ) : (
+              <Empty title="Новых изменений нет">
+                Все предложения обработаны.
+              </Empty>
+            )}
+            <button
+              onClick={() => {
+                sendToast(
+                  "Данные актуальны",
+                  "info",
+                  "Проверено последнее состояние",
+                );
+                void reload();
+              }}
+            >
+              <RefreshCw size={16} /> Обновить
+            </button>
+          </>
+        ) : embedded && !form ? (
           <section className="vacancy-card mini-save">
             {detail ? (
               <>
                 <div className="eyebrow">Уже сохранена</div>
                 <h2>{detail.application.company}</h2>
                 <p>{detail.application.position}</p>
-                <Badge value={detail.application.stage} />
+                <div className="detail-badges">
+                  <Badge value={detail.application.stage} />
+                  <Badge value={detail.application.state} kind="state" />
+                </div>
                 <FieldInput label="Этап">
-                  <select
+                  <Select
                     value={detail.application.stage}
                     disabled={busy}
-                    onChange={(e) => void changeStage(e.target.value)}
-                  >
-                    {Object.entries(stages).map(([value, label]) => (
-                      <option key={value} value={value}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(value) => void changeStage(value)}
+                    items={stages}
+                  />
                 </FieldInput>
               </>
             ) : snapshot.vacancy ? (
@@ -697,13 +939,16 @@ function Popup() {
                 groupOptions={Array.from(
                   new Set(data.applications.flatMap((a) => a.groups ?? [])),
                 ).sort((a, b) => a.localeCompare(b, "ru"))}
+                tagOptions={Array.from(
+                  new Set(data.applications.flatMap((a) => a.tags ?? [])),
+                ).sort((a, b) => a.localeCompare(b, "ru"))}
                 initial={form.value as Application}
                 fields={data.fields}
                 onDraftChange={(value) =>
                   setForm({ kind: "application", value })
                 }
                 api={api}
-                onSaved={saved}
+                onSaved={() => saved()}
                 onCancel={() => setForm(undefined)}
               />
             </>
@@ -715,7 +960,7 @@ function Popup() {
                 applications={data.applications}
                 onDraftChange={(value) => setForm({ kind: "task", value })}
                 api={api}
-                onSaved={saved}
+                onSaved={() => saved()}
                 onCancel={() => setForm(undefined)}
               />
             </>
@@ -727,7 +972,7 @@ function Popup() {
                 draftText={form.text}
                 onDraftChange={(text) => setForm({ ...form, text })}
                 api={api}
-                onSaved={saved}
+                onSaved={() => saved()}
                 onCancel={() => setForm(undefined)}
               />
             </>
@@ -776,18 +1021,14 @@ function Popup() {
                     key={detail.application.stage}
                     value={detail.application.stage}
                   />
+                  <Badge value={detail.application.state} kind="state" />
                   <FieldInput label="Быстрая смена этапа">
-                    <select
+                    <Select
                       value={detail.application.stage}
                       disabled={busy}
-                      onChange={(e) => void changeStage(e.target.value)}
-                    >
-                      {Object.entries(stages).map(([value, label]) => (
-                        <option key={value} value={value}>
-                          {label}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(value) => void changeStage(value)}
+                      items={stages}
+                    />
                   </FieldInput>
                   <div className="actions detail-actions">
                     <button
@@ -829,7 +1070,24 @@ function Popup() {
                         tasks={detail.tasks.filter((t) => t.state === "open")}
                         applications={data.applications}
                         api={api}
-                        onChanged={() => reload()}
+                        onChanged={(updated) => {
+                          if (updated) {
+                            if (updated.state === "done") {
+                              sendToast(
+                                "Задача выполнена",
+                                "success",
+                                updated.title,
+                              );
+                            } else {
+                              sendToast(
+                                "Задача возвращена в работу",
+                                "info",
+                                updated.title,
+                              );
+                            }
+                          }
+                          void reload();
+                        }}
                         onEdit={(t) => setForm({ kind: "task", value: t })}
                       />
                     </>
@@ -982,7 +1240,22 @@ function Popup() {
                       (a) => a.id === p.applicationId,
                     )}
                     api={api}
-                    onResolved={() => reload()}
+                    onResolved={(action) => {
+                      if (action === "dismiss") {
+                        sendToast(
+                          "Предложение отклонено",
+                          "info",
+                          "Изменения не применены",
+                        );
+                      } else {
+                        sendToast(
+                          "Изменения применены",
+                          "success",
+                          "Данные вакансии обновлены",
+                        );
+                      }
+                      void reload();
+                    }}
                   />
                 ))}
               </>
@@ -1038,7 +1311,7 @@ function Popup() {
           target="_blank"
           rel="noopener noreferrer"
         >
-          <span>Открыть журнал</span> <ArrowUpRight size={16} />
+          <span>Открыть полный журнал</span> <ArrowUpRight size={16} />
         </a>
       )}
     </main>
@@ -1063,6 +1336,7 @@ function ServerSetup({
   return (
     <form
       className="form server-form"
+      onKeyDown={handleFormSubmitShortcut}
       onSubmit={async (e) => {
         e.preventDefault();
         setBusy(true);
@@ -1094,6 +1368,7 @@ function ServerSetup({
       </FieldInput>
       <button className="primary" disabled={busy}>
         Подключить
+        <SubmitShortcutHint />
       </button>
       {onCancel && (
         <button type="button" disabled={busy} onClick={onCancel}>
@@ -1114,6 +1389,7 @@ function Login({ server, onLogin }: { server: string; onLogin: () => void }) {
   return (
     <form
       className="form login-form"
+      onKeyDown={handleFormSubmitShortcut}
       onSubmit={async (e: FormEvent) => {
         e.preventDefault();
         setBusy(true);
@@ -1195,6 +1471,7 @@ function Login({ server, onLogin }: { server: string; onLogin: () => void }) {
       )}
       <button className="primary" disabled={busy}>
         Войти <ArrowUpRight size={17} />
+        <SubmitShortcutHint />
       </button>
       <a
         className="registration-link"

@@ -16,13 +16,23 @@ describe("exportApplicationsToCSV", () => {
         stage: "interview",
         state: "active",
         outcome: "",
-        salary: { min: 300000, max: 400000, currency: "RUB", period: "month", tax: "net" },
+        salary: {
+          min: 300000,
+          max: 400000,
+          currency: "RUB",
+          period: "month",
+          tax: "net",
+        },
         location: "Москва",
         workFormat: "Гибрид",
         recruiter: "Анна (@anna_recruiter)",
         externalStatus: "invited",
-        groups: ["Golang", "React"],
-        custom: { "field-rating": 5, "field-notes": "Было приятное общение\nЖдем фидбек" },
+        groups: ["Golang"],
+        tags: ["React", "Remote"],
+        custom: {
+          "field-rating": 5,
+          "field-notes": "Было приятное общение\nЖдем фидбек",
+        },
         version: 1,
         createdAt: "2026-10-10T12:00:00Z",
         updatedAt: "2026-10-11T12:00:00Z",
@@ -30,8 +40,20 @@ describe("exportApplicationsToCSV", () => {
     ];
 
     const fields: Field[] = [
-      { id: "field-rating", name: "Оценка", type: "number", options: [], role: "" },
-      { id: "field-notes", name: "Заметки о процессе", type: "text", options: [], role: "" },
+      {
+        id: "field-rating",
+        name: "Оценка",
+        type: "number",
+        options: [],
+        role: "",
+      },
+      {
+        id: "field-notes",
+        name: "Заметки о процессе",
+        type: "text",
+        options: [],
+        role: "",
+      },
     ];
 
     const tasks: Task[] = [
@@ -71,7 +93,9 @@ describe("exportApplicationsToCSV", () => {
     // External status readable
     expect(lines[1]).toContain("Приглашение");
     // Groups formatted
-    expect(lines[1]).toContain("Golang; React");
+    expect(lines[1]).toContain("Golang");
+    // Tags formatted
+    expect(lines[1]).toContain("React; Remote");
     // Next task
     expect(lines[1]).toContain("Техническое интервью");
     expect(lines[1]).toContain("2026-10-15 15:00");

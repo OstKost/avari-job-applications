@@ -105,7 +105,7 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "same-origin")
 		w.Header().Set("X-Frame-Options", "DENY")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' https://www.googletagmanager.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://www.gravatar.com; connect-src 'self' https://www.google-analytics.com https://region1.google-analytics.com; frame-ancestors 'none'")
 		if strings.HasPrefix(r.URL.Path, "/api/") {
 			w.Header().Set("Cache-Control", "no-store")
 		}
@@ -305,7 +305,7 @@ func (s *Server) static(w http.ResponseWriter, r *http.Request) {
 		}
 		name = "index.html"
 	}
-	if name == "index.html" || name == "release.json" {
+	if name == "index.html" || name == "release.json" || name == "privacy.html" {
 		w.Header().Set("Cache-Control", "no-cache")
 	}
 	raw, e := fs.ReadFile(s.Assets, name)

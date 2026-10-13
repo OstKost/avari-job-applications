@@ -12,8 +12,8 @@ export type Session = components["schemas"]["Session"];
 export type Salary = components["schemas"]["Salary"];
 export type Application = Omit<
   components["schemas"]["Application"],
-  "groups"
-> & { groups?: string[] };
+  "groups" | "tags"
+> & { groups?: string[]; tags?: string[] };
 export type Task = components["schemas"]["Task"];
 export type CalendarSubscription =
   components["schemas"]["CalendarSubscription"];
@@ -61,7 +61,8 @@ export const externalStatuses: Record<string, string> = {
   unknown: "Неизвестно",
 };
 export const fieldLabels: Record<string, string> = {
-  groups: "Группы",
+  groups: "Группа",
+  tags: "Теги",
   company: "Компания",
   position: "Позиция",
   url: "Ссылка",
@@ -162,6 +163,7 @@ export function displayValue(
   )
     return dateLabel(value);
   if (typeof value === "boolean") return value ? "Да" : "Нет";
+  if (Array.isArray(value)) return value.length ? value.join(", ") : "—";
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
 }
@@ -286,6 +288,15 @@ export function companyColorIndex(name: string, total = 16): number {
     hash = (hash * 31 + normalized.charCodeAt(i)) >>> 0;
   }
   return hash % total;
+}
+
+/** Stable palette index independent of a tag's case or display prefix. */
+export function tagColorIndex(tag: string): number {
+  return companyColorIndex(tag.trim().replace(/^#+/, "").normalize("NFC"), 16);
+}
+
+export function tagLabel(tag: string): string {
+  return "#" + tag.trim().replace(/^#+/, "");
 }
 
 export function companyInitials(name: string): string {

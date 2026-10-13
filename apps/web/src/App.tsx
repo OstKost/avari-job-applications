@@ -1,4 +1,9 @@
 import {
+  FilterPresence,
+  FilterModalMotion,
+  TableRowsMotion,
+} from "./FilterMotion";
+import {
   createContext,
   useContext,
   useState,
@@ -19,6 +24,7 @@ import {
   useLocation,
 } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { initGoogleAnalytics, trackPageView } from "./analytics";
 import {
   CalendarDays,
   BriefcaseBusiness,
@@ -40,8 +46,10 @@ import {
   ChevronDown,
   ListFilter,
   FolderClosed,
-  Rows3,
+  LayoutGrid,
   PanelRight,
+  PanelLeftClose,
+  PanelLeftOpen,
   X,
   Clock3,
   Target,
@@ -54,6 +62,13 @@ import {
   Puzzle,
   User as UserIcon,
   Sliders,
+  FolderKanban,
+  Check,
+  Layers,
+  Tag,
+  ShieldCheck,
+  Compass,
+  RotateCcw,
 } from "lucide-react";
 import {
   createAPI,
@@ -79,6 +94,8 @@ import {
   fieldLabels,
   jobSite,
   jobSitesLabel,
+  tagColorIndex,
+  tagLabel,
   pluralTasks,
   pluralApplications,
   exportApplicationsToCSV,
@@ -100,6 +117,8 @@ import {
   Select,
   CompanyAvatar,
   UserAvatar,
+  handleFormSubmitShortcut,
+  SubmitShortcutHint,
 } from "@avari/shared/ui";
 import { PageTransition } from "./PageTransition";
 
@@ -127,20 +146,120 @@ type Actions = {
 };
 const Context = createContext<Actions>(null!);
 const useApp = () => useContext(Context);
-function ScrollTop() {
+function PageTracking() {
   const { pathname } = useLocation();
   useEffect(() => {
     window.scrollTo(0, 0);
+
+    let title = "Avari.Jobs — журнал откликов на вакансии";
+    if (pathname === "/calendar") {
+      title = "Календарь — Avari.Jobs";
+    } else if (pathname === "/applications") {
+      title = "Отклики — Avari.Jobs";
+    } else if (pathname.startsWith("/applications/")) {
+      title = "Детали отклика — Avari.Jobs";
+    } else if (pathname === "/proposals") {
+      title = "Предложения расширения — Avari.Jobs";
+    } else if (pathname === "/settings") {
+      title = "Настройки — Avari.Jobs";
+    } else if (pathname === "/extension") {
+      title = "Расширение Avari.Jobs для Chrome";
+    } else if (pathname === "/privacy") {
+      title = "Конфиденциальность — Avari.Jobs";
+    }
+    document.title = title;
+    trackPageView(pathname, title);
   }, [pathname]);
   return null;
 }
 export default function App() {
-  const publicPath = window.location.pathname.replace(/\/+$/, "");
-  if (publicPath === "/extension" || publicPath === "/privacy") {
-    return <PublicPage privacy={publicPath === "/privacy"} />;
+  const { pathname } = useLocation();
+
+  useEffect(() => {
+    initGoogleAnalytics();
+  }, []);
+
+  if (pathname === "/privacy") {
+    return (
+      <>
+        <PageTracking />
+        <PublicPage privacy={true} />
+      </>
+    );
   }
-  return <AuthenticatedApp />;
+
+  if (pathname === "/extension") {
+    return (
+      <>
+        <PageTracking />
+        <PublicPage privacy={false} />
+      </>
+    );
+  }
+
+  return (
+    <>
+      <PageTracking />
+      <AuthenticatedApp />
+    </>
+  );
 }
+
+function NotFoundPage({
+  insideWorkspace = false,
+}: {
+  insideWorkspace?: boolean;
+}) {
+  const navigate = useNavigate();
+
+  return (
+    <div
+      className={`not-found-page ${insideWorkspace ? "inside-workspace" : "auth-page"}`}
+    >
+      <section className="not-found-card">
+        <div className="not-found-glitch-badge">
+          <Compass size={14} />
+          <span>Код 404 • Ошибка навигации</span>
+        </div>
+        <h1 className="not-found-code">404</h1>
+        <h2 className="not-found-title">Страница не найдена</h2>
+        <p className="not-found-desc">
+          Возможно, этот раздел был перемещён, удалён или в адресе допущена
+          опечатка. Проверьте правильность ссылки или вернитесь в журнал.
+        </p>
+        <div className="not-found-actions">
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => {
+              if (window.history.length > 1) {
+                navigate(-1);
+              } else {
+                navigate("/");
+              }
+            }}
+          >
+            <ArrowLeft size={16} />
+            Назад
+          </button>
+          <Link to="/calendar" className="primary">
+            <CalendarDays size={16} />
+            Календарь
+          </Link>
+          <Link to="/applications" className="btn-secondary">
+            <BriefcaseBusiness size={16} />
+            Отклики
+          </Link>
+          <Link to="/" className="btn-secondary">
+            <LayoutDashboard size={16} />
+            Дашборд
+          </Link>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function PublicPage({ privacy }: { privacy: boolean }) {
   const [version, setVersion] = useState("");
   const chromeStore = import.meta.env.VITE_CHROME_STORE_URL || "";
@@ -164,10 +283,10 @@ function PublicPage({ privacy }: { privacy: boolean }) {
             </p>
             <p>
               Расширение читает открытую вами страницу вакансии или список
-              откликов на hh.ru, LinkedIn, Getmatch и Hirify. Оно извлекает
-              сведения о вакансиях и откликах и отправляет их только в
-              настроенный вами Avari.Jobs. Пароли, cookies и переписку площадок
-              расширение не собирает.
+              откликов на hh.ru, LinkedIn, Getmatch, Hirify, Geekjob и Habr
+              Career. Оно извлекает сведения о вакансиях и откликах и отправляет
+              их только в настроенный вами Avari.Jobs. Пароли, cookies и
+              переписку площадок расширение не собирает.
             </p>
             <p>
               Токен входа расширения хранится локально в Chrome. Для работы на
@@ -175,6 +294,15 @@ function PublicPage({ privacy }: { privacy: boolean }) {
               другого сервера разрешение запрашивается отдельно; системные
               уведомления включаются отдельно. Данные журнала не передаются
               рекламным сервисам.
+            </p>
+            <p>
+              При включённой Google Analytics сайт передаёт Google сведения о
+              посещениях страниц, браузере и устройстве. Расширение не содержит
+              Google Analytics. Полная политика:{" "}
+              <a href="/privacy.html">
+                Политика конфиденциальности / Privacy Policy
+              </a>
+              .
             </p>
             <p>
               Удалить записи можно в приложении, а для удаления аккаунта и
@@ -269,12 +397,11 @@ function AuthenticatedApp() {
 function Brand() {
   return (
     <div className="brand">
-      <img
-        className="brand-mark brand-logo"
-        src="/brand/avari-jobs-logo.png"
-        alt=""
-      />
-      <span>
+      <div className="brand-mark brand-logo" aria-hidden="true">
+        <img src="/brand/avari-jobs-logo.png" alt="" />
+        <div className="brand-water" />
+      </div>
+      <span className="brand-name" data-text="Avari.Jobs">
         Avari<span className="primary-text">.Jobs</span>
       </span>
     </div>
@@ -366,6 +493,7 @@ function Auth({ onLogin }: { onLogin: (u: User) => void }) {
           {success && <div className="success notice">{success}</div>}
           <form
             className="form"
+            onKeyDown={handleFormSubmitShortcut}
             onSubmit={async (e) => {
               e.preventDefault();
               setError(undefined);
@@ -477,6 +605,7 @@ function Auth({ onLogin }: { onLogin: (u: User) => void }) {
                     : mode === "register"
                       ? "Создать аккаунт"
                       : "Запросить сброс пароля"}
+                <SubmitShortcutHint />
               </button>
             </div>
           </form>
@@ -569,6 +698,26 @@ function Workspace({ user }: { user: User }) {
     value?: Application | Partial<Task> | Note | string;
   }>();
   const [notice, setNotice] = useState("");
+  const [confirmLogout, setConfirmLogout] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem("avari-sidebar-collapsed") === "true";
+    } catch {
+      return false;
+    }
+  });
+  const toggleSidebar = () => {
+    setSidebarCollapsed((collapsed) => {
+      const next = !collapsed;
+      try {
+        localStorage.setItem("avari-sidebar-collapsed", String(next));
+      } catch {
+        /* Storage may be unavailable. */
+      }
+      return next;
+    });
+  };
   const query = useQuery({
     queryKey: ["data"],
     queryFn: async () => {
@@ -605,8 +754,12 @@ function Workspace({ user }: { user: User }) {
   }, [notice, form]);
   const pending = data.proposals.filter((p) => p.status === "pending");
   const handleLogout = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
     try {
       await api("/auth/logout", "POST", {});
+    } catch {
+      /* End the local session even if the server cannot be reached. */
     } finally {
       clearSession(client);
     }
@@ -615,7 +768,9 @@ function Workspace({ user }: { user: User }) {
     user,
     data,
     refresh,
-    logout: handleLogout,
+    logout: async () => {
+      setConfirmLogout(true);
+    },
     editApplication: (a) =>
       setForm({
         kind: "application",
@@ -633,12 +788,17 @@ function Workspace({ user }: { user: User }) {
   };
   return (
     <Context.Provider value={context}>
-      <ScrollTop />
-      <div className="app-shell">
+      <div
+        className={`app-shell${sidebarCollapsed ? " sidebar-collapsed" : ""}`}
+      >
         <aside className="sidebar">
           <Brand />
-          <div className="brand-caption">Ваш следующий карьерный шаг</div>
-          <nav aria-label="Основное меню">
+          <div className="brand-caption">
+            Ваш следующий
+            <br />
+            карьерный шаг
+          </div>
+          <nav id="workspace-navigation" aria-label="Основное меню">
             {[
               {
                 title: "Рабочее пространство",
@@ -667,37 +827,93 @@ function Workspace({ user }: { user: User }) {
               <div className="nav-section" key={title}>
                 <div className="nav-heading">{title}</div>
                 {links.map(({ path, label, icon: Icon }) => (
-                  <NavLink key={path} to={path} end={path === "/"}>
-                    <Icon size={18} />
-                    <span>{label}</span>
-                    {path === "/proposals" && pending.length > 0 && (
-                      <span className="nav-count">{pending.length}</span>
-                    )}
-                  </NavLink>
+                  <RowActionHint
+                    key={path}
+                    label={label}
+                    placement="right"
+                    className="sidebar-nav-hint"
+                    enabled={sidebarCollapsed}
+                  >
+                    <NavLink to={path} end={path === "/"} aria-label={label}>
+                      <Icon size={18} />
+                      <span>{label}</span>
+                      {path === "/proposals" && pending.length > 0 && (
+                        <span className="nav-count">{pending.length}</span>
+                      )}
+                    </NavLink>
+                  </RowActionHint>
                 ))}
               </div>
             ))}
+            <div className="sidebar-meta-section">
+              <RowActionHint
+                label="Конфиденциальность"
+                placement="right"
+                className="sidebar-nav-hint"
+                enabled={sidebarCollapsed}
+              >
+                <Link
+                  to="/privacy"
+                  className="sidebar-privacy-link"
+                  aria-label="Конфиденциальность"
+                >
+                  <ShieldCheck size={14} />
+                  <span>Конфиденциальность</span>
+                </Link>
+              </RowActionHint>
+            </div>
           </nav>
           <div className="sidebar-footer">
-            <Link
-              to="/settings"
-              className="sidebar-account"
-              title={`Настройки аккаунта (${user.email})`}
+            <RowActionHint
+              label={`Настройки аккаунта (${user.email})`}
+              placement="right"
+              enabled={sidebarCollapsed}
             >
-              <UserAvatar email={user.email} size={32} />
-              <span className="account-label">{user.email}</span>
-            </Link>
-            <div className="sidebar-footer-actions">
-              <ThemeButton />
-              <button
-                type="button"
-                className="icon-button text-button"
-                title="Выйти из аккаунта"
-                aria-label="Выйти из аккаунта"
-                onClick={handleLogout}
+              <Link
+                to="/settings"
+                className="sidebar-account"
+                aria-label={`Настройки аккаунта (${user.email})`}
               >
-                <LogOut size={15} />
-              </button>
+                <UserAvatar email={user.email} size={32} />
+                <span className="account-label">{user.email}</span>
+              </Link>
+            </RowActionHint>
+            <div className="sidebar-footer-actions">
+              <RowActionHint label="Переключить тему" placement="right">
+                <ThemeButton />
+              </RowActionHint>
+              <RowActionHint label="Выйти из аккаунта" placement="right">
+                <button
+                  type="button"
+                  className="icon-button text-button"
+                  aria-label="Выйти из аккаунта"
+                  onClick={() => setConfirmLogout(true)}
+                >
+                  <LogOut size={15} />
+                </button>
+              </RowActionHint>
+              <RowActionHint
+                label={sidebarCollapsed ? "Развернуть меню" : "Свернуть меню"}
+                placement="right"
+                className="sidebar-toggle-hint"
+              >
+                <button
+                  type="button"
+                  className="icon-button sidebar-toggle"
+                  onClick={toggleSidebar}
+                  aria-label={
+                    sidebarCollapsed ? "Развернуть меню" : "Свернуть меню"
+                  }
+                  aria-expanded={!sidebarCollapsed}
+                  aria-controls="workspace-navigation"
+                >
+                  {sidebarCollapsed ? (
+                    <PanelLeftOpen size={18} />
+                  ) : (
+                    <PanelLeftClose size={18} />
+                  )}
+                </button>
+              </RowActionHint>
             </div>
           </div>
         </aside>
@@ -738,13 +954,16 @@ function Workspace({ user }: { user: User }) {
                   <Route path="/proposals" element={<Proposals />} />
                   <Route path="/settings" element={<SettingsPage />} />
                   <Route
+                    path="/privacy"
+                    element={<PublicPage privacy={true} />}
+                  />
+                  <Route
+                    path="/extension"
+                    element={<PublicPage privacy={false} />}
+                  />
+                  <Route
                     path="*"
-                    element={
-                      <Empty
-                        title="Страница не найдена"
-                        action={<Link to="/calendar">Открыть календарь</Link>}
-                      />
-                    }
+                    element={<NotFoundPage insideWorkspace={true} />}
                   />
                 </Routes>
               )}
@@ -752,6 +971,41 @@ function Workspace({ user }: { user: User }) {
           )}
         </main>
       </div>
+      {confirmLogout && (
+        <Modal
+          title="Выйти из аккаунта?"
+          className="logout-modal"
+          onClose={() => {
+            if (!loggingOut) setConfirmLogout(false);
+          }}
+        >
+          <div className="logout-water">
+            <span className="logout-symbol" aria-hidden="true">
+              <LogOut size={28} />
+            </span>
+            <p>
+              Ваши отклики и планы сохранены. Вы сможете продолжить после входа.
+            </p>
+          </div>
+          <div className="actions logout-actions">
+            <button
+              autoFocus
+              disabled={loggingOut}
+              onClick={() => setConfirmLogout(false)}
+            >
+              Остаться
+            </button>
+            <button
+              className="primary"
+              disabled={loggingOut}
+              onClick={handleLogout}
+            >
+              <LogOut size={16} />
+              {loggingOut ? "Выходим…" : "Выйти"}
+            </button>
+          </div>
+        </Modal>
+      )}
       {form && (
         <Modal
           title={
@@ -771,6 +1025,9 @@ function Workspace({ user }: { user: User }) {
             <ApplicationForm
               groupOptions={Array.from(
                 new Set(data.applications.flatMap((a) => a.groups ?? [])),
+              ).sort((a, b) => a.localeCompare(b, "ru"))}
+              tagOptions={Array.from(
+                new Set(data.applications.flatMap((a) => a.tags ?? [])),
               ).sort((a, b) => a.localeCompare(b, "ru"))}
               initial={form.value as Application}
               fields={data.fields}
@@ -905,7 +1162,10 @@ function Dashboard() {
         title="Главная"
         subtitle="Всё важное для вашего следующего шага"
       >
-        <button className="primary" onClick={() => editApplication()}>
+        <button
+          className="primary water-interaction"
+          onClick={() => editApplication()}
+        >
           <Plus size={17} />
           Добавить вакансию
         </button>
@@ -967,11 +1227,19 @@ function Dashboard() {
             <small>Встречи и задачи</small>
           </Link>
           <Link to="/proposals">
-            <GitCompareArrows />
+            <div className="quick-link-top">
+              <GitCompareArrows />
+              {pending > 0 && (
+                <span
+                  className="quick-link-badge"
+                  title={`${pending} ожидают проверки`}
+                >
+                  {pending}
+                </span>
+              )}
+            </div>
             <strong>Предложения</strong>
-            <small>
-              {pending ? `${pending} ожидают проверки` : "Всё актуально"}
-            </small>
+            <small>{pending ? "Ожидают проверки" : "Всё актуально"}</small>
           </Link>
           <button onClick={() => editTask()}>
             <Plus />
@@ -1363,13 +1631,19 @@ function Calendar() {
 function RowActionHint({
   label,
   children,
+  placement = "top",
+  className = "",
+  enabled = true,
 }: {
   label: string;
   children: ReactNode;
+  placement?: "top" | "right";
+  className?: string;
+  enabled?: boolean;
 }) {
   const [anchor, setAnchor] = useState<DOMRect | null>(null);
   const show = (element: HTMLElement) =>
-    setAnchor(element.getBoundingClientRect());
+    enabled && setAnchor(element.getBoundingClientRect());
   useEffect(() => {
     if (!anchor) return;
     const hide = () => setAnchor(null);
@@ -1382,7 +1656,7 @@ function RowActionHint({
   }, [anchor]);
   return (
     <span
-      className="row-action-hint"
+      className={`row-action-hint ${className}`}
       onMouseEnter={(event) => show(event.currentTarget)}
       onMouseLeave={() => setAnchor(null)}
       onFocus={(event) => show(event.currentTarget)}
@@ -1392,14 +1666,22 @@ function RowActionHint({
       }}
     >
       {children}
-      {anchor &&
+      {enabled &&
+        anchor &&
         createPortal(
           <span
-            className="row-action-tooltip"
+            className={`row-action-tooltip${placement === "right" ? " sidebar-tooltip" : ""}`}
             role="tooltip"
             style={{
-              top: anchor.top - 8,
-              right: Math.max(12, window.innerWidth - anchor.right),
+              ...(placement === "right"
+                ? {
+                    top: anchor.top + anchor.height / 2,
+                    left: anchor.right + 12,
+                  }
+                : {
+                    top: anchor.top - 8,
+                    right: Math.max(12, window.innerWidth - anchor.right),
+                  }),
             }}
           >
             {label}
@@ -1410,11 +1692,345 @@ function RowActionHint({
   );
 }
 
+function GroupChipsBar({
+  selectedGroup,
+  onSelectGroup,
+  baseCount,
+  groups,
+}: {
+  selectedGroup: string;
+  onSelectGroup: (key: string) => void;
+  baseCount: number;
+  groups: { key: string; count: number; label: string }[];
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const trackRef = useRef<HTMLDivElement>(null);
+  const hideTimerRef = useRef<number | null>(null);
+
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+  const [isScrollable, setIsScrollable] = useState(false);
+  const [scrollProgress, setScrollProgress] = useState(0); // 0 to 1
+  const [thumbRatio, setThumbRatio] = useState(0.3);
+  const [showScrollbar, setShowScrollbar] = useState(false);
+
+  const resetHideTimer = () => {
+    setShowScrollbar(true);
+    if (hideTimerRef.current) {
+      window.clearTimeout(hideTimerRef.current);
+    }
+    hideTimerRef.current = window.setTimeout(() => {
+      setShowScrollbar(false);
+    }, 1000);
+  };
+
+  const handleMouseEnter = () => {
+    resetHideTimer();
+  };
+
+  const handleMouseMove = () => {
+    resetHideTimer();
+  };
+
+  const handleMouseLeave = () => {
+    resetHideTimer();
+  };
+
+  const updateScrollState = () => {
+    const el = containerRef.current;
+    if (!el) return;
+    const { scrollLeft, scrollWidth, clientWidth } = el;
+    const maxScroll = scrollWidth - clientWidth;
+
+    const hasOverflow = maxScroll > 4;
+    setIsScrollable(hasOverflow);
+    setCanScrollLeft(scrollLeft > 2);
+    setCanScrollRight(scrollLeft + clientWidth < scrollWidth - 2);
+
+    if (hasOverflow) {
+      setScrollProgress(Math.max(0, Math.min(1, scrollLeft / maxScroll)));
+      // Comfortable thumb size: between 18% and 45% of track width
+      setThumbRatio(
+        Math.max(0.18, Math.min(0.45, (clientWidth / scrollWidth) * 0.75)),
+      );
+    } else {
+      setScrollProgress(0);
+      setThumbRatio(1);
+    }
+  };
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    updateScrollState();
+
+    const handleScroll = () => {
+      updateScrollState();
+      resetHideTimer();
+    };
+    el.addEventListener("scroll", handleScroll, { passive: true });
+
+    let resizeObserver: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined") {
+      resizeObserver = new ResizeObserver(() => updateScrollState());
+      resizeObserver.observe(el);
+      for (const child of el.children) {
+        resizeObserver.observe(child);
+      }
+    }
+
+    const handleResize = () => updateScrollState();
+    window.addEventListener("resize", handleResize);
+
+    return () => {
+      el.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("resize", handleResize);
+      resizeObserver?.disconnect();
+      if (hideTimerRef.current) {
+        window.clearTimeout(hideTimerRef.current);
+      }
+    };
+  }, [groups, baseCount]);
+
+  const scrollByAmount = (direction: -1 | 1) => {
+    const el = containerRef.current;
+    if (!el) return;
+    const amount = Math.max(160, Math.floor(el.clientWidth * 0.6));
+    el.scrollBy({ left: direction * amount, behavior: "smooth" });
+    resetHideTimer();
+  };
+
+  const handleTrackClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const track = trackRef.current;
+    const el = containerRef.current;
+    if (!track || !el) return;
+    const rect = track.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const ratio = Math.max(0, Math.min(1, clickX / rect.width));
+    const maxScroll = el.scrollWidth - el.clientWidth;
+    el.scrollTo({ left: ratio * maxScroll, behavior: "smooth" });
+    resetHideTimer();
+  };
+
+  return (
+    <div
+      className="group-chips-wrapper"
+      onMouseEnter={handleMouseEnter}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+    >
+      <div className="group-chips-scroll-area">
+        <button
+          type="button"
+          className={`group-chips-arrow left ${showScrollbar && canScrollLeft ? "visible" : ""}`}
+          onClick={() => scrollByAmount(-1)}
+          tabIndex={showScrollbar && canScrollLeft ? 0 : -1}
+          aria-label="Прокрутить фильтры влево"
+        >
+          <ChevronLeft size={16} />
+        </button>
+
+        <div
+          className="group-chips"
+          ref={containerRef}
+          role="region"
+          aria-label="Фильтры групп"
+        >
+          <button
+            type="button"
+            className={!selectedGroup ? "active" : ""}
+            aria-pressed={!selectedGroup}
+            onClick={() => onSelectGroup("")}
+          >
+            <FolderClosed size={15} />
+            Все вакансии
+            <span className="count-chip">{baseCount}</span>
+          </button>
+          {groups.map(({ key, count, label }) => (
+            <button
+              key={key}
+              type="button"
+              className={selectedGroup === key ? "active" : ""}
+              aria-pressed={selectedGroup === key}
+              onClick={() => onSelectGroup(key)}
+            >
+              <FolderClosed size={15} />
+              {label}
+              <span className="count-chip">{count}</span>
+            </button>
+          ))}
+        </div>
+
+        <button
+          type="button"
+          className={`group-chips-arrow right ${showScrollbar && canScrollRight ? "visible" : ""}`}
+          onClick={() => scrollByAmount(1)}
+          tabIndex={showScrollbar && canScrollRight ? 0 : -1}
+          aria-label="Прокрутить фильтры вправо"
+        >
+          <ChevronRight size={16} />
+        </button>
+
+        {isScrollable && (
+          <div
+            className={`group-chips-custom-scrollbar ${showScrollbar ? "visible" : ""}`}
+            ref={trackRef}
+            onClick={handleTrackClick}
+          >
+            <div
+              className="group-chips-custom-thumb"
+              style={{
+                width: `${thumbRatio * 100}%`,
+                left: `${scrollProgress * (1 - thumbRatio) * 100}%`,
+              }}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+interface SpotlightDropdownOption {
+  value: string;
+  label: string;
+  icon?: typeof FolderClosed;
+}
+
+function SpotlightFilterDropdown({
+  label,
+  value,
+  onChange,
+  options,
+  emptyLabel = "Все",
+  icon: DefaultIcon,
+  ariaLabel,
+}: {
+  label?: string;
+  value: string;
+  onChange: (val: string) => void;
+  options: SpotlightDropdownOption[];
+  emptyLabel?: string;
+  icon?: typeof FolderClosed;
+  ariaLabel: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handlePointerDown = (e: MouseEvent | TouchEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("touchstart", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("touchstart", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  const selectedOpt = options.find((o) => o.value === value);
+  const displayLabel = selectedOpt ? selectedOpt.label : emptyLabel;
+  const ActiveIcon = selectedOpt?.icon || DefaultIcon;
+
+  return (
+    <div
+      className={`spotlight-dropdown-wrapper ${open ? "is-open" : ""}`}
+      ref={rootRef}
+    >
+      <button
+        type="button"
+        className={`group-dropdown-trigger ${open ? "open" : ""}`}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={ariaLabel}
+        onClick={() => setOpen((prev) => !prev)}
+      >
+        {ActiveIcon && (
+          <ActiveIcon size={15} className="dropdown-trigger-icon" />
+        )}
+        <span className="dropdown-trigger-text">{displayLabel}</span>
+        <ChevronDown
+          size={14}
+          className={`dropdown-chevron ${open ? "rotated" : ""}`}
+        />
+      </button>
+      {open && (
+        <div
+          className="group-dropdown-menu"
+          role="listbox"
+          aria-label={ariaLabel}
+        >
+          <div className="group-dropdown-list">
+            <button
+              type="button"
+              role="option"
+              aria-selected={!value}
+              className={`group-dropdown-item ${!value ? "selected" : ""}`}
+              onClick={() => {
+                onChange("");
+                setOpen(false);
+              }}
+            >
+              {DefaultIcon && (
+                <span className="item-icon-box">
+                  <DefaultIcon size={15} />
+                </span>
+              )}
+              <span className="item-label">{emptyLabel}</span>
+              {!value && <Check size={14} className="item-check" />}
+            </button>
+            {options.map((opt) => {
+              const isSelected = value === opt.value;
+              const Icon = opt.icon || DefaultIcon;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  role="option"
+                  aria-selected={isSelected}
+                  className={`group-dropdown-item ${isSelected ? "selected" : ""}`}
+                  onClick={() => {
+                    onChange(opt.value);
+                    setOpen(false);
+                  }}
+                >
+                  {Icon && (
+                    <span className="item-icon-box">
+                      <Icon size={15} />
+                    </span>
+                  )}
+                  <span className="item-label">{opt.label}</span>
+                  {isSelected && <Check size={14} className="item-check" />}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Applications() {
   const { user, data, editApplication } = useApp();
   const [vacancyGroup, setVacancyGroup] = useState("");
   const vacancyGroups = Array.from(
     new Set(data.applications.flatMap((a) => a.groups ?? [])),
+  ).sort((a, b) => a.localeCompare(b, "ru"));
+  const [vacancyTag, setVacancyTag] = useState("");
+  const vacancyTags = Array.from(
+    new Set(data.applications.flatMap((a) => a.tags ?? [])),
   ).sort((a, b) => a.localeCompare(b, "ru"));
   const [search, setSearch] = useState("");
   const [stage, setStage] = useState("");
@@ -1426,20 +2042,20 @@ function Applications() {
   const preferencesKey = "avari-table:" + user.id;
   const [preferences, setPreferences] = useState<{
     group: string;
-    roomy: boolean;
+    cards: boolean;
     statistics: boolean;
   }>(() => {
     try {
       const stored = JSON.parse(localStorage.getItem(preferencesKey) ?? "null");
       return {
-        group: ["stage", "state", "company", "priority"].includes(stored?.group)
+        group: ["stage", "state", "group", "priority"].includes(stored?.group)
           ? stored.group
           : "",
-        roomy: stored?.roomy !== false,
+        cards: stored?.cards === true,
         statistics: stored?.statistics !== false,
       };
     } catch {
-      return { group: "", roomy: true, statistics: true };
+      return { group: "", cards: false, statistics: true };
     }
   });
   const [selectedGroup, setSelectedGroup] = useState("");
@@ -1451,6 +2067,34 @@ function Applications() {
   const [exportFlyStyle, setExportFlyStyle] = useState<CSSProperties | null>(
     null,
   );
+  const [groupDropdownOpen, setGroupDropdownOpen] = useState(false);
+  const groupDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!groupDropdownOpen) return;
+    const handlePointerDown = (e: MouseEvent | TouchEvent) => {
+      if (
+        groupDropdownRef.current &&
+        !groupDropdownRef.current.contains(e.target as Node)
+      ) {
+        setGroupDropdownOpen(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setGroupDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("touchstart", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("touchstart", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [groupDropdownOpen]);
+
   useEffect(() => {
     try {
       localStorage.setItem(preferencesKey, JSON.stringify(preferences));
@@ -1493,6 +2137,25 @@ function Applications() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
   const pf = data.fields.find((f) => f.role === "priority");
+
+  const groupOptions: {
+    value: string;
+    label: string;
+    icon: typeof FolderClosed;
+  }[] = [
+    { value: "", label: "Без группировки", icon: Layers },
+    { value: "stage", label: "По этапу", icon: Target },
+    { value: "state", label: "По состоянию", icon: Clock3 },
+    { value: "group", label: "По группам", icon: FolderKanban },
+    ...(pf
+      ? [{ value: "priority", label: "По приоритету", icon: Sparkles }]
+      : []),
+  ];
+
+  const currentGroupOption =
+    groupOptions.find((opt) => opt.value === preferences.group) ??
+    groupOptions[0];
+
   const next = (id: string) =>
     sortTasks(
       data.tasks.filter((t) => t.applicationId === id && t.state === "open"),
@@ -1507,6 +2170,7 @@ function Applications() {
           (vacancyGroup === "__ungrouped"
             ? !a.groups?.length
             : a.groups?.includes(vacancyGroup))) &&
+        (!vacancyTag || a.tags?.includes(vacancyTag)) &&
         (!stage || a.stage === stage) &&
         (!state || a.state === state) &&
         (!priority || (pf && a.custom[pf.id] === priority)) &&
@@ -1523,8 +2187,8 @@ function Applications() {
             b.createdAt.localeCompare(a.createdAt),
     );
   const groupKey = (a: Application) =>
-    preferences.group === "company"
-      ? a.company
+    preferences.group === "group"
+      ? (a.groups?.[0] ?? "Без группы")
       : preferences.group === "priority"
         ? String(pf ? (a.custom[pf.id] ?? "Без приоритета") : "Без приоритета")
         : preferences.group === "state"
@@ -1552,7 +2216,13 @@ function Applications() {
       ].sort(([a], [b]) =>
         preferences.group === "stage"
           ? Object.keys(stages).indexOf(a) - Object.keys(stages).indexOf(b)
-          : a.localeCompare(b, "ru"),
+          : preferences.group === "group"
+            ? a === "Без группы"
+              ? 1
+              : b === "Без группы"
+                ? -1
+                : a.localeCompare(b, "ru")
+            : a.localeCompare(b, "ru"),
       )
     : [["", visible] as [string, Application[]]];
   const groupLabel = (key: string) =>
@@ -1569,6 +2239,7 @@ function Applications() {
     });
   const reset = () => {
     setVacancyGroup("");
+    setVacancyTag("");
     setSearch("");
     setStage("");
     setState("");
@@ -1578,12 +2249,14 @@ function Applications() {
   };
   const filterCount =
     (vacancyGroup ? 1 : 0) +
+    (vacancyTag ? 1 : 0) +
     (stage ? 1 : 0) +
     (priority ? 1 : 0) +
     (hasTask ? 1 : 0) +
     (search ? 1 : 0);
   const activeFilters = !!(
     vacancyGroup ||
+    vacancyTag ||
     search ||
     stage ||
     state ||
@@ -1608,7 +2281,11 @@ function Applications() {
             ? "Getmatch"
             : site === "hirify"
               ? "Hirify"
-              : "Вакансия";
+              : site === "geekjob"
+                ? "Geekjob"
+                : site === "habr"
+                  ? "Хабр Карьера"
+                  : "Вакансия";
 
     return (
       <tr
@@ -1616,28 +2293,47 @@ function Applications() {
         className="application-data-row"
         style={
           {
-            "--row-index": visible.findIndex((item) => item.id === a.id),
+            "--row-delay": `${Math.round(100 * (1 - Math.exp(-visible.findIndex((item) => item.id === a.id) / 3)))}ms`,
           } as CSSProperties
         }
       >
         <td>
-          <div className="company-cell">
+          <div className="company-cell company-grid">
             <CompanyAvatar name={a.company} />
-            <div>
-              <Link className="company-link" to={"/applications/" + a.id}>
-                {a.company}
-              </Link>
-              <div className="position-sub">{a.position}</div>
-              {!!a.groups?.length && (
-                <small className="row-context">{a.groups.join(" · ")}</small>
-              )}
-              <small
-                className={`row-context row-context-location ${preferences.roomy ? "is-expanded" : "is-collapsed"}`}
-              >
-                {[a.location, a.workFormat].filter(Boolean).join(" · ") ||
-                  "Локация не указана"}
-              </small>
+            <Link
+              className="company-link"
+              title={a.company}
+              to={"/applications/" + a.id}
+            >
+              {a.company}
+            </Link>
+            <div className="position-sub" title={a.position}>
+              {a.position}
             </div>
+            <span className="company-salary" title={salaryLabel(a)}>
+              {salaryLabel(a).split(" в ")[0].split(" за ")[0] || "—"}
+            </span>
+            {!!(a.groups?.length || a.tags?.length) && (
+              <div className="company-taxonomy">
+                {!!a.groups?.length && (
+                  <span title={a.groups.join(" · ")}>
+                    {a.groups.join(" · ")}
+                  </span>
+                )}
+                {!!a.tags?.length && (
+                  <span
+                    className="company-tags"
+                    title={a.tags.map(tagLabel).join(" ")}
+                  >
+                    {a.tags.map((t) => (
+                      <span className={`tag-color-${tagColorIndex(t)}`} key={t}>
+                        {tagLabel(t)}{" "}
+                      </span>
+                    ))}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         </td>
         <td>
@@ -1691,6 +2387,73 @@ function Applications() {
       </tr>
     );
   };
+  const renderCard = (a: Application) => {
+    const task = next(a.id);
+    return (
+      <Link
+        className="application-card"
+        key={a.id}
+        style={
+          {
+            "--row-delay": `${Math.round(100 * (1 - Math.exp(-visible.findIndex((item) => item.id === a.id) / 3)))}ms`,
+          } as CSSProperties
+        }
+        to={"/applications/" + a.id}
+      >
+        <header>
+          <div className="application-card-company">
+            <CompanyAvatar name={a.company} />
+            <strong title={a.company}>{a.company}</strong>
+          </div>
+          <Badge value={a.stage} />
+        </header>
+        <p className="application-card-position">{a.position}</p>
+        <div className="application-card-salary">
+          {salaryLabel(a) || "Зарплата не указана"}
+        </div>
+        <div className="application-card-location">
+          {[a.location, a.workFormat].filter(Boolean).join(" · ") ||
+            "Локация не указана"}
+        </div>
+        {!!(a.groups?.length || a.tags?.length) && (
+          <div className="company-taxonomy">
+            {!!a.groups?.length && (
+              <span title={a.groups.join(" · ")}>{a.groups.join(" · ")}</span>
+            )}
+            {!!a.tags?.length && (
+              <span
+                className="company-tags"
+                title={a.tags.map(tagLabel).join(" ")}
+              >
+                {a.tags.map((t) => (
+                  <span className={`tag-color-${tagColorIndex(t)}`} key={t}>
+                    {tagLabel(t)}{" "}
+                  </span>
+                ))}
+              </span>
+            )}
+          </div>
+        )}
+        <div className="application-card-task">
+          <small>Ближайшее действие</small>
+          <span>{task ? task.title : "Не запланировано"}</span>
+          {task && (
+            <small>
+              {dateLabel(task.date)} {task.time}
+            </small>
+          )}
+        </div>
+        <footer>
+          <Badge value={a.state} kind="state" />
+          <span>
+            {dateLabel(a.appliedDate || a.savedDate)} ·{" "}
+            {a.appliedDate ? "Отклик" : "Сохранена"}
+          </span>
+          <ArrowUpRight size={15} />
+        </footer>
+      </Link>
+    );
+  };
   return (
     <>
       <PageHeader
@@ -1699,15 +2462,17 @@ function Applications() {
       >
         <div className="table-view-buttons">
           <button
-            className={preferences.roomy ? "active icon-button" : "icon-button"}
-            aria-label="Высокие строки"
-            aria-pressed={preferences.roomy}
-            title="Высокие строки"
+            className={preferences.cards ? "active icon-button" : "icon-button"}
+            aria-label="Карточки откликов"
+            aria-pressed={preferences.cards}
+            data-tooltip={
+              preferences.cards ? "Показать таблицу" : "Показать карточки"
+            }
             onClick={() =>
-              setPreferences({ ...preferences, roomy: !preferences.roomy })
+              setPreferences({ ...preferences, cards: !preferences.cards })
             }
           >
-            <Rows3 size={17} />
+            <LayoutGrid size={17} />
           </button>
           <button
             className={
@@ -1715,7 +2480,7 @@ function Applications() {
             }
             aria-label="Статистика справа"
             aria-pressed={preferences.statistics}
-            title="Статистика справа"
+            data-tooltip="Статистика справа"
             onClick={() =>
               setPreferences({
                 ...preferences,
@@ -1729,7 +2494,7 @@ function Applications() {
             ref={exportBtnRef}
             className={`icon-button ${isExporting ? "exporting" : ""}`}
             aria-label="Экспорт в CSV"
-            title={`Экспорт в CSV (${list.length})`}
+            data-tooltip={`Экспорт в CSV (${list.length})`}
             onClick={() => {
               if (isExporting) return;
               if (exportBtnRef.current) {
@@ -1765,61 +2530,86 @@ function Applications() {
             <FileSpreadsheet size={22} />
           </div>
         )}
-        <button className="primary" onClick={() => editApplication()}>
+        <button
+          className="primary water-interaction"
+          onClick={() => editApplication()}
+        >
           <Plus size={17} />
           Добавить
         </button>
       </PageHeader>
       <div className="group-navigation" aria-label="Группы откликов">
-        <div className="group-mode">
-          <label>
-            <ListFilter size={16} />
-            <span className="sr-only">Группировка</span>
-            <select
-              aria-label="Группировка"
-              value={preferences.group}
-              onChange={(e) =>
-                setPreferences({ ...preferences, group: e.target.value })
-              }
-            >
-              <option value="">Без группировки</option>
-              <option value="stage">По этапу</option>
-              <option value="state">По состоянию</option>
-              <option value="company">По компании</option>
-              {pf && <option value="priority">По приоритету</option>}
-            </select>
-          </label>
-        </div>
-        <div className="group-chips">
+        <div className="group-mode" ref={groupDropdownRef}>
           <button
-            className={!selectedGroup ? "active" : ""}
-            aria-pressed={!selectedGroup}
-            onClick={() => {
-              setSelectedGroup("");
-              setPage(0);
-            }}
+            type="button"
+            className={`group-dropdown-trigger ${groupDropdownOpen ? "open" : ""}`}
+            aria-haspopup="listbox"
+            aria-expanded={groupDropdownOpen}
+            aria-label="Группировка"
+            onClick={() => setGroupDropdownOpen((prev) => !prev)}
           >
-            <FolderClosed size={15} />
-            Все вакансии
-            <span className="count-chip">{baseList.length}</span>
+            <currentGroupOption.icon
+              size={16}
+              className="dropdown-trigger-icon"
+            />
+            <span className="dropdown-trigger-text">
+              {currentGroupOption.label}
+            </span>
+            <ChevronDown
+              size={15}
+              className={`dropdown-chevron ${groupDropdownOpen ? "rotated" : ""}`}
+            />
           </button>
-          {[...groupCounts].map(([key, count]) => (
-            <button
-              key={key}
-              className={selectedGroup === key ? "active" : ""}
-              aria-pressed={selectedGroup === key}
-              onClick={() => {
-                setSelectedGroup(key);
-                setPage(0);
-                setCollapsed(new Set());
-              }}
+          {groupDropdownOpen && (
+            <div
+              className="group-dropdown-menu"
+              role="listbox"
+              aria-label="Выбор группировки"
             >
-              <FolderClosed size={15} />
-              {groupLabel(key)}
-              <span className="count-chip">{count}</span>
-            </button>
-          ))}
+              <div className="group-dropdown-list">
+                {groupOptions.map((opt) => {
+                  const isSelected = preferences.group === opt.value;
+                  const Icon = opt.icon;
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      role="option"
+                      aria-selected={isSelected}
+                      className={`group-dropdown-item ${isSelected ? "selected" : ""}`}
+                      onClick={() => {
+                        setPreferences({ ...preferences, group: opt.value });
+                        setGroupDropdownOpen(false);
+                      }}
+                    >
+                      <span className="item-icon-box">
+                        <Icon size={16} />
+                      </span>
+                      <span className="item-label">{opt.label}</span>
+                      {isSelected && <Check size={15} className="item-check" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
+        <GroupChipsBar
+          selectedGroup={selectedGroup}
+          onSelectGroup={(key) => {
+            setSelectedGroup(key);
+            setPage(0);
+            if (key) {
+              setCollapsed(new Set());
+            }
+          }}
+          baseCount={baseList.length}
+          groups={[...groupCounts].map(([key, count]) => ({
+            key,
+            count,
+            label: groupLabel(key),
+          }))}
+        />
       </div>
       <div
         className={
@@ -1830,7 +2620,7 @@ function Applications() {
         <section
           className={
             "application-register panel " +
-            (preferences.roomy ? "roomy-rows" : "compact-rows")
+            (preferences.cards ? "card-view compact-rows" : "compact-rows")
           }
         >
           <div className="register-tabs-row">
@@ -1913,7 +2703,7 @@ function Applications() {
                 if (e.target === e.currentTarget) setFilterModalOpen(false);
               }}
             >
-              <div className="spotlight-container">
+              <FilterModalMotion>
                 <div className="spotlight-bar">
                   <Search size={20} className="spotlight-icon" />
                   <input
@@ -1981,22 +2771,38 @@ function Applications() {
                   </button>
                 </div>
 
-                {showModalFilters && (
+                <FilterPresence show={showModalFilters} block>
                   <div className="spotlight-drawer">
                     <div className="spotlight-filters-grid">
                       <div className="spotlight-field">
-                        <label htmlFor="filter-group-select">
-                          Группа вакансий
-                        </label>
-                        <Select
-                          id="filter-group-select"
+                        <label>Группа вакансий</label>
+                        <SpotlightFilterDropdown
+                          ariaLabel="Фильтр по группе вакансий"
                           value={vacancyGroup}
                           onChange={setVacancyGroup}
-                          items={Object.fromEntries([
-                            ["__ungrouped", "Без группы"],
-                            ...vacancyGroups.map((v) => [v, v]),
-                          ])}
-                          empty="Все группы"
+                          emptyLabel="Все группы"
+                          icon={FolderKanban}
+                          options={[
+                            { value: "__ungrouped", label: "Без группы" },
+                            ...vacancyGroups.map((g) => ({
+                              value: g,
+                              label: g,
+                            })),
+                          ]}
+                        />
+                      </div>
+                      <div className="spotlight-field">
+                        <label>Тег</label>
+                        <SpotlightFilterDropdown
+                          ariaLabel="Фильтр по тегу"
+                          value={vacancyTag}
+                          onChange={setVacancyTag}
+                          emptyLabel="Все теги"
+                          icon={Tag}
+                          options={vacancyTags.map((t) => ({
+                            value: t,
+                            label: t,
+                          }))}
                         />
                       </div>
                       <div className="spotlight-field">
@@ -2011,56 +2817,63 @@ function Applications() {
                       </div>
                       {pf && (
                         <div className="spotlight-field">
-                          <label htmlFor="filter-priority-select">
-                            Приоритет
-                          </label>
-                          <Select
-                            id="filter-priority-select"
+                          <label>Приоритет</label>
+                          <SpotlightFilterDropdown
+                            ariaLabel="Фильтр по приоритету"
                             value={priority}
                             onChange={setPriority}
-                            items={Object.fromEntries(
-                              pf.options.map((v) => [v, v]),
-                            )}
-                            empty="Любой приоритет"
+                            emptyLabel="Любой приоритет"
+                            icon={Sparkles}
+                            options={pf.options.map((p) => ({
+                              value: p,
+                              label: p,
+                            }))}
                           />
                         </div>
                       )}
+                      <div className="spotlight-field spotlight-sort-field">
+                        <label>Сортировка</label>
+                        <SpotlightFilterDropdown
+                          ariaLabel="Сортировка вакансий"
+                          value={order}
+                          onChange={(val) => setOrder(val || "recent")}
+                          emptyLabel="Сначала новые"
+                          icon={ArrowUpDown}
+                          options={[
+                            { value: "recent", label: "Сначала новые" },
+                            { value: "company", label: "По компании" },
+                            { value: "task", label: "По ближайшей задаче" },
+                          ]}
+                        />
+                      </div>
                       <div className="spotlight-field">
-                        <label htmlFor="filter-sort-select">Сортировка</label>
-                        <div className="sort-control">
-                          <ArrowUpDown size={14} className="sort-icon" />
-                          <select
-                            id="filter-sort-select"
-                            aria-label="Сортировка"
-                            value={order}
-                            onChange={(e) => setOrder(e.target.value)}
+                        <label htmlFor="filter-has-task">Задачи</label>
+                        <label className="spotlight-checkbox">
+                          <input
+                            id="filter-has-task"
+                            type="checkbox"
+                            checked={hasTask}
+                            onChange={(e) => setHasTask(e.target.checked)}
+                          />
+                          <span
+                            className="spotlight-checkbox-mark"
+                            aria-hidden="true"
                           >
-                            <option value="recent">Сначала новые</option>
-                            <option value="company">По компании</option>
-                            <option value="task">По ближайшей задаче</option>
-                          </select>
-                        </div>
+                            <Check size={13} strokeWidth={3} />
+                          </span>
+                          <span>Только с запланированными задачами</span>
+                        </label>
                       </div>
                     </div>
-                    <div className="spotlight-checkbox-row">
-                      <label className="checkbox-label spotlight-checkbox">
-                        <input
-                          type="checkbox"
-                          checked={hasTask}
-                          onChange={(e) => setHasTask(e.target.checked)}
-                        />
-                        <span>Только с запланированными задачами</span>
-                      </label>
-                    </div>
                   </div>
-                )}
+                </FilterPresence>
 
-                {filterCount > 0 && (
+                <FilterPresence show={filterCount > 0} block>
                   <div className="spotlight-active-tags">
                     <span className="spotlight-tags-label">
                       Активные фильтры:
                     </span>
-                    {search && (
+                    <FilterPresence show={Boolean(search)}>
                       <span className="filter-summary-tag">
                         Поиск: «{search}»
                         <button
@@ -2071,8 +2884,8 @@ function Applications() {
                           <X size={11} />
                         </button>
                       </span>
-                    )}
-                    {vacancyGroup && (
+                    </FilterPresence>
+                    <FilterPresence show={Boolean(vacancyGroup)}>
                       <span className="filter-summary-tag">
                         {vacancyGroup === "__ungrouped"
                           ? "Без группы"
@@ -2085,8 +2898,20 @@ function Applications() {
                           <X size={11} />
                         </button>
                       </span>
-                    )}
-                    {stage && (
+                    </FilterPresence>
+                    <FilterPresence show={Boolean(vacancyTag)}>
+                      <span className="filter-summary-tag">
+                        Тег: {vacancyTag}
+                        <button
+                          type="button"
+                          aria-label="Сбросить тег"
+                          onClick={() => setVacancyTag("")}
+                        >
+                          <X size={11} />
+                        </button>
+                      </span>
+                    </FilterPresence>
+                    <FilterPresence show={Boolean(stage)}>
                       <span className="filter-summary-tag">
                         Этап: {stages[stage] || stage}
                         <button
@@ -2097,8 +2922,8 @@ function Applications() {
                           <X size={11} />
                         </button>
                       </span>
-                    )}
-                    {priority && (
+                    </FilterPresence>
+                    <FilterPresence show={Boolean(priority)}>
                       <span className="filter-summary-tag">
                         Приоритет: {priority}
                         <button
@@ -2109,8 +2934,8 @@ function Applications() {
                           <X size={11} />
                         </button>
                       </span>
-                    )}
-                    {hasTask && (
+                    </FilterPresence>
+                    <FilterPresence show={Boolean(hasTask)}>
                       <span className="filter-summary-tag">
                         С задачами
                         <button
@@ -2121,9 +2946,9 @@ function Applications() {
                           <X size={11} />
                         </button>
                       </span>
-                    )}
+                    </FilterPresence>
                   </div>
-                )}
+                </FilterPresence>
 
                 <div className="spotlight-footer">
                   <div className="spotlight-hints">
@@ -2161,10 +2986,10 @@ function Applications() {
                     </button>
                   </div>
                 </div>
-              </div>
+              </FilterModalMotion>
             </dialog>
           )}
-          {!list.length ? (
+          {!data.applications.length ? (
             <Empty
               title={
                 data.applications.length
@@ -2175,7 +3000,10 @@ function Applications() {
                 data.applications.length ? (
                   <button onClick={reset}>Сбросить фильтры</button>
                 ) : (
-                  <button className="primary" onClick={() => editApplication()}>
+                  <button
+                    className="primary water-interaction"
+                    onClick={() => editApplication()}
+                  >
                     Добавить вакансию
                   </button>
                 )
@@ -2190,21 +3018,7 @@ function Applications() {
           ) : (
             <>
               <div className="table-wrap">
-                <table
-                  key={JSON.stringify([
-                    currentPage,
-                    state,
-                    stage,
-                    priority,
-                    order,
-                    selectedGroup,
-                    search,
-                    hasTask,
-                    vacancyGroup,
-                    preferences.group,
-                  ])}
-                  className="table-page-layer"
-                >
+                <table className="table-page-layer">
                   <colgroup>
                     <col style={{ width: "33%" }} />
                     <col style={{ width: "13%" }} />
@@ -2225,7 +3039,36 @@ function Applications() {
                       </th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <TableRowsMotion
+                    key={String(preferences.cards)}
+                    transitionKey={JSON.stringify([
+                      currentPage,
+                      state,
+                      stage,
+                      priority,
+                      order,
+                      selectedGroup,
+                      search,
+                      hasTask,
+                      vacancyGroup,
+                      vacancyTag,
+                      preferences.group,
+                    ])}
+                  >
+                    {!list.length && (
+                      <tr>
+                        <td colSpan={6}>
+                          <Empty
+                            title="Ничего не найдено"
+                            action={
+                              <button onClick={reset}>Сбросить фильтры</button>
+                            }
+                          >
+                            Попробуйте изменить поиск или фильтры.
+                          </Empty>
+                        </td>
+                      </tr>
+                    )}
                     {grouped.map(([key, apps]) => {
                       const isCollapsed = collapsed.has(key);
                       return (
@@ -2280,11 +3123,13 @@ function Applications() {
                         </Fragment>
                       );
                     })}
-                  </tbody>
+                  </TableRowsMotion>
                 </table>
               </div>
-              <div
-                key={JSON.stringify([
+              <TableRowsMotion
+                cards
+                key={String(preferences.cards)}
+                transitionKey={JSON.stringify([
                   currentPage,
                   state,
                   stage,
@@ -2294,10 +3139,18 @@ function Applications() {
                   search,
                   hasTask,
                   vacancyGroup,
+                  vacancyTag,
                   preferences.group,
                 ])}
-                className="application-cards cards-page-layer"
               >
+                {!list.length && (
+                  <Empty
+                    title="Ничего не найдено"
+                    action={<button onClick={reset}>Сбросить фильтры</button>}
+                  >
+                    Попробуйте изменить поиск или фильтры.
+                  </Empty>
+                )}
                 {grouped.map(([key, apps]) => {
                   const isCollapsed = collapsed.has(key);
                   return (
@@ -2324,60 +3177,16 @@ function Applications() {
                           }
                         >
                           <div className="group-collapsible-inner">
-                            {apps.map((a) => (
-                              <Link
-                                className="application-card"
-                                key={a.id}
-                                to={"/applications/" + a.id}
-                              >
-                                <header>
-                                  <strong>{a.company}</strong>
-                                  <Badge value={a.stage} />
-                                </header>
-                                <p>{a.position}</p>
-                                <footer>
-                                  <Badge value={a.state} kind="state" />
-                                  <span>
-                                    {next(a.id)
-                                      ? dateLabel(next(a.id).date) +
-                                        " · " +
-                                        next(a.id).title
-                                      : "Нет задач"}
-                                  </span>
-                                </footer>
-                              </Link>
-                            ))}
+                            {apps.map(renderCard)}
                           </div>
                         </div>
                       ) : (
-                        apps.map((a) => (
-                          <Link
-                            className="application-card"
-                            key={a.id}
-                            to={"/applications/" + a.id}
-                          >
-                            <header>
-                              <strong>{a.company}</strong>
-                              <Badge value={a.stage} />
-                            </header>
-                            <p>{a.position}</p>
-                            <footer>
-                              <Badge value={a.state} kind="state" />
-                              <span>
-                                {next(a.id)
-                                  ? dateLabel(next(a.id).date) +
-                                    " · " +
-                                    next(a.id).title
-                                  : "Нет задач"}
-                              </span>
-                            </footer>
-                          </Link>
-                        ))
+                        apps.map(renderCard)
                       )}
                     </Fragment>
                   );
                 })}
-              </div>
+              </TableRowsMotion>
               <div className="table-pagination">
                 <small>
                   {currentPage * 20 + 1}–
@@ -2511,7 +3320,30 @@ function Applications() {
 }
 function ApplicationDetail() {
   const { id } = useParams();
-  const { data, refresh, editApplication, editTask, addNote } = useApp();
+  const { data, refresh, editTask, addNote } = useApp();
+  const [editing, setEditing] = useState(false);
+  const [historyExpanded, setHistoryExpanded] = useState(false);
+  const [newTag, setNewTag] = useState("");
+  const [tagDropdownOpen, setTagDropdownOpen] = useState(false);
+  const tagEditorRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!tagDropdownOpen) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (!tagEditorRef.current?.contains(event.target as Node))
+        setTagDropdownOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setTagDropdownOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [tagDropdownOpen]);
+  const [tagBusy, setTagBusy] = useState(false);
+  const [tagError, setTagError] = useState<unknown>();
   const q = useQuery({
     queryKey: ["detail", id],
     queryFn: () => api<Detail>("/applications/" + id),
@@ -2520,6 +3352,58 @@ function ApplicationDetail() {
   if (q.error) return <ErrorBox error={q.error} retry={() => q.refetch()} />;
   const d = q.data!;
   const a = d.application;
+  const saveTags = async (tags: string[]) => {
+    setTagBusy(true);
+    setTagError(undefined);
+    try {
+      await api<Application>("/applications/" + a.id, "PUT", { ...a, tags });
+      setNewTag("");
+      setTagDropdownOpen(false);
+      await refresh();
+      await q.refetch();
+    } catch (error) {
+      setTagError(error);
+    } finally {
+      setTagBusy(false);
+    }
+  };
+  const tag = newTag.trim();
+  const canAddTag =
+    !!tag &&
+    (a.tags ?? []).length < 30 &&
+    !(a.tags ?? []).some(
+      (t) => t.toLocaleLowerCase() === tag.toLocaleLowerCase(),
+    );
+  const tagOptions = Array.from(
+    new Set(data.applications.flatMap((v) => v.tags ?? [])),
+  )
+    .filter(
+      (t) =>
+        !(a.tags ?? []).some(
+          (existing) => existing.toLocaleLowerCase() === t.toLocaleLowerCase(),
+        ),
+    )
+    .filter((t) => t.toLocaleLowerCase().includes(tag.toLocaleLowerCase()));
+  let vacancySiteLabel = "Вакансия";
+  let vacancyFavicon: string | undefined;
+  if (a.url) {
+    try {
+      const url = new URL(a.url);
+      const site = jobSite(a.url);
+      vacancySiteLabel = site
+        ? {
+            hh: "hh.ru",
+            linkedin: "LinkedIn",
+            getmatch: "Getmatch",
+            hirify: "Hirify",
+            geekjob: "Geekjob",
+            habr: "Хабр Карьера",
+          }[site]
+        : url.hostname.replace(/^www\./, "");
+      if (["https:", "http:"].includes(url.protocol))
+        vacancyFavicon = `${url.origin}/favicon.ico`;
+    } catch {}
+  }
   const facts: Record<string, unknown> = {
     salary: salaryLabel(a),
     location: a.location,
@@ -2536,86 +3420,281 @@ function ApplicationDetail() {
         <ArrowLeft size={15} />
         Все отклики
       </Link>
-      <PageHeader title={a.company} subtitle={a.position}>
-        <button onClick={() => editApplication(a)}>
-          <Pencil size={15} />
-          Редактировать
-        </button>
-      </PageHeader>
-      <div className="detail-badges">
-        {(a.groups ?? []).map((group) => (
-          <span className="count-chip" key={group}>
-            {group}
-          </span>
-        ))}
-        <Badge value={a.stage} />
-        <Badge value={a.state} kind="state" />
-        {a.url && (
-          <a href={a.url} target="_blank" rel="noopener noreferrer">
-            Открыть вакансию <ExternalLink size={13} />
-          </a>
-        )}
+      <PageHeader title={a.company} subtitle={a.position} />
+      <div className="detail-meta-row">
+        <div className="detail-badges">
+          {(a.groups ?? []).map((group) => (
+            <span className="count-chip" key={group}>
+              {group}
+            </span>
+          ))}
+          <Badge value={a.stage} />
+          <Badge value={a.state} kind="state" />
+          {a.url && (
+            <a
+              className="detail-vacancy-link"
+              href={a.url}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {vacancyFavicon && (
+                <img
+                  src={vacancyFavicon}
+                  alt=""
+                  width={16}
+                  height={16}
+                  onError={(event) => {
+                    event.currentTarget.style.display = "none";
+                  }}
+                />
+              )}
+              Вакансия на {vacancySiteLabel} <ExternalLink size={13} />
+            </a>
+          )}
+        </div>
+        <section className="detail-tags" aria-label="Теги вакансии">
+          <label htmlFor="detail-tag-input">Теги</label>
+          <div
+            className={`tag-editor-box${tagBusy ? " is-busy" : ""}`}
+            ref={tagEditorRef}
+            onBlur={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node))
+                setTagDropdownOpen(false);
+            }}
+            onClick={(e) => {
+              // Focus the input when clicking anywhere inside the box except on buttons
+              if (
+                (e.target as HTMLElement).tagName !== "BUTTON" &&
+                (e.target as HTMLElement).closest("button") === null
+              ) {
+                document.getElementById("detail-tag-input")?.focus();
+              }
+            }}
+          >
+            {(a.tags ?? []).map((t) => (
+              <span
+                className={`tag-chip tag-color-${tagColorIndex(t)}`}
+                key={t}
+              >
+                {tagLabel(t)}
+                <button
+                  type="button"
+                  className="tag-chip-remove"
+                  aria-label={`Удалить тег ${t}`}
+                  disabled={tagBusy || editing}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void saveTags((a.tags ?? []).filter((v) => v !== t));
+                  }}
+                >
+                  <X size={12} />
+                </button>
+              </span>
+            ))}
+            <input
+              id="detail-tag-input"
+              role="combobox"
+              aria-expanded={tagDropdownOpen}
+              aria-controls="detail-tag-options"
+              aria-autocomplete="list"
+              onFocus={() => setTagDropdownOpen(true)}
+              placeholder={
+                (a.tags ?? []).length === 0 ? "Добавить тег…" : "Добавить…"
+              }
+              maxLength={100}
+              value={newTag}
+              disabled={tagBusy || editing}
+              onChange={(e) => {
+                setNewTag(e.target.value);
+                setTagDropdownOpen(true);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  setTagDropdownOpen(true);
+                  requestAnimationFrame(() =>
+                    tagEditorRef.current
+                      ?.querySelector<HTMLButtonElement>(".group-dropdown-item")
+                      ?.focus(),
+                  );
+                } else if (e.key === "Enter" || e.key === ",") {
+                  e.preventDefault();
+                  if (canAddTag && !tagBusy && !editing) {
+                    void saveTags([...(a.tags ?? []), tag]);
+                  }
+                } else if (
+                  e.key === "Backspace" &&
+                  !newTag &&
+                  (a.tags ?? []).length > 0 &&
+                  !tagBusy &&
+                  !editing
+                ) {
+                  // If input is empty, backspace removes the last tag
+                  const currentTags = a.tags ?? [];
+                  void saveTags(currentTags.slice(0, -1));
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="tag-dropdown-toggle"
+              aria-label="Показать теги"
+              aria-haspopup="listbox"
+              aria-expanded={tagDropdownOpen}
+              aria-controls="detail-tag-options"
+              disabled={tagBusy || editing}
+              onClick={() => setTagDropdownOpen((open) => !open)}
+            >
+              <ChevronDown
+                size={14}
+                className={`dropdown-chevron${tagDropdownOpen ? " rotated" : ""}`}
+              />
+            </button>
+            {tagDropdownOpen && !tagBusy && !editing && (
+              <div
+                className="group-dropdown-menu"
+                id="detail-tag-options"
+                role="listbox"
+                aria-label="Доступные теги"
+              >
+                <div
+                  className="group-dropdown-list"
+                  onKeyDown={(event) => {
+                    const buttons = Array.from(
+                      event.currentTarget.querySelectorAll<HTMLButtonElement>(
+                        "button",
+                      ),
+                    );
+                    const index = buttons.indexOf(
+                      document.activeElement as HTMLButtonElement,
+                    );
+                    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                      event.preventDefault();
+                      buttons[
+                        (index +
+                          (event.key === "ArrowDown" ? 1 : -1) +
+                          buttons.length) %
+                          buttons.length
+                      ]?.focus();
+                    }
+                  }}
+                >
+                  {tagOptions.map((t) => (
+                    <button
+                      type="button"
+                      className="group-dropdown-item"
+                      role="option"
+                      aria-selected={false}
+                      disabled={(a.tags ?? []).length >= 30}
+                      key={t}
+                      onClick={() => void saveTags([...(a.tags ?? []), t])}
+                    >
+                      <Tag size={14} />
+                      {tagLabel(t)}
+                    </button>
+                  ))}
+                  {canAddTag &&
+                    !tagOptions.some(
+                      (t) => t.toLocaleLowerCase() === tag.toLocaleLowerCase(),
+                    ) && (
+                      <button
+                        type="button"
+                        className="group-dropdown-item"
+                        role="option"
+                        aria-selected={false}
+                        onClick={() => void saveTags([...(a.tags ?? []), tag])}
+                      >
+                        <Plus size={14} />
+                        Добавить «{tag}»
+                      </button>
+                    )}
+                  {!tagOptions.length && !canAddTag && (
+                    <span className="tag-dropdown-empty">
+                      {tag ? "Нет подходящих тегов" : "Введите новый тег"}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+          <ErrorBox error={tagError} />
+        </section>
       </div>
       <div className="detail-grid" style={{ marginTop: 24 }}>
         <div>
           <section className="panel">
-            <h2>О вакансии</h2>
-            <dl className="facts">
-              {Object.entries(facts).map(([key, value]) => (
-                <div className="fact" key={key}>
-                  <dt>{fieldLabels[key]}</dt>
-                  <dd>{displayValue(key, value)}</dd>
-                </div>
-              ))}
-              {data.fields.map((f) => (
-                <div className="fact" key={f.id}>
-                  <dt>{f.name}</dt>
-                  <dd>{displayValue("custom", a.custom[f.id])}</dd>
-                </div>
-              ))}
-            </dl>
+            <div className="section-head">
+              <h2>О вакансии</h2>
+              {!editing && (
+                <button onClick={() => setEditing(true)}>
+                  <Pencil size={15} />
+                  Редактировать
+                </button>
+              )}
+            </div>
+            <div
+              className="detail-editor-transition"
+              key={editing ? "edit" : "view"}
+            >
+              {editing ? (
+                <ApplicationForm
+                  initial={a}
+                  fields={data.fields}
+                  groupOptions={Array.from(
+                    new Set(data.applications.flatMap((v) => v.groups ?? [])),
+                  )}
+                  tagOptions={Array.from(
+                    new Set(data.applications.flatMap((v) => v.tags ?? [])),
+                  )}
+                  api={api}
+                  actionsAtTop
+                  onCancel={() => setEditing(false)}
+                  onSaved={() => {
+                    setEditing(false);
+                    void refresh();
+                    void q.refetch();
+                  }}
+                />
+              ) : (
+                <dl className="facts">
+                  {Object.entries(facts).map(([key, value]) => (
+                    <div className="fact" key={key}>
+                      <dt>{fieldLabels[key]}</dt>
+                      <dd>{displayValue(key, value)}</dd>
+                    </div>
+                  ))}
+                  {data.fields.map((f) => (
+                    <div className="fact" key={f.id}>
+                      <dt>{f.name}</dt>
+                      <dd>{displayValue("custom", a.custom[f.id])}</dd>
+                    </div>
+                  ))}
+                </dl>
+              )}
+            </div>
           </section>
           <section className="panel">
             <div className="section-head">
-              <h2>Заметки</h2>
-              <button onClick={() => addNote(a.id)}>
-                <Plus size={15} />
-                Заметка
-              </button>
+              <h2>История</h2>
+              {d.events.length > 2 && (
+                <button
+                  aria-expanded={historyExpanded}
+                  onClick={() => setHistoryExpanded((v) => !v)}
+                >
+                  {historyExpanded
+                    ? "Свернуть"
+                    : `Показать всю (${d.events.length})`}
+                  <ChevronDown
+                    size={15}
+                    style={{
+                      transform: historyExpanded ? "rotate(180deg)" : undefined,
+                    }}
+                  />
+                </button>
+              )}
             </div>
-            {d.notes.length ? (
-              d.notes.map((n) => (
-                <article className="note" key={n.id}>
-                  <p>{n.text}</p>
-                  <small>
-                    {dateLabel(n.createdAt, {
-                      day: "numeric",
-                      month: "short",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </small>
-                  <button
-                    className="text-button"
-                    aria-label="Редактировать заметку"
-                    onClick={() => addNote(a.id, n)}
-                  >
-                    <Pencil size={14} />
-                    Изменить
-                  </button>
-                </article>
-              ))
-            ) : (
-              <p className="muted">
-                Контекст встречи, впечатления и вопросы — всё можно записать
-                здесь.
-              </p>
-            )}
-          </section>
-          <section className="panel">
-            <h2>История</h2>
             <div className="history">
-              {d.events.map((e) => (
+              {(historyExpanded ? d.events : d.events.slice(0, 2)).map((e) => (
                 <article className="history-event" key={e.id}>
                   <strong>
                     {{
@@ -2672,6 +3751,43 @@ function ApplicationDetail() {
               onResolved={refresh}
             />
           ))}
+          <section className="panel">
+            <div className="section-head">
+              <h2>Заметки</h2>
+              <button onClick={() => addNote(a.id)}>
+                <Plus size={15} />
+                Заметка
+              </button>
+            </div>
+            {d.notes.length ? (
+              d.notes.map((n) => (
+                <article className="note" key={n.id}>
+                  <p>{n.text}</p>
+                  <small>
+                    {dateLabel(n.createdAt, {
+                      day: "numeric",
+                      month: "short",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </small>
+                  <button
+                    className="text-button"
+                    aria-label="Редактировать заметку"
+                    onClick={() => addNote(a.id, n)}
+                  >
+                    <Pencil size={14} />
+                    Изменить
+                  </button>
+                </article>
+              ))
+            ) : (
+              <p className="muted">
+                Контекст встречи, впечатления и вопросы — всё можно записать
+                здесь.
+              </p>
+            )}
+          </section>
           <section className="panel">
             <div className="section-head">
               <h2>Следующие действия</h2>
@@ -2950,7 +4066,11 @@ function ExtensionDownloadPanel() {
     setError(undefined);
     setNotice("");
     try {
-      const result = await api<ExtensionDownload>("/extension/download", "POST", {});
+      const result = await api<ExtensionDownload>(
+        "/extension/download",
+        "POST",
+        {},
+      );
       client.setQueryData(["extension-download"], result);
       setNotice("Новая ссылка создана");
     } catch (e) {
@@ -3005,11 +4125,7 @@ function ExtensionDownloadPanel() {
             >
               Скопировать ссылку
             </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={generate}
-            >
+            <button type="button" disabled={busy} onClick={generate}>
               Сменить ссылку
             </button>
           </div>
@@ -3030,7 +4146,7 @@ function ExtensionDownloadPanel() {
   );
 }
 function SettingsPage() {
-  const { user, data, refresh } = useApp();
+  const { user, data, refresh, logout } = useApp();
   const client = useQueryClient();
   const [fields, setFields] = useState<Field[]>(() =>
     structuredClone(data.fields),
@@ -3167,6 +4283,7 @@ function SettingsPage() {
                 </div>
                 <form
                   className="form"
+                  onKeyDown={handleFormSubmitShortcut}
                   onSubmit={async (e) => {
                     e.preventDefault();
                     try {
@@ -3187,18 +4304,11 @@ function SettingsPage() {
                     />
                   </FieldInput>
                   <div className="actions">
-                    <button>Сохранить часовой пояс</button>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        try {
-                          await api("/auth/logout", "POST", {});
-                          clearSession(client);
-                        } catch (e) {
-                          setError(e);
-                        }
-                      }}
-                    >
+                    <button>
+                      Сохранить часовой пояс
+                      <SubmitShortcutHint />
+                    </button>
+                    <button type="button" onClick={logout}>
                       <LogOut size={15} />
                       Выйти
                     </button>
@@ -3218,6 +4328,7 @@ function SettingsPage() {
                 )}
                 <form
                   className="form"
+                  onKeyDown={handleFormSubmitShortcut}
                   onSubmit={async (e) => {
                     e.preventDefault();
                     setPasswordError(undefined);
@@ -3292,6 +4403,7 @@ function SettingsPage() {
                   <div className="actions">
                     <button className="primary" disabled={passwordBusy}>
                       {passwordBusy ? "Сохранение…" : "Сменить пароль"}
+                      <SubmitShortcutHint />
                     </button>
                   </div>
                 </form>
@@ -3437,7 +4549,8 @@ function SettingsPage() {
                 {import.meta.env.VITE_CHROME_STORE_URL ? (
                   <div style={{ marginBottom: 20 }}>
                     <p>
-                      Рекомендуемый способ: официальная установка из Chrome Web Store.
+                      Рекомендуемый способ: официальная установка из Chrome Web
+                      Store.
                     </p>
                     <a
                       className="button primary"
@@ -3450,19 +4563,22 @@ function SettingsPage() {
                   </div>
                 ) : (
                   <p className="notice">
-                    Расширение находится на проверке и публикации в Chrome Web Store.
+                    Расширение находится на проверке и публикации в Chrome Web
+                    Store.
                   </p>
                 )}
                 <div className="panel-head" style={{ marginTop: 20 }}>
                   <h3>Ручная установка (для разработчиков и тестирования)</h3>
                   <p>
-                    Архив расширения для загрузки в распакованном виде в <code>chrome://extensions</code>.
+                    Архив расширения для загрузки в распакованном виде в{" "}
+                    <code>chrome://extensions</code>.
                   </p>
                 </div>
                 <ExtensionDownloadPanel />
                 <ol className="instructions" style={{ marginTop: 16 }}>
                   <li>
-                    Скачайте ZIP-архив по индивидуальной ссылке выше и распакуйте его в удобную папку.{" "}
+                    Скачайте ZIP-архив по индивидуальной ссылке выше и
+                    распакуйте его в удобную папку.{" "}
                     <a href="/extension">Подробная инструкция</a>.
                   </li>
                   <li>

@@ -20,6 +20,14 @@ describe("job identity", () => {
       "https://hirify.me/jobs/123-backend?utm_source=x",
       "https://hirify.me/jobs/123",
     ],
+    [
+      "https://geekjob.ru/vacancy/6acce1f84f35ccbd760b3413?from=search",
+      "https://geekjob.ru/vacancy/6acce1f84f35ccbd760b3413",
+    ],
+    [
+      "https://career.habr.com/vacancies/1000169149?s=search",
+      "https://career.habr.com/vacancies/1000169149",
+    ],
   ])("normalizes %s", (raw, canonical) =>
     expect(jobIdentity(raw)?.url).toBe(canonical),
   );
@@ -35,6 +43,11 @@ describe("job identity", () => {
   it.each([
     "https://getmatch.ru/vacancies",
     "https://hirify.me/",
+    "https://geekjob.ru/vacancies",
+    "https://geekjob.ru/geeks",
+    "https://career.habr.com/vacancies",
+    "https://career.habr.com/companies",
+    "https://career.habr.com/salaries",
     "https://www.linkedin.com/in/example",
     "https://getmatch.ru/vacancies/123/apply",
   ])("does not treat unrelated pages as jobs", (raw) =>
