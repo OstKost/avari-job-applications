@@ -19,6 +19,7 @@ import {
   AlertCircle,
   Check,
   ArrowRight,
+  ArrowLeft,
   CalendarDays,
   ChevronDown,
 } from "lucide-react";
@@ -556,9 +557,13 @@ export function ApplicationForm({
   onCancel,
   onDraftChange,
   actionsAtTop = false,
+  onBack,
+  title,
 }: {
   initial: Application;
   actionsAtTop?: boolean;
+  onBack?: () => void;
+  title?: ReactNode;
   groupOptions?: string[];
   tagOptions?: string[];
   fields: Field[];
@@ -585,12 +590,15 @@ export function ApplicationForm({
     setBusy(true);
     setError(undefined);
     try {
-      const body = { ...a, hhId: "" };
+      const body: Record<string, any> = { ...a, hhId: "" };
+      if (!body.companyLogo) {
+        delete body.companyLogo;
+      }
       onSaved(
         await api<Application>(
           a.id ? "/applications/" + a.id : "/applications",
           a.id ? "PUT" : "POST",
-          body,
+          body as Application,
           requestKey.current,
         ),
       );
@@ -603,15 +611,26 @@ export function ApplicationForm({
     }
   };
   const actions = (
-    <footer className="form-actions">
-      <button type="button" onClick={onCancel}>
-        Отмена
-      </button>
-      <button className="primary" disabled={busy || !!current}>
-        {busy ? "Сохраняем…" : "Сохранить"}
-        <SubmitShortcutHint />
-      </button>
-    </footer>
+    <div className={`form-actions${actionsAtTop ? " form-actions-top" : ""}`}>
+      {onBack && (
+        <button
+          type="button"
+          className="text-button popup-back"
+          onClick={onBack}
+        >
+          <ArrowLeft size={16} /> Назад
+        </button>
+      )}
+      <div className="form-actions-buttons">
+        <button type="button" onClick={onCancel}>
+          Отмена
+        </button>
+        <button className="primary" disabled={busy || !!current}>
+          {busy ? "Сохраняем…" : "Сохранить"}
+          <SubmitShortcutHint />
+        </button>
+      </div>
+    </div>
   );
   return (
     <form
@@ -620,6 +639,7 @@ export function ApplicationForm({
       className="form"
     >
       {actionsAtTop && actions}
+      {title && (isValidElement(title) ? title : <h2>{title}</h2>)}
       <ErrorBox error={error} />
       {current && (
         <ConflictComparison
@@ -903,6 +923,15 @@ export function ApplicationForm({
             maxLength={2000}
             value={a.recruiter}
             onChange={(e) => set("recruiter", e.target.value)}
+          />
+        </FieldInput>
+        <FieldInput label="Логотип компании (URL)" hint="Ссылка на аватар/логотип компании">
+          <input
+            type="url"
+            maxLength={2048}
+            value={a.companyLogo ?? ""}
+            onChange={(e) => set("companyLogo", e.target.value)}
+            placeholder="https://…"
           />
         </FieldInput>
       </div>
@@ -1451,14 +1480,37 @@ export function TaskList({
 
 export function CompanyAvatar({
   name,
+  logoUrl,
   className,
 }: {
   name: string;
+  logoUrl?: string;
   className?: string;
 }) {
+  const [imgFailed, setImgFailed] = useState(false);
+
+  useEffect(() => {
+    setImgFailed(false);
+  }, [logoUrl]);
+
   const colorIndex = companyColorIndex(name);
   const initials = companyInitials(name);
   const classes = ["company-avatar", className].filter(Boolean).join(" ");
+
+  if (logoUrl && !imgFailed) {
+    return (
+      <span className={`${classes} company-avatar-has-img`} data-color={colorIndex} aria-hidden="true">
+        <img
+          src={logoUrl}
+          alt=""
+          className="company-avatar-img"
+          loading="lazy"
+          onError={() => setImgFailed(true)}
+        />
+      </span>
+    );
+  }
+
   return (
     <span className={classes} data-color={colorIndex} aria-hidden="true">
       {initials}

@@ -11,6 +11,7 @@ import {
   useRef,
   type ReactNode,
   type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
   Fragment,
 } from "react";
 import { createPortal } from "react-dom";
@@ -1071,18 +1072,23 @@ function Workspace({ user }: { user: User }) {
 function PageHeader({
   title,
   subtitle,
+  logo,
   children,
 }: {
   title: string;
   subtitle: string;
+  logo?: ReactNode;
   children?: ReactNode;
 }) {
   return (
     <header className="page-header">
-      <div>
-        <div className="eyebrow">Журнал поиска работы</div>
-        <h1>{title}</h1>
-        <p>{subtitle}</p>
+      <div className={logo ? "page-header-with-logo" : undefined}>
+        {logo}
+        <div>
+          <div className="eyebrow">Журнал поиска работы</div>
+          <h1>{title}</h1>
+          <p>{subtitle}</p>
+        </div>
       </div>
       <div className="actions">
         <span className="mobile-theme">
@@ -1127,6 +1133,23 @@ function StageBreakdown({ applications }: { applications: Application[] }) {
 }
 function Dashboard() {
   const { user, data, refresh, editTask, editApplication } = useApp();
+  const moveHeroWaves = (event: ReactPointerEvent<HTMLElement>) => {
+    if (
+      event.pointerType !== "mouse" ||
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    )
+      return;
+    const hero = event.currentTarget;
+    const bounds = hero.getBoundingClientRect();
+    const x = (event.clientX - bounds.left) / bounds.width - 0.5;
+    const y = (event.clientY - bounds.top) / bounds.height - 0.5;
+    hero.style.setProperty("--hero-pointer-x", `${x * 24}px`);
+    hero.style.setProperty("--hero-pointer-y", `${y * 16}px`);
+  };
+  const resetHeroWaves = (event: ReactPointerEvent<HTMLElement>) => {
+    event.currentTarget.style.removeProperty("--hero-pointer-x");
+    event.currentTarget.style.removeProperty("--hero-pointer-y");
+  };
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000);
@@ -1170,7 +1193,12 @@ function Dashboard() {
           Добавить вакансию
         </button>
       </PageHeader>
-      <section className="dashboard-hero">
+      <section
+        className="dashboard-hero"
+        onPointerMove={moveHeroWaves}
+        onPointerLeave={resetHeroWaves}
+        onPointerCancel={resetHeroWaves}
+      >
         <div className="auth-water-canvas" aria-hidden="true">
           <div className="water-wave wave-1" />
           <div className="water-wave wave-2" />
@@ -1336,7 +1364,7 @@ function Dashboard() {
                 to={"/applications/" + a.id}
                 key={a.id}
               >
-                <CompanyAvatar name={a.company} />
+                <CompanyAvatar name={a.company} logoUrl={a.companyLogo} />
                 <div>
                   <strong>{a.company}</strong>
                   <small>{a.position}</small>
@@ -2299,7 +2327,7 @@ function Applications() {
       >
         <td>
           <div className="company-cell company-grid">
-            <CompanyAvatar name={a.company} />
+            <CompanyAvatar name={a.company} logoUrl={a.companyLogo} />
             <Link
               className="company-link"
               title={a.company}
@@ -2402,7 +2430,7 @@ function Applications() {
       >
         <header>
           <div className="application-card-company">
-            <CompanyAvatar name={a.company} />
+            <CompanyAvatar name={a.company} logoUrl={a.companyLogo} />
             <strong title={a.company}>{a.company}</strong>
           </div>
           <Badge value={a.stage} />
@@ -3318,6 +3346,67 @@ function Applications() {
     </>
   );
 }
+function TagEditorScroll({ children }: { children: ReactNode }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [scroll, setScroll] = useState({ ratio: 1, progress: 0 });
+
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!element) return;
+    const update = () => {
+      const maxScroll = element.scrollWidth - element.clientWidth;
+      setScroll({
+        ratio: element.clientWidth / Math.max(1, element.scrollWidth),
+        progress: maxScroll > 0 ? element.scrollLeft / maxScroll : 0,
+      });
+    };
+    update();
+    element.addEventListener("scroll", update, { passive: true });
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    for (const child of element.children) observer.observe(child);
+    return () => {
+      observer.disconnect();
+      element.removeEventListener("scroll", update);
+    };
+  }, [children]);
+
+  return (
+    <div className="tag-editor-scroll-wrapper">
+      <div className="tag-editor-scroll" ref={scrollRef}>
+        {children}
+      </div>
+      {scroll.ratio < 1 && (
+        <div
+          className="group-chips-custom-scrollbar visible tag-editor-scrollbar"
+          onClick={(event) => {
+            event.stopPropagation();
+            const element = scrollRef.current;
+            if (!element) return;
+            const rect = event.currentTarget.getBoundingClientRect();
+            const ratio = Math.max(
+              0,
+              Math.min(1, (event.clientX - rect.left) / rect.width),
+            );
+            element.scrollTo({
+              left: ratio * (element.scrollWidth - element.clientWidth),
+              behavior: "smooth",
+            });
+          }}
+        >
+          <div
+            className="group-chips-custom-thumb"
+            style={{
+              width: `${scroll.ratio * 100}%`,
+              left: `${scroll.progress * (1 - scroll.ratio) * 100}%`,
+            }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ApplicationDetail() {
   const { id } = useParams();
   const { data, refresh, editTask, addNote } = useApp();
@@ -3420,7 +3509,17 @@ function ApplicationDetail() {
         <ArrowLeft size={15} />
         Все отклики
       </Link>
-      <PageHeader title={a.company} subtitle={a.position} />
+      <PageHeader
+        title={a.company}
+        subtitle={a.position}
+        logo={
+          <CompanyAvatar
+            name={a.company}
+            logoUrl={a.companyLogo}
+            className="page-header-avatar"
+          />
+        }
+      />
       <div className="detail-meta-row">
         <div className="detail-badges">
           {(a.groups ?? []).map((group) => (
@@ -3471,70 +3570,74 @@ function ApplicationDetail() {
               }
             }}
           >
-            {(a.tags ?? []).map((t) => (
-              <span
-                className={`tag-chip tag-color-${tagColorIndex(t)}`}
-                key={t}
-              >
-                {tagLabel(t)}
-                <button
-                  type="button"
-                  className="tag-chip-remove"
-                  aria-label={`Удалить тег ${t}`}
-                  disabled={tagBusy || editing}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void saveTags((a.tags ?? []).filter((v) => v !== t));
-                  }}
+            <TagEditorScroll>
+              {(a.tags ?? []).map((t) => (
+                <span
+                  className={`tag-chip tag-color-${tagColorIndex(t)}`}
+                  key={t}
                 >
-                  <X size={12} />
-                </button>
-              </span>
-            ))}
-            <input
-              id="detail-tag-input"
-              role="combobox"
-              aria-expanded={tagDropdownOpen}
-              aria-controls="detail-tag-options"
-              aria-autocomplete="list"
-              onFocus={() => setTagDropdownOpen(true)}
-              placeholder={
-                (a.tags ?? []).length === 0 ? "Добавить тег…" : "Добавить…"
-              }
-              maxLength={100}
-              value={newTag}
-              disabled={tagBusy || editing}
-              onChange={(e) => {
-                setNewTag(e.target.value);
-                setTagDropdownOpen(true);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "ArrowDown") {
-                  e.preventDefault();
-                  setTagDropdownOpen(true);
-                  requestAnimationFrame(() =>
-                    tagEditorRef.current
-                      ?.querySelector<HTMLButtonElement>(".group-dropdown-item")
-                      ?.focus(),
-                  );
-                } else if (e.key === "Enter" || e.key === ",") {
-                  e.preventDefault();
-                  if (canAddTag && !tagBusy && !editing) {
-                    void saveTags([...(a.tags ?? []), tag]);
-                  }
-                } else if (
-                  e.key === "Backspace" &&
-                  !newTag &&
-                  (a.tags ?? []).length > 0 &&
-                  !tagBusy &&
-                  !editing
-                ) {
-                  // If input is empty, backspace removes the last tag
-                  const currentTags = a.tags ?? [];
-                  void saveTags(currentTags.slice(0, -1));
+                  {tagLabel(t)}
+                  <button
+                    type="button"
+                    className="tag-chip-remove"
+                    aria-label={`Удалить тег ${t}`}
+                    disabled={tagBusy || editing}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void saveTags((a.tags ?? []).filter((v) => v !== t));
+                    }}
+                  >
+                    <X size={12} />
+                  </button>
+                </span>
+              ))}
+              <input
+                id="detail-tag-input"
+                role="combobox"
+                aria-expanded={tagDropdownOpen}
+                aria-controls="detail-tag-options"
+                aria-autocomplete="list"
+                onFocus={() => setTagDropdownOpen(true)}
+                placeholder={
+                  (a.tags ?? []).length === 0 ? "Добавить тег…" : "Добавить…"
                 }
-              }}
-            />
+                maxLength={100}
+                value={newTag}
+                disabled={tagBusy || editing}
+                onChange={(e) => {
+                  setNewTag(e.target.value);
+                  setTagDropdownOpen(true);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    setTagDropdownOpen(true);
+                    requestAnimationFrame(() =>
+                      tagEditorRef.current
+                        ?.querySelector<HTMLButtonElement>(
+                          ".group-dropdown-item",
+                        )
+                        ?.focus(),
+                    );
+                  } else if (e.key === "Enter" || e.key === ",") {
+                    e.preventDefault();
+                    if (canAddTag && !tagBusy && !editing) {
+                      void saveTags([...(a.tags ?? []), tag]);
+                    }
+                  } else if (
+                    e.key === "Backspace" &&
+                    !newTag &&
+                    (a.tags ?? []).length > 0 &&
+                    !tagBusy &&
+                    !editing
+                  ) {
+                    // If input is empty, backspace removes the last tag
+                    const currentTags = a.tags ?? [];
+                    void saveTags(currentTags.slice(0, -1));
+                  }
+                }}
+              />
+            </TagEditorScroll>
             <button
               type="button"
               className="tag-dropdown-toggle"

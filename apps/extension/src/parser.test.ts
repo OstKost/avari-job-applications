@@ -87,6 +87,27 @@ describe("hh.ru DOM parser", () => {
     });
     expect(p.observations).toEqual([]);
   });
+  it("extracts company logo from vacancy page DOM or structured data", () => {
+    const fromDom = parsePage(
+      doc(
+        '<h1>Backend</h1><a data-qa="vacancy-company-name">Acme</a><div data-qa="vacancy-company-logo"><img src="https://hh.ru/employer-logo/123.png" /></div>',
+      ),
+      "https://hh.ru/vacancy/999",
+    );
+    expect(fromDom.vacancy?.companyLogo).toBe(
+      "https://hh.ru/employer-logo/123.png",
+    );
+
+    const fromJsonLd = parsePage(
+      doc(
+        '<script type="application/ld+json">{"@type":"JobPosting","title":"Dev","hiringOrganization":{"name":"Acme","logo":"https://hh.ru/employer-logo/456.png"}}</script>',
+      ),
+      "https://hh.ru/vacancy/999",
+    );
+    expect(fromJsonLd.vacancy?.companyLogo).toBe(
+      "https://hh.ru/employer-logo/456.png",
+    );
+  });
   it("extracts a vacancy and never infers an application from opening", () => {
     const p = parsePage(
       doc(

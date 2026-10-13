@@ -453,6 +453,7 @@ export interface components {
             location: string;
             workFormat: string;
             recruiter: string;
+            companyLogo?: string;
             externalStatus: string;
             custom: {
                 [key: string]: string | number | boolean | null;
@@ -619,6 +620,7 @@ export interface components {
             location?: string;
             workFormat?: string;
             recruiter?: string;
+            companyLogo?: string;
             externalStatus?: string;
             custom?: {
                 [key: string]: string | number | boolean | null;

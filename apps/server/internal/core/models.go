@@ -55,6 +55,7 @@ type Application struct {
 	Location       string         `json:"location"`
 	WorkFormat     string         `json:"workFormat"`
 	Recruiter      string         `json:"recruiter"`
+	CompanyLogo    string         `json:"companyLogo,omitempty"`
 	ExternalStatus string         `json:"externalStatus"`
 	Custom         map[string]any `json:"custom"`
 	Version        int            `json:"version"`
@@ -224,8 +225,14 @@ func (a *Application) Validate() error {
 	if !oneOf(a.Salary.Period, "", "month", "year", "hour", "project") || !oneOf(a.Salary.Tax, "", "gross", "net") {
 		return Fail(400, "Некорректные параметры зарплаты")
 	}
-	if textLength(a.Location) > 500 || textLength(a.WorkFormat) > 500 || textLength(a.Recruiter) > 2000 || len(a.URL) > 2048 || textLength(a.Salary.Currency) > 12 {
+	if textLength(a.Location) > 500 || textLength(a.WorkFormat) > 500 || textLength(a.Recruiter) > 2000 || len(a.URL) > 2048 || len(a.CompanyLogo) > 2048 || textLength(a.Salary.Currency) > 12 {
 		return Fail(400, "Поле превышает допустимую длину")
+	}
+	if a.CompanyLogo != "" {
+		lu, err := url.Parse(a.CompanyLogo)
+		if err != nil || !oneOf(lu.Scheme, "http", "https") || lu.Hostname() == "" {
+			return Fail(400, "Ссылка на логотип должна быть корректным URL (HTTP или HTTPS)")
+		}
 	}
 	u, id, e := NormalizeURL(a.URL)
 	if e != nil {

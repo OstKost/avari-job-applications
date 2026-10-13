@@ -3719,6 +3719,9 @@
           "recruiter": {
             "type": "string"
           },
+          "companyLogo": {
+            "type": "string"
+          },
           "externalStatus": {
             "type": "string"
           },
@@ -4349,6 +4352,9 @@
             "type": "string"
           },
           "recruiter": {
+            "type": "string"
+          },
+          "companyLogo": {
             "type": "string"
           },
           "externalStatus": {

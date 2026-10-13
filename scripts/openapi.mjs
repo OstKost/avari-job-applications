@@ -51,6 +51,7 @@ const schemas = {
     location: s,
     workFormat: s,
     recruiter: s,
+    companyLogo: s,
     externalStatus: s,
     custom: {
       type: "object",
@@ -179,6 +180,9 @@ const schemas = {
   Success: object({ ok: { type: "boolean" } }),
 };
 schemas.Proposal.properties.kind = enumeration("create");
+schemas.Application.required = schemas.Application.required.filter(
+  (field) => field !== "companyLogo",
+);
 const input = (name) => ({
   ...structuredClone(schemas[name]),
   required:

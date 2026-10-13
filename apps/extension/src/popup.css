@@ -188,6 +188,31 @@ body {
   gap: 8px;
   padding-top: 12px;
 }
+.popup .form-actions-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: nowrap;
+  gap: 8px;
+  padding-top: 0;
+  border-top: 0;
+  margin-top: 0;
+  margin-bottom: 12px;
+}
+.popup .form-actions-top .popup-back {
+  margin-bottom: 0;
+  padding: 6px 4px;
+}
+.popup .form-actions-top .form-actions-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.popup .form-actions-top .form-actions-buttons button {
+  min-height: 36px;
+  padding: 6px 12px;
+}
 .popup-overview {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -243,6 +268,28 @@ body {
   align-items: center;
   gap: 8px;
   margin-bottom: 12px;
+}
+.popup-company-avatar {
+  width: 28px;
+  height: 28px;
+  font-size: 10px;
+}
+.journal-item-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.journal-item-titles {
+  min-width: 0;
+  flex: 1;
+}
+.journal-item-titles h3,
+.journal-item-titles p {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .card-heading .eyebrow {
   flex: 1;

@@ -37,23 +37,57 @@ async function config(): Promise<Config> {
   }
   return saved;
 }
+function cleanPayload(val: unknown): unknown {
+  if (!val || typeof val !== "object") return val;
+  const clone = { ...(val as Record<string, any>) };
+  if (clone.companyLogo === "") delete clone.companyLogo;
+  if (
+    clone.candidate &&
+    typeof clone.candidate === "object" &&
+    clone.candidate.companyLogo === ""
+  ) {
+    clone.candidate = { ...clone.candidate };
+    delete clone.candidate.companyLogo;
+  }
+  return clone;
+}
+function stripLogo(val: unknown): { payload: unknown; hadLogo: boolean } {
+  if (!val || typeof val !== "object") return { payload: val, hadLogo: false };
+  let hadLogo = false;
+  const clone = { ...(val as Record<string, any>) };
+  if ("companyLogo" in clone) {
+    delete clone.companyLogo;
+    hadLogo = true;
+  }
+  if (
+    clone.candidate &&
+    typeof clone.candidate === "object" &&
+    "companyLogo" in clone.candidate
+  ) {
+    clone.candidate = { ...clone.candidate };
+    delete clone.candidate.companyLogo;
+    hadLogo = true;
+  }
+  return { payload: clone, hadLogo };
+}
 async function request(
   path: string,
   method = "GET",
   body?: unknown,
   key?: string,
-) {
+): Promise<unknown> {
   const c = await config();
   if (!c.server) throw new Error("Укажите адрес сервиса");
   const headers: Record<string, string> = {};
-  if (body !== undefined) headers["Content-Type"] = "application/json";
+  const preparedBody = cleanPayload(body);
+  if (preparedBody !== undefined) headers["Content-Type"] = "application/json";
   if (c.token) headers.Authorization = "Bearer " + c.token;
   if (key) headers["Idempotency-Key"] = key;
   const response = await fetch(c.server + "/api/v1" + path, {
     method,
     headers,
     credentials: "omit",
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: preparedBody === undefined ? undefined : JSON.stringify(preparedBody),
   }).catch(() => {
     throw new Error("Нет соединения с сервером. Проверьте адрес и повторите.");
   });
@@ -64,6 +98,16 @@ async function request(
     if (response.status === 401) {
       await chrome.storage.local.remove("token");
       await chrome.action.setBadgeText({ text: "" });
+    }
+    if (
+      response.status === 400 &&
+      data.error === "Некорректный JSON запроса" &&
+      preparedBody !== undefined
+    ) {
+      const { payload: fallbackBody, hadLogo } = stripLogo(preparedBody);
+      if (hadLogo) {
+        return await request(path, method, fallbackBody, key);
+      }
     }
     const error = new Error(data.error ?? "Ошибка сервера") as Error & {
       status: number;

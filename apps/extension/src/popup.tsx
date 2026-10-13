@@ -49,6 +49,7 @@ import {
   Badge,
   FieldInput,
   Select,
+  CompanyAvatar,
   handleFormSubmitShortcut,
   SubmitShortcutHint,
 } from "@avari/shared/ui";
@@ -313,17 +314,21 @@ function Popup() {
     setBusy(true);
     setError(undefined);
     try {
+      const payload: Record<string, any> = {
+        ...snapshot.vacancy,
+        hhId: "",
+        groups: captureGroup.trim() ? [captureGroup.trim()] : [],
+        stage,
+        savedDate: dateToday(user.timezone),
+        appliedDate: stage === "saved" ? "" : dateToday(user.timezone),
+      };
+      if (!payload.companyLogo) {
+        delete payload.companyLogo;
+      }
       await api(
         "/applications",
         "POST",
-        {
-          ...snapshot.vacancy,
-          hhId: "",
-          groups: captureGroup.trim() ? [captureGroup.trim()] : [],
-          stage,
-          savedDate: dateToday(user.timezone),
-          appliedDate: stage === "saved" ? "" : dateToday(user.timezone),
-        },
+        payload,
         crypto.randomUUID(),
       );
       saved(stage === "applied" ? "Отклик сохранён" : "Вакансия сохранена");
@@ -590,7 +595,7 @@ function Popup() {
           ))}
         </nav>
       )}
-      {form && !setup && user?.status === "active" && (
+      {form && !setup && user?.status === "active" && form.kind !== "application" && (
         <button
           className="text-button popup-back"
           onClick={() => setForm(undefined)}
@@ -700,8 +705,16 @@ function Popup() {
                   className="vacancy-card journal-item"
                   key={application.id}
                 >
-                  <h3>{application.company}</h3>
-                  <p>{application.position}</p>
+                  <div className="journal-item-header">
+                    <CompanyAvatar
+                      name={application.company}
+                      logoUrl={application.companyLogo}
+                    />
+                    <div className="journal-item-titles">
+                      <h3>{application.company}</h3>
+                      <p>{application.position}</p>
+                    </div>
+                  </div>
                   <div className="detail-badges">
                     <Badge value={application.stage} />
                     <Badge value={application.state} kind="state" />
@@ -929,29 +942,29 @@ function Popup() {
           </section>
         ) : form ? (
           form.kind === "application" ? (
-            <>
-              <h2>
-                {(form.value as Application).id
+            <ApplicationForm
+              groupOptions={Array.from(
+                new Set(data.applications.flatMap((a) => a.groups ?? [])),
+              ).sort((a, b) => a.localeCompare(b, "ru"))}
+              tagOptions={Array.from(
+                new Set(data.applications.flatMap((a) => a.tags ?? [])),
+              ).sort((a, b) => a.localeCompare(b, "ru"))}
+              initial={form.value as Application}
+              fields={data.fields}
+              onDraftChange={(value) =>
+                setForm({ kind: "application", value })
+              }
+              api={api}
+              actionsAtTop
+              onBack={() => setForm(undefined)}
+              title={
+                (form.value as Application).id
                   ? "Редактировать вакансию"
-                  : "Добавить вакансию"}
-              </h2>
-              <ApplicationForm
-                groupOptions={Array.from(
-                  new Set(data.applications.flatMap((a) => a.groups ?? [])),
-                ).sort((a, b) => a.localeCompare(b, "ru"))}
-                tagOptions={Array.from(
-                  new Set(data.applications.flatMap((a) => a.tags ?? [])),
-                ).sort((a, b) => a.localeCompare(b, "ru"))}
-                initial={form.value as Application}
-                fields={data.fields}
-                onDraftChange={(value) =>
-                  setForm({ kind: "application", value })
-                }
-                api={api}
-                onSaved={() => saved()}
-                onCancel={() => setForm(undefined)}
-              />
-            </>
+                  : "Добавить вакансию"
+              }
+              onSaved={() => saved()}
+              onCancel={() => setForm(undefined)}
+            />
           ) : form.kind === "task" ? (
             <>
               <h2>Задача или интервью</h2>
@@ -1009,9 +1022,11 @@ function Popup() {
               {detail ? (
                 <>
                   <div className="card-heading">
-                    <span className="tile-icon">
-                      <BriefcaseBusiness size={20} />
-                    </span>
+                    <CompanyAvatar
+                      name={detail.application.company}
+                      logoUrl={detail.application.companyLogo}
+                      className="popup-company-avatar"
+                    />
                     <div className="eyebrow">В вашем журнале</div>
                     <span className="connection-dot" />
                   </div>
@@ -1096,9 +1111,11 @@ function Popup() {
               ) : snapshot.vacancy ? (
                 <>
                   <div className="card-heading">
-                    <span className="tile-icon">
-                      <BriefcaseBusiness size={20} />
-                    </span>
+                    <CompanyAvatar
+                      name={snapshot.vacancy.company || "?"}
+                      logoUrl={snapshot.vacancy.companyLogo}
+                      className="popup-company-avatar"
+                    />
                     <div className="eyebrow">Новая вакансия</div>
                     <span className="connection-dot" />
                   </div>

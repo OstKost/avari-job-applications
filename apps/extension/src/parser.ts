@@ -111,6 +111,21 @@ function text(root: ParentNode, selectors: string[]) {
   }
   return "";
 }
+function imageSrc(root: ParentNode, selectors: string[]): string {
+  for (const selector of selectors) {
+    for (const el of root.querySelectorAll<HTMLElement>(selector)) {
+      if (el.closest('[hidden], [aria-hidden="true"]')) continue;
+      if (el.ownerDocument.defaultView?.getComputedStyle(el).display === "none")
+        continue;
+      const src =
+        el.getAttribute("src") ||
+        el.getAttribute("data-src") ||
+        (el instanceof HTMLImageElement ? el.src : "");
+      if (src && /^https?:\/\//i.test(src)) return src.trim();
+    }
+  }
+  return "";
+}
 export function statusFromText(raw: string): string {
   const s = clean(raw).toLowerCase();
   if (!s) return "";
@@ -470,6 +485,24 @@ function parseOtherSite(doc: Document, rawURL: string): Snapshot {
     (typeof job?.hiringOrganization?.name === "string"
       ? job.hiringOrganization.name
       : "");
+  const otherStructuredLogo =
+    typeof job?.hiringOrganization?.logo === "string"
+      ? job.hiringOrganization.logo
+      : typeof job?.hiringOrganization?.logo?.url === "string"
+        ? job.hiringOrganization.logo.url
+        : "";
+  vacancy.companyLogo =
+    (otherStructuredLogo && /^https?:\/\//i.test(otherStructuredLogo)
+      ? otherStructuredLogo.trim()
+      : "") ||
+    imageSrc(doc, [
+      ".job-details-jobs-unified-top-card__company-logo img",
+      ".topcard__org-name-link img",
+      ".b-vacancy-header img",
+      ".company-logo img",
+      ".company_logo img",
+      ".vacancy-header img",
+    ]);
   const locations = Array.isArray(job?.jobLocation)
     ? job.jobLocation
     : [job?.jobLocation];
@@ -591,6 +624,22 @@ export function parsePage(doc: Document, rawURL: string): Snapshot {
       ]) ||
       job?.hiringOrganization?.name ||
       "";
+    const structuredLogo =
+      typeof job?.hiringOrganization?.logo === "string"
+        ? job.hiringOrganization.logo
+        : typeof job?.hiringOrganization?.logo?.url === "string"
+          ? job.hiringOrganization.logo.url
+          : "";
+    vacancy.companyLogo =
+      (structuredLogo && /^https?:\/\//i.test(structuredLogo)
+        ? structuredLogo.trim()
+        : "") ||
+      imageSrc(doc, [
+        '[data-qa="vacancy-company-logo"] img',
+        '.vacancy-company-logo img',
+        'a[data-qa="vacancy-company-name"] img',
+        '.bloko-avatar img',
+      ]);
     vacancy.location =
       text(doc, [
         '[data-qa="vacancy-view-raw-address"]',
