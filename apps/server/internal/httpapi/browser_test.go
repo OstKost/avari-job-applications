@@ -42,9 +42,18 @@ func TestBrowser(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
+	localStore, e := core.Open(filepath.Join(t.TempDir(), "personal.sqlite"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer localStore.Close()
+	localAPI := &Server{Store: localStore, Assets: web, Personal: true, SetupToken: "browser-setup-secret"}
+	localServer := httptest.NewServer(localAPI.Handler())
+	defer localServer.Close()
+	localAPI.Origin = localServer.URL
 	cmd := exec.Command("npx", "playwright", "test")
 	cmd.Dir = root
-	cmd.Env = append(os.Environ(), "AVARI_TEST_URL="+server.URL)
+	cmd.Env = append(os.Environ(), "AVARI_TEST_URL="+server.URL, "AVARI_LOCAL_TEST_URL="+localServer.URL)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if e = cmd.Run(); e != nil {

@@ -20,7 +20,7 @@ if (defaultServer) {
   defaultServer = url.origin;
   process.env.VITE_AVARI_DEFAULT_SERVER = defaultServer;
 }
-const version = process.env.AVARI_VERSION || "1.0.0";
+const version = process.env.AVARI_VERSION || "1.1.0";
 if (
   !/^\d{1,5}\.\d{1,5}\.\d{1,5}$/.test(version) ||
   version

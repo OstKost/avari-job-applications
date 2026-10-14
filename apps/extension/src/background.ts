@@ -89,7 +89,14 @@ async function request(
     credentials: "omit",
     body: preparedBody === undefined ? undefined : JSON.stringify(preparedBody),
   }).catch(() => {
-    throw new Error("Нет соединения с сервером. Проверьте адрес и повторите.");
+    const local = ["localhost", "127.0.0.1"].includes(
+      new URL(c.server!).hostname,
+    );
+    throw new Error(
+      local
+        ? "Нет соединения с локальным Avari.Jobs. Запустите приложение через его иконку и повторите."
+        : "Нет соединения с сервером. Проверьте адрес и повторите.",
+    );
   });
   const data = await response.json().catch(() => {
     throw new Error("Некорректный ответ сервера. Проверьте адрес сервиса.");

@@ -198,6 +198,68 @@ schemas.TaskInput = input("Task");
 schemas.Task.properties.updatedAt = stamp;
 schemas.TaskInput.properties.updatedAt = stamp;
 schemas.NoteInput = input("Note");
+schemas.TableSettings = object({
+  group: enumeration("", "stage", "state", "group", "priority"),
+  cards: { type: "boolean" },
+  statistics: { type: "boolean" },
+});
+schemas.JournalSettings = object(
+  {
+    timezone: s,
+    theme: enumeration("dark", "light"),
+    table: ref("TableSettings"),
+  },
+  ["timezone"],
+);
+schemas.Journal = object({
+  format: enumeration("avari-journal"),
+  version: { type: "integer", enum: [1] },
+  exportedAt: stamp,
+  settings: ref("JournalSettings"),
+  applications: array(ref("Application")),
+  fields: array(ref("Field")),
+  tasks: array(ref("Task")),
+  notes: array(ref("Note")),
+  events: array(ref("HistoryEvent")),
+  origins: { type: "object", additionalProperties: s },
+});
+schemas.ImportRequest = object(
+  {
+    journal: ref("Journal"),
+    fieldMapping: { type: "object", additionalProperties: s },
+    applySettings: { type: "boolean" },
+    revision: s,
+  },
+  ["journal", "fieldMapping", "applySettings"],
+);
+schemas.FieldConflict = object({
+  field: ref("Field"),
+  candidates: array(ref("Field")),
+});
+schemas.ImportReport = object({
+  ready: { type: "boolean" },
+  revision: s,
+  newApplications: integer,
+  matchedApplications: integer,
+  newTasks: integer,
+  newNotes: integer,
+  newEvents: integer,
+  unchanged: integer,
+  conflicts: array(s),
+  fieldConflicts: array(ref("FieldConflict")),
+});
+schemas.LocalSettings = object({ autostart: { type: "boolean" } });
+schemas.LocalStatus = object(
+  {
+    personal: { type: "boolean" },
+    setupNeeded: { type: "boolean" },
+    launcher: { type: "boolean" },
+    origin: s,
+    checks: array(s),
+  },
+  ["personal", "setupNeeded", "launcher"],
+);
+schemas.LocalSetup = object({ email: s, password: s, timezone: s, token: s });
 const paths = {};
 const operation = (
   path,
@@ -289,6 +351,56 @@ operation(
   object({ ok: { type: "boolean" }, message: s }),
   "PasswordRecovery",
   true,
+);
+operation(
+  "/journal/export",
+  "get",
+  "Export the authenticated user's complete journal",
+  "Journal",
+);
+operation(
+  "/journal/import/preview",
+  "post",
+  "Preview a merge without writing; resolve field mappings first",
+  "ImportReport",
+  "ImportRequest",
+);
+operation(
+  "/journal/import",
+  "post",
+  "Atomically merge using the preview revision; existing records win",
+  "ImportReport",
+  "ImportRequest",
+);
+operation(
+  "/local/status",
+  "get",
+  "Discover personal mode and first-run readiness",
+  "LocalStatus",
+  undefined,
+  true,
+);
+operation(
+  "/local/setup",
+  "post",
+  "Create the sole owner using the launcher's one-time secret",
+  "User",
+  "LocalSetup",
+  true,
+  "201",
+);
+operation(
+  "/local/settings",
+  "get",
+  "Read native autostart state (personal web session only)",
+  "LocalSettings",
+);
+operation(
+  "/local/settings",
+  "put",
+  "Enable or disable native autostart (personal web session only)",
+  "LocalSettings",
+  "LocalSettings",
 );
 operation("/auth/logout", "post", "Revoke current session", "Success");
 operation(
@@ -447,7 +559,7 @@ const spec = {
   openapi: "3.1.0",
   info: {
     title: "Avari.Jobs API",
-    version: "1.0.0",
+    version: "1.1.0",
     description:
       "Website mutations require a CSRF header with the avari_csrf cookie value. Extension sessions use Bearer tokens. Only /me and /auth/logout are accessible to pending/blocked accounts. The calendar feed uses a separate secret read-only token and is only available for active accounts. Changes require user confirmation. There is no administrative HTTP API.",
   },

@@ -3,7 +3,6 @@ package core
 import (
 	"database/sql"
 	"fmt"
-	"golang.org/x/sys/unix"
 	"io"
 	"os"
 	"path/filepath"
@@ -73,7 +72,7 @@ func (s *Store) Restore(path, dir string) error {
 	if e := s.DB.Close(); e != nil {
 		return e
 	}
-	if e := unix.Flock(int(s.lock.Fd()), unix.LOCK_EX|unix.LOCK_NB); e != nil {
+	if e := lockExclusive(s.lock); e != nil {
 		return fmt.Errorf("остановите сервер и другие TUI перед восстановлением: %w", e)
 	}
 	defer s.Close()
@@ -159,14 +158,5 @@ func (s *Store) Restore(path, dir string) error {
 	if e = os.Rename(temp, s.Path); e != nil {
 		return e
 	}
-	parent, e := os.Open(filepath.Dir(s.Path))
-	if e != nil {
-		return e
-	}
-	e = parent.Sync()
-	parent.Close()
-	if e != nil {
-		return e
-	}
-	return nil
+	return syncDirectory(filepath.Dir(s.Path))
 }

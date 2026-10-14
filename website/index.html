@@ -1,0 +1,509 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta
+      name="description"
+      content="Скачайте локальный Avari.Jobs для Windows или macOS. Пошаговый помощник: установка, первый запуск, расширение браузера и резервная копия журнала."
+    />
+    <meta name="theme-color" content="#122a38" />
+    <title>Avari.Jobs — ваш журнал поиска работы, на вашем компьютере</title>
+    <link rel="icon" href="assets/icon.png" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a href="#" class="brand"
+        ><img src="assets/icon.png" width="36" height="36" alt="" /><span
+          >Avari<span class="blue">.Jobs</span></span
+        ></a
+      >
+      <nav aria-label="Основная навигация">
+        <a href="#assistant">Помощник</a><a href="#questions">Вопросы</a
+        ><a href="https://jobs.avari.dev" target="_blank" rel="noreferrer"
+          >Онлайн-версия ↗</a
+        >
+      </nav>
+    </header>
+    <main>
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow"><span class="dot"></span> ЛОКАЛЬНАЯ ВЕРСИЯ</p>
+          <h1>
+            Поиск работы.<br />Ваш журнал.<br /><span class="blue"
+              >Ваш компьютер.</span
+            >
+          </h1>
+          <p class="lead">
+            Вакансии, отклики и интервью в одном месте. Установите Avari.Jobs —
+            приложение запустит сервис и откроет привычный интерфейс в браузере.
+          </p>
+          <a class="button primary" href="#assistant"
+            >Скачать и настроить <span aria-hidden="true">↓</span></a
+          >
+          <p class="small">
+            Windows 10/11 · macOS 13+ · Без Docker и терминала
+          </p>
+        </div>
+        <div class="hero-visual">
+          <div class="window-bar">
+            <span class="window-dots">● ● ●</span
+            ><span>Ваше карьерное пространство</span><span>↗</span>
+          </div>
+          <img
+            src="assets/dashboard.jpg"
+            width="1440"
+            height="1000"
+            alt="Главная Avari.Jobs: план на день, вакансии, интервью и этапы поиска работы"
+          />
+          <div class="visual-caption">
+            <span class="dot"></span> Данные хранятся локально
+            <span>На скриншоте — демонстрационный журнал</span>
+          </div>
+        </div>
+      </section>
+      <div class="benefits">
+        <div>
+          <b>Один установщик</b
+          ><span>Приложение, интерфейс и база уже внутри</span>
+        </div>
+        <div>
+          <b>Привычный браузер</b
+          ><span>Тот же журнал, что и в онлайн-версии</span>
+        </div>
+        <div>
+          <b>Расширение на выбор</b><span>Из магазина или вручную</span>
+        </div>
+      </div>
+      <section id="assistant" class="assistant-section">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">ОТ СКАЧИВАНИЯ ДО ПЕРВОЙ ВАКАНСИИ</p>
+            <h2>Настроим всё по шагам</h2>
+          </div>
+          <p>
+            Выберите систему, затем следуйте подсказкам.<br />Шаг можно открыть
+            в любом порядке.
+          </p>
+        </div>
+        <div class="assistant">
+          <aside class="steps" aria-label="Этапы установки">
+            <button class="step active" data-step="0" aria-current="step">
+              <span>01</span>
+              <div>
+                Скачать приложение<small>Windows или macOS</small>
+              </div></button
+            ><button class="step" data-step="1">
+              <span>02</span>
+              <div>
+                Первый запуск<small>Создать личный аккаунт</small>
+              </div></button
+            ><button class="step" data-step="2">
+              <span>03</span>
+              <div>
+                Подключить расширение<small
+                  >Сохранять вакансии из браузера</small
+                >
+              </div></button
+            ><button class="step" data-step="3">
+              <span>04</span>
+              <div>
+                Начать пользоваться<small>Журнал, автозапуск, копии</small>
+              </div>
+            </button>
+            <div class="steps-note">
+              <b>Уже пользуетесь онлайн?</b>
+              <p>
+                Экспортируйте журнал в настройках и импортируйте JSON локально.
+                Автоматической синхронизации нет.
+              </p>
+            </div>
+          </aside>
+          <div class="step-content">
+            <section class="guide-panel" data-panel="0">
+              <p class="eyebrow">ШАГ 01 / 04</p>
+              <h3>Начнём с вашего компьютера</h3>
+              <p>
+                Приложение работает в фоне. Журнал открывается в браузере —
+                установите Avari.Jobs, а остальное поможет настроить мастер.
+              </p>
+              <div
+                class="platforms"
+                role="group"
+                aria-label="Операционная система"
+              >
+                <button
+                  data-platform="windows"
+                  aria-pressed="true"
+                  class="selected"
+                >
+                  <span class="platform-symbol" aria-hidden="true">⊞</span
+                  ><b>Windows</b><small>10 / 11 · x64</small></button
+                ><button data-platform="apple" aria-pressed="false">
+                  <span class="platform-symbol" aria-hidden="true">◉</span
+                  ><b>Mac</b><small>Apple Silicon · M1 и новее</small></button
+                ><button data-platform="intel" aria-pressed="false">
+                  <span class="platform-symbol" aria-hidden="true">◉</span
+                  ><b>Mac</b><small>Intel · macOS 13+</small>
+                </button>
+              </div>
+              <div class="download-card">
+                <div>
+                  <b id="download-title">Avari.Jobs для Windows</b
+                  ><span id="download-detail">Установщик .exe · x64</span>
+                </div>
+                <a
+                  class="button primary"
+                  id="download"
+                  href="https://github.com/OstKost/avari-job-applications/releases/latest/download/avari-jobs-windows-x64-setup.exe"
+                  >Скачать приложение ↓</a
+                >
+              </div>
+              <p class="release-info">
+                Последняя версия: <span id="release-version">v1.1.0</span> ·
+                <a
+                  href="https://github.com/OstKost/avari-job-applications/releases/latest"
+                  target="_blank"
+                  rel="noreferrer"
+                  >Все файлы и контрольные суммы ↗</a
+                >
+              </p>
+              <div class="notice">
+                <b>О подписи текущего выпуска</b>
+                <p>
+                  Эти сборки пока не подписаны сертификатом издателя. Windows
+                  может показать предупреждение SmartScreen, а macOS —
+                  ограничить запуск через Gatekeeper. Проверьте источник файла;
+                  если система запрещает запуск, онлайн-версия доступна без
+                  установки.
+                </p>
+              </div>
+              <div class="installation-tip" id="installation-tip">
+                <b>После скачивания</b>
+                <p>
+                  Откройте установщик .exe, завершите установку и запустите
+                  Avari.Jobs из меню «Пуск». Go, Node.js и Docker устанавливать
+                  не нужно.
+                </p>
+              </div>
+              <details>
+                <summary>Как определить процессор Mac?</summary>
+                <p>
+                  Откройте меню Apple → «Об этом Mac». Если указано «Чип Apple
+                  M…», выберите Apple Silicon. Если указано «Процессор Intel»,
+                  выберите Intel.
+                </p>
+              </details>
+              <p class="small">
+                Linux: доступны
+                <a
+                  href="https://github.com/OstKost/avari-job-applications/releases/latest"
+                  target="_blank"
+                  rel="noreferrer"
+                  >серверные архивы</a
+                >
+                и
+                <a
+                  href="https://github.com/OstKost/avari-job-applications/blob/main/docs/Usage.md"
+                  target="_blank"
+                  rel="noreferrer"
+                  >инструкция самостоятельного запуска</a
+                >.
+              </p>
+            </section>
+            <section class="guide-panel" data-panel="1" hidden>
+              <p class="eyebrow">ШАГ 02 / 04</p>
+              <h3>Ваш личный журнал — с чистого листа</h3>
+              <div class="instruction-grid">
+                <div>
+                  <ol class="instructions">
+                    <li>
+                      <b>Запустите Avari.Jobs по иконке.</b>
+                      <p>
+                        Лаунчер проверит каталог данных, базу и локальный порт,
+                        затем откроет браузер.
+                      </p>
+                    </li>
+                    <li>
+                      <b>Создайте личный аккаунт.</b>
+                      <p>
+                        Укажите email и пароль от 10 символов. Одобрение
+                        администратора не требуется. Сохраните пароль: он нужен
+                        для входа в расширение.
+                      </p>
+                    </li>
+                    <li>
+                      <b>Выберите автозапуск.</b>
+                      <p>
+                        Если удобно, включите запуск при входе в систему. Позже
+                        его можно отключить в настройках.
+                      </p>
+                    </li>
+                  </ol>
+                </div>
+                <figure class="setup-figure">
+                  <img
+                    src="assets/setup.png"
+                    alt="Мастер первого запуска: проверки готовности и форма создания личного аккаунта"
+                    loading="lazy"
+                  />
+                  <figcaption>Так выглядит мастер первого запуска</figcaption>
+                </figure>
+              </div>
+              <div class="address-card">
+                <span>Адрес по умолчанию</span>
+                <div>
+                  <code>http://127.0.0.1:8080</code
+                  ><button
+                    class="copy-button"
+                    data-copy="http://127.0.0.1:8080"
+                  >
+                    Скопировать
+                  </button>
+                </div>
+                <p>
+                  Если порт занят, выберите другой в лаунчере. Используйте
+                  фактический адрес, показанный вашим приложением.
+                </p>
+              </div>
+            </section>
+            <section class="guide-panel" data-panel="2" hidden>
+              <p class="eyebrow">ШАГ 03 / 04</p>
+              <h3>Вакансия из браузера — в журнал</h3>
+              <p>
+                Расширение работает в Chrome и других Chromium-браузерах.
+                Выберите удобный способ установки — подключение к локальному
+                сервису одинаковое.
+              </p>
+              <div
+                class="extension-tabs"
+                role="tablist"
+                aria-label="Способ установки расширения"
+              >
+                <button role="tab" data-extension="store" aria-selected="true">
+                  Из магазина</button
+                ><button
+                  role="tab"
+                  data-extension="manual"
+                  aria-selected="false"
+                >
+                  Вручную
+                </button>
+              </div>
+              <div id="store-instructions">
+                <p>
+                  Откройте страницу расширения в онлайн-версии и перейдите по
+                  ссылке на Chrome Web Store, когда она доступна.
+                </p>
+                <a
+                  class="button secondary"
+                  href="https://jobs.avari.dev/extension"
+                  target="_blank"
+                  rel="noreferrer"
+                  >Страница расширения ↗</a
+                >
+                <p class="small">
+                  Если публикация в магазине ещё ожидается, доступна ручная
+                  установка.
+                </p>
+              </div>
+              <div id="manual-instructions" hidden>
+                <ol class="instructions">
+                  <li>
+                    <b>Скачайте и распакуйте архив.</b>
+                    <p>
+                      Архив доступен в мастере и настройках локального
+                      Avari.Jobs, а также в релизе.
+                    </p>
+                    <a
+                      href="https://github.com/OstKost/avari-job-applications/releases/latest/download/avari-extension.zip"
+                      >Скачать архив расширения ↓</a
+                    >
+                  </li>
+                  <li>
+                    <b>Откройте страницу расширений.</b>
+                    <p>
+                      В Chrome: <code>chrome://extensions</code>. Включите режим
+                      разработчика.
+                    </p>
+                  </li>
+                  <li>
+                    <b>Загрузите распакованное расширение.</b>
+                    <p>
+                      Нажмите «Загрузить распакованное расширение» и выберите
+                      папку с файлами архива.
+                    </p>
+                  </li>
+                </ol>
+              </div>
+              <div class="connection-box">
+                <b>Подключение к вашему компьютеру</b>
+                <ol>
+                  <li>В расширении выберите «Использовать свой сервер».</li>
+                  <li>Вставьте адрес из мастера Avari.Jobs.</li>
+                  <li>Войдите с email и паролем вашего локального аккаунта.</li>
+                </ol>
+                <p>
+                  После входа мастер покажет, что расширение подключено. Затем
+                  откройте вакансию и сохраните её в журнал.
+                </p>
+              </div>
+            </section>
+            <section class="guide-panel" data-panel="3" hidden>
+              <p class="eyebrow">ШАГ 04 / 04</p>
+              <h3>Теперь можно искать работу</h3>
+              <div class="daily-grid">
+                <article>
+                  <span aria-hidden="true">↗</span>
+                  <h4>Сохраните вакансию</h4>
+                  <p>
+                    Откройте карточку на поддерживаемой площадке и используйте
+                    расширение. Или добавьте вакансию вручную в журнале.
+                  </p>
+                </article>
+                <article>
+                  <span aria-hidden="true">◷</span>
+                  <h4>Запланируйте следующий шаг</h4>
+                  <p>
+                    Добавьте задачу или интервью. Календарь поможет видеть
+                    встречи и подготовку, а этапы — прогресс откликов.
+                  </p>
+                </article>
+                <article>
+                  <span aria-hidden="true">⤓</span>
+                  <h4>Сохраните копию</h4>
+                  <p>
+                    Настройки → Импорт и экспорт → «Скачать журнал JSON». Импорт
+                    дополняет журнал и сохраняет текущие версии записей.
+                  </p>
+                </article>
+              </div>
+              <div class="connection-box">
+                <b>Приложение остаётся работать в фоне</b>
+                <p>
+                  Закрытие вкладки или окна лаунчера не останавливает сервис.
+                  Открыть журнал, перезапустить или завершить Avari.Jobs можно
+                  через значок в трее Windows или строке меню macOS.
+                </p>
+                <p>Автозапуск: Настройки → Общие → Локальный Avari.Jobs.</p>
+              </div>
+              <a
+                class="button secondary"
+                href="https://github.com/OstKost/avari-job-applications/blob/main/docs/Local-Version.md"
+                target="_blank"
+                rel="noreferrer"
+                >Полное руководство ↗</a
+              >
+            </section>
+            <div class="guide-navigation">
+              <button id="back" class="button secondary" disabled>
+                ← Назад
+              </button>
+              <p id="progress" aria-live="polite">Шаг 1 из 4</p>
+              <button id="next" class="button primary">Далее →</button>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section id="questions" class="questions">
+        <p class="eyebrow">ЕСЛИ ЧТО-ТО НЕ ПОЛУЧИЛОСЬ</p>
+        <h2>Несколько полезных ответов</h2>
+        <details>
+          <summary>Расширение пишет «Нет соединения»</summary>
+          <p>
+            Запустите Avari.Jobs по иконке и проверьте состояние сервиса.
+            Сверьте адрес сервера в расширении с адресом лаунчера. Если меняли
+            порт, обновите адрес в расширении.
+          </p>
+        </details>
+        <details>
+          <summary>Порт 8080 уже занят</summary>
+          <p>
+            В окне лаунчера укажите свободный порт, например 8081, и нажмите
+            «Сохранить порт и запустить». Адрес станет http://127.0.0.1:8081.
+            Его же укажите в расширении.
+          </p>
+        </details>
+        <details>
+          <summary>Где хранятся мои данные?</summary>
+          <p>
+            В пользовательском каталоге приложения на вашем компьютере. Открыть
+            его можно из диагностики лаунчера. Закрытие приложения и установка
+            новой версии сохраняют данные. Для дополнительной копии
+            экспортируйте журнал JSON.
+          </p>
+        </details>
+        <details>
+          <summary>Можно ли перенести журнал из онлайн-версии?</summary>
+          <p>
+            Да. В онлайн-версии откройте настройки и скачайте полный
+            JSON-экспорт. В локальной версии выберите этот файл в «Импорт и
+            экспорт», проверьте предпросмотр и примените импорт. Последующие
+            изменения между экземплярами автоматически не синхронизируются.
+          </p>
+        </details>
+        <details>
+          <summary>
+            Будут ли события видны в Google или Яндекс Календаре?
+          </summary>
+          <p>
+            Внешние сервисы не могут прочитать localhost. Для календарной
+            подписки им нужен доступный извне HTTPS-экземпляр, например
+            онлайн-версия Avari.Jobs. Календарь внутри локального приложения
+            работает.
+          </p>
+        </details>
+        <details>
+          <summary>Как обновить приложение?</summary>
+          <p>
+            Завершите Avari.Jobs через меню значка в трее, скачайте новый
+            установщик и установите его поверх текущей версии. Данные хранятся
+            отдельно. Перед миграциями база автоматически сохраняется в
+            резервную копию. Автообновления пока нет.
+          </p>
+        </details>
+      </section>
+      <section class="closing">
+        <div>
+          <h2>Можно начать и без установки</h2>
+          <p>
+            Онлайн-версия доступна в браузере. Локальная — когда хотите хранить
+            журнал на своём компьютере.
+          </p>
+        </div>
+        <a
+          class="button secondary"
+          href="https://jobs.avari.dev"
+          target="_blank"
+          rel="noreferrer"
+          >Открыть онлайн-версию ↗</a
+        >
+      </section>
+    </main>
+    <footer>
+      <a class="brand" href="#"
+        ><img
+          src="assets/icon.png"
+          width="28"
+          height="28"
+          alt=""
+        />Avari.Jobs</a
+      >
+      <p>Открытый проект · MIT</p>
+      <a
+        href="https://github.com/OstKost/avari-job-applications"
+        target="_blank"
+        rel="noreferrer"
+        >Исходный код на GitHub ↗</a
+      >
+    </footer>
+    <div
+      id="copy-status"
+      role="status"
+      aria-live="polite"
+      class="sr-only"
+    ></div>
+    <script src="guide.js"></script>
+  </body>
+</html>

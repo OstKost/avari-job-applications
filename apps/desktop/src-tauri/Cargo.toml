@@ -1,0 +1,20 @@
+[package]
+name = "avari-launcher"
+version = "1.1.0"
+edition = "2021"
+rust-version = "1.90"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-autostart = "2"
+tauri-plugin-single-instance = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tiny_http = "0.12"
+uuid = { version = "1", features = ["v4"] }
+open = "5"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json"] }
+subtle = "2"

@@ -16,7 +16,7 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
 ![SQLite](https://img.shields.io/badge/SQLite-003B57?logo=sqlite&logoColor=white)
 
-[Открыть приложение](https://jobs.avari.dev) · [Установить расширение](https://jobs.avari.dev/extension) · [Быстрый запуск](#быстрый-запуск) · [Документация](#документация)
+[Открыть приложение](https://jobs.avari.dev) · [Установить расширение](https://jobs.avari.dev/extension) · [Скачать приложение](#локальная-версия-для-windows-и-macos) · [Помощник по установке](https://ostkost.github.io/avari-job-applications/) · [Сборка из исходников](#сборка-из-исходников) · [Документация](#документация)
 
 </div>
 
@@ -123,9 +123,35 @@ tests/          Браузерные сценарии и проверки раз
 - **Восстановление данных.** Резервные копии создаются через `VACUUM INTO`; восстановление проверяет целостность и версию схемы, использует эксклюзивную блокировку и отзывает сессии.
 - **Проверка полного сценария.** Playwright работает с настоящим Go-сервисом, временной SQLite и настоящим MV3-расширением в отдельном Chromium-профиле.
 
-## Быстрый запуск
+## Локальная версия для Windows и macOS
 
-Нужны **Go 1.27.1+**, **Node.js 22.12+**, npm, `make` и `zip`.
+**Установите Avari.Jobs и запустите по иконке.** Приложение само поднимет локальный сервис и откроет журнал в браузере. Go, Node.js, Docker и терминал для этого не нужны.
+
+- **[Скачать для Windows 10/11 x64](https://github.com/OstKost/avari-job-applications/releases/latest/download/avari-jobs-windows-x64-setup.exe)** — установщик `.exe`.
+- **[Скачать для macOS 13+ · Apple Silicon](https://github.com/OstKost/avari-job-applications/releases/latest/download/avari-jobs-macos-apple-silicon.dmg)** — M1 и новее.
+- **[Скачать для macOS 13+ · Intel](https://github.com/OstKost/avari-job-applications/releases/latest/download/avari-jobs-macos-intel.dmg)**.
+- **[Открыть визуальный помощник по установке](https://ostkost.github.io/avari-job-applications/)** — выбор версии и четыре шага до первого сохранения вакансии.
+
+Все файлы и контрольные суммы доступны в [последнем релизе](https://github.com/OstKost/avari-job-applications/releases/latest).
+
+> Текущие установщики выпускаются без сертификата издателя и notarization Apple. Windows может показывать предупреждение SmartScreen, macOS — ограничивать запуск через Gatekeeper. Скачивайте файлы только из официального релиза этого репозитория. [Онлайн-версия](https://jobs.avari.dev) доступна без установки.
+
+### После установки
+
+1. Запустите Avari.Jobs. Мастер проверит локальный сервис и предложит создать личный аккаунт без одобрения через TUI.
+2. При желании включите автозапуск. Его легко отключить в **Настройки → Общие → Локальный Avari.Jobs**.
+3. Установите расширение [из магазина, когда публикация доступна](https://jobs.avari.dev/extension), либо [скачайте архив для ручной установки](https://github.com/OstKost/avari-job-applications/releases/latest/download/avari-extension.zip) и загрузите распакованную папку через режим разработчика. Оба варианта сохраняются.
+4. В расширении выберите «Использовать свой сервер», укажите адрес из мастера (по умолчанию `http://127.0.0.1:8080`) и войдите с локальным аккаунтом.
+
+Закрытие браузера не останавливает сервис. Открытие журнала, перезапуск и завершение доступны через значок в трее Windows или строке меню macOS. Данные хранятся на этом компьютере и сохраняются при обновлении приложения.
+
+**Импорт и экспорт:** в настройках локальной и онлайн-версии доступен полный JSON-журнал. Импорт дополняет данные, сохраняет текущие версии записей и не создаёт дубли при повторной загрузке. Автоматической синхронизации с продакшеном нет.
+
+Подробнее: [руководство локальной версии](docs/Local-Version.md). Linux пока использует серверные архивы и Docker.
+
+## Сборка из исходников
+
+Нужны **Go 1.27.1+**, **Node.js 22.12+**, npm и `make`.
 
 ```sh
 git clone https://github.com/OstKost/avari-job-applications.git
@@ -197,6 +223,9 @@ node scripts/readme-media.mjs
 ```
 
 ## Документация
+
+- [Визуальный помощник](https://ostkost.github.io/avari-job-applications/) — установка Windows/macOS, расширение и первые шаги.
+- [Локальная версия](docs/Local-Version.md) — запуск, автозапуск, импорт/экспорт и сборка установщиков.
 
 - [Руководство пользователя и администратора](docs/Usage.md) — подробности функций, календарной подписки, конфигурации, TUI и резервных копий.
 - [Развёртывание и обновления](deploy/README.md) — production-инфраструктура и GitHub Actions.

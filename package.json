@@ -1,7 +1,7 @@
 {
   "name": "avari",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "workspaces": [
     "apps/web",
     "apps/extension",
@@ -17,16 +17,22 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "AVARI_E2E=1 go test ./apps/server/internal/httpapi -run \"^TestBrowser$\" -count=1 -timeout 10m",
-    "generate:api": "node scripts/openapi.mjs && openapi-typescript docs/openapi.json -o packages/shared/src/generated-api.ts"
+    "generate:api": "node scripts/openapi.mjs && openapi-typescript docs/openapi.json -o packages/shared/src/generated-api.ts",
+    "desktop:prepare": "npm run build && node scripts/desktop.mjs",
+    "desktop:dev": "npm run desktop:prepare && cd apps/desktop && tauri dev",
+    "desktop:build": "npm run desktop:prepare && cd apps/desktop && tauri build --config src-tauri/binaries/release-config.json",
+    "test:pages": "playwright test --config playwright.pages.config.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.0",
+    "@tauri-apps/cli": "^2.12.2",
     "@types/chrome": "^0.1.24",
     "@types/node": "^26.6.5",
     "@types/react": "^19.1.16",
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react": "^5.0.4",
     "concurrently": "^10.0.6",
+    "fflate": "^0.8.3",
     "jsdom": "^27.0.0",
     "openapi-typescript": "^7.10.1",
     "prettier": "^3.9.9",

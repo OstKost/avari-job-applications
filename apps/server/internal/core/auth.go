@@ -13,6 +13,7 @@ import (
 	"net/mail"
 	"strings"
 	"time"
+	_ "time/tzdata"
 	"unicode/utf8"
 )
 
@@ -48,6 +49,12 @@ func tokenHash(token string) string {
 	return hex.EncodeToString(h[:])
 }
 func (s *Store) Register(email, password, tz string) (User, error) {
+	return s.register(email, password, tz, false)
+}
+func (s *Store) RegisterOwner(email, password, tz string) (User, error) {
+	return s.register(email, password, tz, true)
+}
+func (s *Store) register(email, password, tz string, personal bool) (User, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 	address, e := mail.ParseAddress(email)
 	if e != nil || address.Address != email || len(email) > 254 {
@@ -61,7 +68,19 @@ func (s *Store) Register(email, password, tz string) (User, error) {
 		return User{}, e
 	}
 	u := User{ID: ID(), Email: email, Status: "pending", Timezone: tz, CreatedAt: now()}
+	if personal {
+		u.Status = "active"
+	}
 	e = s.transaction(func(tx *sql.Tx) error {
+		if personal {
+			var count int
+			if e := tx.QueryRow("SELECT count(*) FROM users").Scan(&count); e != nil {
+				return e
+			}
+			if count != 0 {
+				return Fail(409, "Владелец уже создан. Войдите в аккаунт")
+			}
+		}
 		_, e := tx.Exec("INSERT INTO users(id,email,password,status,timezone,created_at) VALUES(?,?,?,?,?,?)", u.ID, u.Email, hash, u.Status, u.Timezone, u.CreatedAt)
 		if e != nil {
 			if strings.Contains(e.Error(), "UNIQUE") {
@@ -392,4 +411,3 @@ func (s *Store) RejectPasswordReset(requestID string) error {
 		return audit(tx, "reject_password_reset", userID, "Запрос на смену пароля отклонён администратором")
 	})
 }
-

@@ -8,14 +8,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"golang.org/x/sys/unix"
 	_ "modernc.org/sqlite"
 	"os"
 	"path/filepath"
 	"time"
 )
 
-const SchemaVersion = 6
+const SchemaVersion = 7
 
 type Store struct {
 	DB   *sql.DB
@@ -70,7 +69,7 @@ func Open(path string) (*Store, error) {
 	if e != nil {
 		return nil, e
 	}
-	if e = unix.Flock(int(lock.Fd()), unix.LOCK_SH|unix.LOCK_NB); e != nil {
+	if e = lockShared(lock); e != nil {
 		lock.Close()
 		return nil, fmt.Errorf("база занята восстановлением: %w", e)
 	}
@@ -81,6 +80,25 @@ func Open(path string) (*Store, error) {
 	}
 	db.SetMaxOpenConns(1)
 	s := &Store{DB: db, Path: path, lock: lock}
+	// Back up existing databases before applying a newer schema.
+	var exists int
+	if e = db.QueryRow("SELECT count(*) FROM sqlite_master WHERE name='schema_migrations'").Scan(&exists); e != nil {
+		s.Close()
+		return nil, e
+	}
+	if exists != 0 {
+		var version int
+		if e = db.QueryRow("SELECT coalesce(max(version),0) FROM schema_migrations").Scan(&version); e != nil {
+			s.Close()
+			return nil, e
+		}
+		if version > 0 && version < SchemaVersion {
+			if _, e = s.Backup(filepath.Join(filepath.Dir(path), "backups")); e != nil {
+				s.Close()
+				return nil, fmt.Errorf("резервная копия перед обновлением: %w", e)
+			}
+		}
+	}
 	if e = s.migrate(); e != nil {
 		s.Close()
 		return nil, e
@@ -91,7 +109,7 @@ func Open(path string) (*Store, error) {
 func (s *Store) Close() error {
 	e := s.DB.Close()
 	if s.lock != nil {
-		_ = unix.Flock(int(s.lock.Fd()), unix.LOCK_UN)
+		_ = unlockFile(s.lock)
 		_ = s.lock.Close()
 		s.lock = nil
 	}
@@ -132,7 +150,10 @@ UPDATE documents SET payload = json_set(payload,
   ))),
   '$.version', json_extract(payload, '$.version') + 1
 ) WHERE kind = 'application' AND json_array_length(payload, '$.groups') > 1;
-`}
+`, `CREATE TABLE instance_metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL);
+INSERT INTO instance_metadata VALUES('transfer_source',lower(hex(randomblob(32))));
+CREATE TABLE import_origins(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,kind TEXT NOT NULL,origin TEXT NOT NULL,target_id TEXT NOT NULL,PRIMARY KEY(user_id,kind,origin));
+CREATE INDEX import_origins_target ON import_origins(user_id,kind,target_id);`}
 	for i, migration := range migrations {
 		if i+1 <= version {
 			continue

@@ -1,1 +1,13 @@
-{"name":"@avari/web","version":"1.0.0","private":true,"type":"module","scripts":{"dev":"vite --host 127.0.0.1","build":"vite build"},"dependencies":{"@avari/shared":"*"}}
+{
+  "name": "@avari/web",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@avari/shared": "*"
+  }
+}

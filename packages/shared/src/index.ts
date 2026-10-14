@@ -7,6 +7,11 @@ export {
   observationBelongsToPage,
 } from "./job-sites";
 export { exportApplicationsToCSV, downloadCSV } from "./csv";
+export type Journal = components["schemas"]["Journal"];
+export type ImportRequest = components["schemas"]["ImportRequest"];
+export type ImportReport = components["schemas"]["ImportReport"];
+export type LocalStatus = components["schemas"]["LocalStatus"];
+export type LocalSettings = components["schemas"]["LocalSettings"];
 export type User = components["schemas"]["User"];
 export type Session = components["schemas"]["Session"];
 export type Salary = components["schemas"]["Salary"];

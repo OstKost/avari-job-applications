@@ -123,6 +123,10 @@ import {
 } from "@avari/shared/ui";
 import { PageTransition } from "./PageTransition";
 
+import { TransferPanel } from "./TransferPanel";
+import { LocalSetup, LocalAutostart } from "./LocalSetup";
+import type { LocalStatus } from "@avari/shared";
+
 const api = createAPI();
 function clearSession(client: ReturnType<typeof useQueryClient>) {
   void client.cancelQueries();
@@ -175,10 +179,19 @@ function PageTracking() {
 }
 export default function App() {
   const { pathname } = useLocation();
-
+  const local = useQuery({
+    queryKey: ["local-status"],
+    queryFn: () => api<LocalStatus>("/local/status"),
+    staleTime: Infinity,
+  });
   useEffect(() => {
-    initGoogleAnalytics();
-  }, []);
+    if (local.data && !local.data.personal) initGoogleAnalytics();
+  }, [local.data]);
+  if (local.isPending) return <Loading />;
+  if (local.error)
+    return <ErrorBox error={local.error} retry={() => local.refetch()} />;
+  if (local.data?.personal && local.data.setupNeeded)
+    return <LocalSetup status={local.data} />;
 
   if (pathname === "/privacy") {
     return (
@@ -201,7 +214,7 @@ export default function App() {
   return (
     <>
       <PageTracking />
-      <AuthenticatedApp />
+      <AuthenticatedApp personal={local.data?.personal ?? false} />
     </>
   );
 }
@@ -364,7 +377,7 @@ function PublicPage({ privacy }: { privacy: boolean }) {
     </div>
   );
 }
-function AuthenticatedApp() {
+function AuthenticatedApp({ personal = false }: { personal?: boolean }) {
   const client = useQueryClient();
   useEffect(() => {
     const expired = () => {
@@ -381,7 +394,12 @@ function AuthenticatedApp() {
   });
   if (me.isPending) return <Loading />;
   if (me.error || !me.data)
-    return <Auth onLogin={(u) => client.setQueryData(["me"], u)} />;
+    return (
+      <Auth
+        personal={personal}
+        onLogin={(u) => client.setQueryData(["me"], u)}
+      />
+    );
   if (me.data.status !== "active")
     return (
       <AccountStatus
@@ -408,7 +426,13 @@ function Brand() {
     </div>
   );
 }
-function Auth({ onLogin }: { onLogin: (u: User) => void }) {
+function Auth({
+  onLogin,
+  personal = false,
+}: {
+  onLogin: (u: User) => void;
+  personal?: boolean;
+}) {
   const [mode, setMode] = useState<"login" | "register" | "recovery">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -467,30 +491,32 @@ function Auth({ onLogin }: { onLogin: (u: User) => void }) {
               ? "Укажите email и новый пароль. Администратор одобрит смену вручную."
               : "Отклики, встречи и следующие шаги — в одном месте."}
           </p>
-          <div className="auth-tabs">
-            <button
-              type="button"
-              className={mode === "login" ? "active" : ""}
-              onClick={() => {
-                setMode("login");
-                setError(undefined);
-                setSuccess("");
-              }}
-            >
-              Вход
-            </button>
-            <button
-              type="button"
-              className={mode === "register" ? "active" : ""}
-              onClick={() => {
-                setMode("register");
-                setError(undefined);
-                setSuccess("");
-              }}
-            >
-              Регистрация
-            </button>
-          </div>
+          {!personal && (
+            <div className="auth-tabs">
+              <button
+                type="button"
+                className={mode === "login" ? "active" : ""}
+                onClick={() => {
+                  setMode("login");
+                  setError(undefined);
+                  setSuccess("");
+                }}
+              >
+                Вход
+              </button>
+              <button
+                type="button"
+                className={mode === "register" ? "active" : ""}
+                onClick={() => {
+                  setMode("register");
+                  setError(undefined);
+                  setSuccess("");
+                }}
+              >
+                Регистрация
+              </button>
+            </div>
+          )}
           {success && <div className="success notice">{success}</div>}
           <form
             className="form"
@@ -611,7 +637,7 @@ function Auth({ onLogin }: { onLogin: (u: User) => void }) {
             </div>
           </form>
           <div className="auth-footer-nav">
-            {mode === "login" && (
+            {mode === "login" && !personal && (
               <button
                 type="button"
                 className="auth-link-button"
@@ -4009,6 +4035,12 @@ function CalendarSubscriptionPanel() {
   };
   return (
     <div className="form calendar-subscription">
+      {["localhost", "127.0.0.1"].includes(location.hostname) && (
+        <p className="notice">
+          Внешние календарные сервисы не могут прочитать localhost. Для подписки
+          нужен доступный извне HTTPS-адрес Avari.Jobs.
+        </p>
+      )}
       <p className="muted">
         Открытые задачи и интервью в вашем календаре Apple, Google или Яндекс.
         Переносы и изменения обновляются автоматически, выполненные задачи
@@ -4249,6 +4281,10 @@ function ExtensionDownloadPanel() {
   );
 }
 function SettingsPage() {
+  const local = useQuery({
+    queryKey: ["local-status"],
+    queryFn: () => api<LocalStatus>("/local/status"),
+  });
   const { user, data, refresh, logout } = useApp();
   const client = useQueryClient();
   const [fields, setFields] = useState<Field[]>(() =>
@@ -4293,7 +4329,7 @@ function SettingsPage() {
     }
   };
   const [activeTab, setActiveTab] = useState<
-    "general" | "calendar" | "fields" | "extension"
+    "general" | "calendar" | "fields" | "extension" | "transfer"
   >("general");
   const connectedExtensionsCount =
     sessions.data?.filter((s) => s.kind === "extension").length ?? 0;
@@ -4353,6 +4389,16 @@ function SettingsPage() {
             <span className="count-chip">{connectedExtensionsCount}</span>
           )}
         </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "transfer"}
+          className={activeTab === "transfer" ? "active" : ""}
+          onClick={() => setActiveTab("transfer")}
+        >
+          <Download size={15} />
+          Импорт и экспорт
+        </button>
       </div>
       <div className="settings">
         <ErrorBox error={error} />
@@ -4362,8 +4408,23 @@ function SettingsPage() {
           </div>
         )}
         <div key={activeTab} className="settings-tab-pane">
+          {activeTab === "transfer" && (
+            <TransferPanel
+              user={user}
+              onImported={() => {
+                void client.invalidateQueries({ queryKey: ["me"] });
+                refresh();
+                void api<Field[]>("/fields").then(setFields);
+              }}
+            />
+          )}
+
           {activeTab === "general" && (
             <>
+              {local.data?.personal && (
+                <LocalAutostart launcher={local.data.launcher} />
+              )}
+
               <section className="panel">
                 <div className="panel-head account-panel-head">
                   <div className="account-profile-row">

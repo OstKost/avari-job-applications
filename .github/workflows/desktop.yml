@@ -1,0 +1,121 @@
+name: Desktop installers
+on:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - os: macos-14
+            target: aarch64-apple-darwin
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+    runs-on: ${{ matrix.os }}
+    env:
+      AVARI_DESKTOP_TARGET: ${{ matrix.target }}
+      VITE_GA_MEASUREMENT_ID: ""
+      VITE_CHROME_STORE_URL: ${{ vars.CHROME_STORE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+      - run: npm ci
+      - name: Set release version
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          [[ "$GITHUB_REF_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          echo "AVARI_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+      - name: Import Windows signing certificate
+        if: runner.os == 'Windows' && startsWith(github.ref, 'refs/tags/') && vars.AVARI_DESKTOP_SIGNING_ENABLED == 'true'
+        shell: pwsh
+        env:
+          CERTIFICATE: ${{ secrets.AVARI_WINDOWS_CERTIFICATE }}
+          CERTIFICATE_PASSWORD: ${{ secrets.AVARI_WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          if (-not $env:CERTIFICATE -or -not $env:CERTIFICATE_PASSWORD) { throw 'Windows signing secrets are required for desktop release' }
+          $certificateFile = Join-Path $env:RUNNER_TEMP 'avari-signing.pfx'
+          [IO.File]::WriteAllBytes($certificateFile, [Convert]::FromBase64String($env:CERTIFICATE))
+          $certificate = Import-PfxCertificate -FilePath $certificateFile -CertStoreLocation Cert:\CurrentUser\My -Password (ConvertTo-SecureString $env:CERTIFICATE_PASSWORD -AsPlainText -Force)
+          Remove-Item $certificateFile
+          "AVARI_WINDOWS_CERT_THUMBPRINT=$($certificate.Thumbprint)" >> $env:GITHUB_ENV
+      - name: Build unsigned verification installers
+        if: "!(startsWith(github.ref, 'refs/tags/') && vars.AVARI_DESKTOP_SIGNING_ENABLED == 'true')"
+        run: npm run desktop:build -- --target ${{ matrix.target }} -- --locked
+      - name: Build signed release installers
+        if: startsWith(github.ref, 'refs/tags/') && vars.AVARI_DESKTOP_SIGNING_ENABLED == 'true'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.AVARI_APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.AVARI_APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.AVARI_APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.AVARI_APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.AVARI_APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.AVARI_APPLE_TEAM_ID }}
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            test -n "$APPLE_CERTIFICATE" && test -n "$APPLE_CERTIFICATE_PASSWORD" && test -n "$APPLE_SIGNING_IDENTITY"
+            test -n "$APPLE_ID" && test -n "$APPLE_PASSWORD" && test -n "$APPLE_TEAM_ID"
+          fi
+          npm run desktop:build -- --target "$AVARI_DESKTOP_TARGET" -- --locked
+      - name: Verify Go and launcher on target OS
+        run: |
+          go test ./apps/server/...
+          cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --target ${{ matrix.target }}
+      - name: Prepare stable download names and checksums
+        run: node scripts/package-desktop.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: avari-desktop-${{ matrix.target }}
+          if-no-files-found: error
+          path: dist/desktop/${{ matrix.target }}/*
+  publish:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: avari-desktop-*
+          path: installers
+          merge-multiple: true
+      - name: Attach installers to the existing server release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          mkdir dist
+          find installers -type f -exec cp {} dist/ \;
+          (cd dist && cat *.sha256 > DESKTOP-SHA256SUMS && sha256sum -c DESKTOP-SHA256SUMS)
+          for attempt in $(seq 1 120); do
+            if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+              gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+              exit 0
+            fi
+            sleep 10
+          done
+          echo 'Server release did not appear; installers remain available as workflow artifacts.' >&2
+          exit 1

@@ -21,14 +21,18 @@ import (
 )
 
 type Server struct {
-	Store        *core.Store
-	Origin       string
-	Secure       bool
-	Assets       fs.FS
-	TrustedProxy bool
-	limitMu      sync.Mutex
-	limits       map[string][]time.Time
-	LoginGate    chan struct{}
+	Store         *core.Store
+	Origin        string
+	Secure        bool
+	Assets        fs.FS
+	TrustedProxy  bool
+	Personal      bool
+	SetupToken    string
+	LauncherURL   string
+	LauncherToken string
+	limitMu       sync.Mutex
+	limits        map[string][]time.Time
+	LoginGate     chan struct{}
 }
 type identity struct {
 	User    core.User
@@ -48,6 +52,8 @@ func (s *Server) Handler() http.Handler {
 		}
 		write(w, 200, map[string]string{"status": "ready"})
 	})
+	mux.HandleFunc("GET /api/v1/local/status", s.localStatus)
+	mux.HandleFunc("POST /api/v1/local/setup", s.localSetup)
 	mux.HandleFunc("POST /api/v1/auth/register", s.register)
 	mux.HandleFunc("POST /api/v1/auth/login", s.login)
 	mux.HandleFunc("POST /api/v1/auth/recovery", s.recovery)
@@ -130,7 +136,18 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 			write(w, 403, map[string]string{"error": "Источник не разрешён"})
 			return
 		}
-		r.Body = http.MaxBytesReader(w, r.Body, 256*1024)
+		if s.Personal {
+			expected, err := url.Parse(s.Origin)
+			if err != nil || r.Host != expected.Host {
+				fail(w, core.Fail(403, "Неверный локальный адрес"))
+				return
+			}
+		}
+		limit := int64(256 * 1024)
+		if r.URL.Path == "/api/v1/journal/import/preview" || r.URL.Path == "/api/v1/journal/import" {
+			limit = 32 * 1024 * 1024
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, limit)
 		next.ServeHTTP(w, r)
 	})
 }
@@ -202,6 +219,10 @@ func (s *Server) throttle(r *http.Request) bool {
 	return true
 }
 func (s *Server) register(w http.ResponseWriter, r *http.Request) {
+	if s.Personal {
+		fail(w, core.Fail(403, "Создайте владельца через мастер локальной настройки"))
+		return
+	}
 	if !s.throttle(r) {
 		fail(w, core.Fail(429, "Слишком много попыток. Подождите минуту"))
 		return
@@ -265,6 +286,10 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	write(w, 200, result)
 }
 func (s *Server) recovery(w http.ResponseWriter, r *http.Request) {
+	if s.Personal {
+		fail(w, core.Fail(400, "Для восстановления используйте резервную копию и сохранённый пароль владельца"))
+		return
+	}
 	if !s.throttle(r) {
 		fail(w, core.Fail(429, "Слишком много попыток. Подождите минуту"))
 		return

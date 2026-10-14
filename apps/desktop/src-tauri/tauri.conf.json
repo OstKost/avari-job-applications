@@ -1,0 +1,40 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Avari.Jobs",
+  "version": "1.1.0",
+  "identifier": "dev.avari.jobs.local",
+  "build": {
+    "frontendDist": "../ui"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "launcher",
+        "title": "Avari.Jobs — локальный сервис",
+        "width": 640,
+        "height": 520,
+        "visible": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self'; connect-src ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "externalBin": ["binaries/avari-server"],
+    "icon": ["icons/icon.png", "icons/icon.ico", "icons/icon.icns"],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "displayLanguageSelector": false,
+        "languages": ["Russian", "English"]
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "13.0"
+    }
+  }
+}

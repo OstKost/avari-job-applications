@@ -29,6 +29,25 @@ func (s *Server) api(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	switch {
+	case p == "journal/export" && method == "GET":
+		journal, e := s.Store.ExportJournal(user)
+		w.Header().Set("Content-Disposition", `attachment; filename="avari-journal.json"`)
+		respond(journal, e)
+	case (p == "journal/import/preview" || p == "journal/import") && method == "POST":
+		var b core.ImportRequest
+		if e := read(r, &b); e != nil {
+			fail(w, e)
+			return
+		}
+		report, e := s.Store.ImportJournal(user, b, p == "journal/import")
+		respond(report, e)
+	case p == "local/settings" && (method == "GET" || method == "PUT"):
+		if who.Session.Kind != "web" {
+			fail(w, core.Fail(403, "Настройки лаунчера доступны в браузере"))
+			return
+		}
+		s.localSettings(w, r)
+
 	case p == "me" && method == "GET":
 		write(w, 200, who.User)
 	case p == "me" && method == "PUT":
