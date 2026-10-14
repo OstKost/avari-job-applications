@@ -469,6 +469,15 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     }
     Ok(())
 }
+fn autostart_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
+    let builder = tauri_plugin_autostart::Builder::new()
+        .app_name("Avari.Jobs")
+        .args(["--background"]);
+    #[cfg(target_os = "macos")]
+    let builder = builder.macos_launcher(tauri_plugin_autostart::MacosLauncher::LaunchAgent);
+    builder.build()
+}
+
 fn main() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, args, _| {
@@ -476,13 +485,7 @@ fn main() {
                 open_browser(app, false);
             }
         }))
-        .plugin(
-            tauri_plugin_autostart::Builder::new()
-                .app_name("Avari.Jobs")
-                .args(["--background"])
-                .macos_launcher(tauri_plugin_autostart::MacosLauncher::LaunchAgent)
-                .build(),
-        )
+        .plugin(autostart_plugin())
         .invoke_handler(tauri::generate_handler![
             launcher_status,
             launcher_retry,
