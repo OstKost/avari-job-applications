@@ -71,7 +71,12 @@ export function jobResponsesSite(raw: string): JobSite | undefined {
 }
 
 export function observationBelongsToPage(
-  observation: { hhId?: string; vacancyUrl?: string; url: string },
+  observation: {
+    hhId?: string;
+    vacancyUrl?: string;
+    url: string;
+    status?: string;
+  },
   pageURL: string,
 ) {
   const site = jobSite(pageURL);
@@ -81,7 +86,13 @@ export function observationBelongsToPage(
     return (
       !!observation.hhId &&
       !observation.vacancyUrl &&
-      (page ? page.id === observation.hhId : jobResponsesSite(pageURL) === site)
+      (page
+        ? page.id === observation.hhId
+        : jobResponsesSite(pageURL) === site ||
+          (observation.status === "favorite" &&
+            /^\/(?:applicant\/(?:vacancies|favorite)|search\/vacancy)(?:\/|$)/.test(
+              new URL(pageURL).pathname,
+            )))
     );
   }
   const vacancy = jobIdentity(observation.vacancyUrl ?? "");

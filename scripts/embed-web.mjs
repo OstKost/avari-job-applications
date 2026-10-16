@@ -12,5 +12,5 @@ await cp(
 );
 await writeFile(
   new URL("release.json", destination),
-  JSON.stringify({ version: process.env.AVARI_VERSION || "1.1.0" }),
+  JSON.stringify({ version: process.env.AVARI_VERSION || "1.2.0" }),
 );

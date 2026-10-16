@@ -118,3 +118,73 @@ func TestImportDismissalManualSaveAndDateFiltering(t *testing.T) {
 		t.Fatal("vacancy card cannot prove a recent response", p, e)
 	}
 }
+
+func TestFavoriteProposal(t *testing.T) {
+	s := testStore(t)
+	u := testUser(t, s, "favorite@example.com")
+	o := Observation{HHID: "987", URL: "https://hh.ru/applicant/vacancies", Status: "favorite", Candidate: &Application{Company: "Example", Position: "Developer"}}
+	p, err := s.Observe(u.ID, o)
+	if err != nil || p == nil || p.Kind != "create" {
+		t.Fatal(p, err)
+	}
+	again, err := s.Observe(u.ID, o)
+	if err != nil || again != nil {
+		t.Fatal("duplicate", again, err)
+	}
+	resolved, err := s.ResolveProposal(u.ID, p.ID, "apply", 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := s.Application(u.ID, resolved.ApplicationID)
+	if err != nil || !a.Favorite || a.Stage != "saved" || a.AppliedDate != "" || a.ExternalStatus != "" {
+		t.Fatal(a, err)
+	}
+	o.URL, o.Status, o.Candidate = "https://hh.ru/vacancy/987", "viewed", nil
+	p, err = s.Observe(u.ID, o)
+	if err != nil || p == nil {
+		t.Fatal(p, err)
+	}
+	resolved, err = s.ResolveProposal(u.ID, p.ID, "apply", a.Version, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, _ = s.Application(u.ID, resolved.ApplicationID)
+	if !a.Favorite || a.Stage != "applied" {
+		t.Fatal(a)
+	}
+	o.Status = "favorite"
+	p, err = s.Observe(u.ID, o)
+	if err != nil || p != nil {
+		t.Fatal("already favorite", p, err)
+	}
+}
+
+func TestFavoriteExistingApplicationPreservesStatus(t *testing.T) {
+	s := testStore(t)
+	u := testUser(t, s, "favorite-existing@example.com")
+	a := Application{Company: "Example", Position: "Developer", URL: "https://hh.ru/vacancy/876", Stage: "interview", State: "active", SavedDate: localDate(s.DB, u.ID), ExternalStatus: "interview"}
+	a, err := s.SaveApplication(u.ID, a, "", "manual")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.ExternalStatus = "interview"
+	if err = put(s.DB, u.ID, "application", a.ID, a); err != nil {
+		t.Fatal(err)
+	}
+	o := Observation{HHID: "876", URL: a.URL, Status: "favorite"}
+	p, err := s.Observe(u.ID, o)
+	if err != nil || p == nil {
+		t.Fatal(p, err)
+	}
+	if len(p.Changes) != 1 || p.Changes["favorite"] != true {
+		t.Fatal(p.Changes)
+	}
+	_, err = s.ResolveProposal(u.ID, p.ID, "apply", a.Version, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, _ = s.Application(u.ID, a.ID)
+	if !a.Favorite || a.ExternalStatus != "interview" || a.Stage != "interview" {
+		t.Fatal(a)
+	}
+}

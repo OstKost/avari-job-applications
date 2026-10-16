@@ -428,3 +428,34 @@ describe("authenticated site markup observed on 2026-10-11", () => {
     expect(statusFromText(raw)).toBe(status),
   );
 });
+
+it("detects existing favorites and a button becoming selected", () => {
+  const page = doc(
+    `<h1 data-qa="vacancy-title">Developer</h1><div data-qa="vacancy-company-name">Example</div><button data-qa="vacancy-shortlist-button" aria-pressed="false">В избранное</button>`,
+  );
+  expect(
+    parsePage(page, "https://hh.ru/vacancy/123").observations,
+  ).toHaveLength(0);
+  page.querySelector("button")!.setAttribute("aria-pressed", "true");
+  expect(
+    parsePage(page, "https://hh.ru/vacancy/123").observations[0],
+  ).toMatchObject({
+    status: "favorite",
+    candidate: { favorite: true, stage: "saved" },
+  });
+});
+it("offers favorites visible in lists, with no application date", () => {
+  const page = doc(
+    `<div class="serp-item"><a data-qa="serp-item__title" href="/vacancy/123">Developer</a><span data-qa="vacancy-serp__vacancy-employer">Example</span></div>`,
+  );
+  const parsed = parsePage(page, "https://hh.ru/applicant/vacancies");
+  expect(parsed.supported).toBe(true);
+  expect(parsed.observations[0]).toMatchObject({
+    hhId: "123",
+    status: "favorite",
+    candidate: { favorite: true, appliedDate: "" },
+  });
+  expect(
+    parsePage(page, "https://hh.ru/search/vacancy").observations,
+  ).toHaveLength(0);
+});

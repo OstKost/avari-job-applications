@@ -325,12 +325,7 @@ function Popup() {
       if (!payload.companyLogo) {
         delete payload.companyLogo;
       }
-      await api(
-        "/applications",
-        "POST",
-        payload,
-        crypto.randomUUID(),
-      );
+      await api("/applications", "POST", payload, crypto.randomUUID());
       saved(stage === "applied" ? "Отклик сохранён" : "Вакансия сохранена");
     } catch (e) {
       notifyError(e);
@@ -595,14 +590,17 @@ function Popup() {
           ))}
         </nav>
       )}
-      {form && !setup && user?.status === "active" && form.kind !== "application" && (
-        <button
-          className="text-button popup-back"
-          onClick={() => setForm(undefined)}
-        >
-          <ArrowLeft size={16} /> Назад
-        </button>
-      )}
+      {form &&
+        !setup &&
+        user?.status === "active" &&
+        form.kind !== "application" && (
+          <button
+            className="text-button popup-back"
+            onClick={() => setForm(undefined)}
+          >
+            <ArrowLeft size={16} /> Назад
+          </button>
+        )}
       <ErrorBox error={error} retry={() => reload()} />
       {!embedded && notice && (
         <div className="success notice" role="status">
@@ -951,9 +949,7 @@ function Popup() {
               ).sort((a, b) => a.localeCompare(b, "ru"))}
               initial={form.value as Application}
               fields={data.fields}
-              onDraftChange={(value) =>
-                setForm({ kind: "application", value })
-              }
+              onDraftChange={(value) => setForm({ kind: "application", value })}
               api={api}
               actionsAtTop
               onBack={() => setForm(undefined)}
@@ -1334,6 +1330,80 @@ function Popup() {
     </main>
   );
 }
+type StorageMode = "online" | "local";
+const ONLINE_SERVER =
+  import.meta.env.VITE_AVARI_DEFAULT_SERVER || "https://jobs.avari.dev";
+const LOCAL_SERVER = "http://127.0.0.1:47831";
+function useStorageSettings(initial: string) {
+  const local = initial
+    ? ["localhost", "127.0.0.1"].includes(new URL(initial).hostname)
+    : false;
+  const [mode, setMode] = useState<StorageMode>(local ? "local" : "online");
+  const [addresses, setAddresses] = useState({
+    online: !local && initial ? initial : ONLINE_SERVER,
+    local: local && initial ? initial : LOCAL_SERVER,
+  });
+  useEffect(() => {
+    void message<{
+      storageMode?: StorageMode;
+      serverAddresses?: typeof addresses;
+    }>({ type: "CONFIG" }).then((c) => {
+      if (c.serverAddresses) setAddresses(c.serverAddresses);
+      if (c.storageMode) setMode(c.storageMode);
+    });
+  }, []);
+  return { mode, setMode, addresses, setAddresses, server: addresses[mode] };
+}
+function StorageChoice({
+  settings,
+  busy,
+}: {
+  settings: ReturnType<typeof useStorageSettings>;
+  busy: boolean;
+}) {
+  return (
+    <fieldset className="storage-choice" disabled={busy}>
+      <legend>Где сохранять вакансии</legend>
+      {(["online", "local"] as const).map((mode) => (
+        <label className="checkbox-label" key={mode}>
+          <input
+            type="radio"
+            name="storage-mode"
+            checked={settings.mode === mode}
+            onChange={() => settings.setMode(mode)}
+          />
+          {mode === "online" ? "Онлайн сохранение" : "Локальное сохранение"}
+        </label>
+      ))}
+      <p className="muted">
+        {settings.mode === "online"
+          ? "Доступ к журналу с разных устройств."
+          : "Данные на этом компьютере. Запустите локальное приложение Avari.Jobs."}
+      </p>
+      <details>
+        <summary>Настройки адресов</summary>
+        {(["online", "local"] as const).map((mode) => (
+          <FieldInput
+            key={mode}
+            label={mode === "online" ? "Онлайн сервис" : "Локальный сервис"}
+          >
+            <input
+              type="url"
+              required
+              value={settings.addresses[mode]}
+              onChange={(e) =>
+                settings.setAddresses({
+                  ...settings.addresses,
+                  [mode]: e.target.value,
+                })
+              }
+            />
+          </FieldInput>
+        ))}
+      </details>
+    </fieldset>
+  );
+}
 function ServerSetup({
   initial,
   onSaved,
@@ -1343,11 +1413,7 @@ function ServerSetup({
   onSaved: () => void;
   onCancel?: () => void;
 }) {
-  const [server, setServer] = useState(
-    initial ||
-      import.meta.env.VITE_AVARI_DEFAULT_SERVER ||
-      "http://localhost:8080",
-  );
+  const settings = useStorageSettings(initial);
   const [error, setError] = useState<unknown>();
   const [busy, setBusy] = useState(false);
   return (
@@ -1359,7 +1425,7 @@ function ServerSetup({
         setBusy(true);
         setError(undefined);
         try {
-          await connectServer(server);
+          await connectServer(settings.server, settings);
           onSaved();
         } catch (e) {
           setError(e);
@@ -1373,16 +1439,9 @@ function ServerSetup({
       </div>
       <div className="eyebrow">Начнём с подключения</div>
       <h2>Ваш журнал, всегда рядом</h2>
-      <p className="muted">Укажите адрес вашего приложения Avari.Jobs.</p>
+      <p className="muted">Выберите, где будет храниться ваш журнал.</p>
       <ErrorBox error={error} />
-      <FieldInput label="Адрес сервиса">
-        <input
-          type="url"
-          required
-          value={server}
-          onChange={(e) => setServer(e.target.value)}
-        />
-      </FieldInput>
+      <StorageChoice settings={settings} busy={busy} />
       <button className="primary" disabled={busy}>
         Подключить
         <SubmitShortcutHint />
@@ -1396,9 +1455,7 @@ function ServerSetup({
   );
 }
 function Login({ server, onLogin }: { server: string; onLogin: () => void }) {
-  const defaultServer = import.meta.env.VITE_AVARI_DEFAULT_SERVER || server;
-  const [ownServer, setOwnServer] = useState(server !== defaultServer);
-  const [serverAddress, setServerAddress] = useState(server);
+  const settings = useStorageSettings(server);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<unknown>();
@@ -1412,7 +1469,7 @@ function Login({ server, onLogin }: { server: string; onLogin: () => void }) {
         setBusy(true);
         setError(undefined);
         try {
-          await connectServer(ownServer ? serverAddress : defaultServer);
+          await connectServer(settings.server, settings);
           await api("/auth/login", "POST", {
             email,
             password,
@@ -1460,32 +1517,7 @@ function Login({ server, onLogin }: { server: string; onLogin: () => void }) {
           }}
         />
       </FieldInput>
-      <label className="checkbox-label login-server-option">
-        <input
-          type="checkbox"
-          checked={ownServer}
-          disabled={busy}
-          onChange={(event) => {
-            setOwnServer(event.target.checked);
-            setError(undefined);
-          }}
-        />
-        Использовать свой сервер
-      </label>
-      {ownServer && (
-        <FieldInput label="Адрес сервиса">
-          <input
-            type="url"
-            required
-            value={serverAddress}
-            disabled={busy}
-            onChange={(event) => {
-              setServerAddress(event.target.value);
-              setError(undefined);
-            }}
-          />
-        </FieldInput>
-      )}
+      <StorageChoice settings={settings} busy={busy} />
       <button className="primary" disabled={busy}>
         Войти <ArrowUpRight size={17} />
         <SubmitShortcutHint />
@@ -1493,8 +1525,8 @@ function Login({ server, onLogin }: { server: string; onLogin: () => void }) {
       <a
         className="registration-link"
         href={registrationServer(
-          ownServer ? serverAddress : defaultServer,
-          defaultServer,
+          settings.server,
+          settings.mode === "local" ? LOCAL_SERVER : ONLINE_SERVER,
         )}
         target="_blank"
         rel="noopener noreferrer"
@@ -1528,14 +1560,25 @@ function serverOrigin(address: string): string {
     throw new Error("Укажите только адрес сервера, без пути и параметров");
   return url.origin;
 }
-async function connectServer(address: string) {
+async function connectServer(
+  address: string,
+  settings: ReturnType<typeof useStorageSettings>,
+) {
   const origin = serverOrigin(address);
   const granted = await chrome.permissions.request({
     origins: [origin + "/*"],
   });
   if (!granted)
     throw new Error("Для подключения нужен доступ к выбранному сервису");
-  await message({ type: "SAVE_SERVER", server: origin });
+  await message({
+    type: "SAVE_SERVER",
+    server: origin,
+    storageMode: settings.mode,
+    serverAddresses: {
+      online: serverOrigin(settings.addresses.online),
+      local: serverOrigin(settings.addresses.local),
+    },
+  });
 }
 function registrationServer(address: string, fallback: string) {
   try {

@@ -17,7 +17,7 @@ if (!targets[rust])
   throw new Error(
     "Desktop v1 supports Windows x64 and macOS Intel/Apple Silicon",
   );
-const version = process.env.AVARI_VERSION || "1.1.0";
+const version = process.env.AVARI_VERSION || "1.2.0";
 if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version))
   throw new Error("Invalid AVARI_VERSION");
 const [GOOS, GOARCH] = targets[rust];

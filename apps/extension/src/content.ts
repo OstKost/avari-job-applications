@@ -533,6 +533,9 @@ observer.observe(document.documentElement, {
     "data-sdui-screen",
     "hidden",
     "aria-hidden",
+    "aria-pressed",
+    "aria-label",
+    "title",
     "class",
   ],
 });

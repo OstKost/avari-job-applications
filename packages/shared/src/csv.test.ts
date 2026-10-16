@@ -26,6 +26,7 @@ describe("exportApplicationsToCSV", () => {
         location: "Москва",
         workFormat: "Гибрид",
         recruiter: "Анна (@anna_recruiter)",
+        favorite: false,
         externalStatus: "invited",
         companyLogo: "",
         groups: ["Golang"],

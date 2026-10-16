@@ -599,7 +599,7 @@ function parseOtherSite(doc: Document, rawURL: string): Snapshot {
         : undefined,
   };
 }
-export function parsePage(doc: Document, rawURL: string): Snapshot {
+function parseBasePage(doc: Document, rawURL: string): Snapshot {
   let url: URL;
   try {
     url = new URL(rawURL);
@@ -636,9 +636,9 @@ export function parsePage(doc: Document, rawURL: string): Snapshot {
         : "") ||
       imageSrc(doc, [
         '[data-qa="vacancy-company-logo"] img',
-        '.vacancy-company-logo img',
+        ".vacancy-company-logo img",
         'a[data-qa="vacancy-company-name"] img',
-        '.bloko-avatar img',
+        ".bloko-avatar img",
       ]);
     vacancy.location =
       text(doc, [
@@ -793,4 +793,99 @@ export function parsePage(doc: Document, rawURL: string): Snapshot {
     };
   }
   return { supported: false, kind: "unsupported", observations: [] };
+}
+
+// Read the confirmed state after hh updates its DOM, including existing favorites.
+function isFavorite(root: ParentNode): boolean {
+  return [
+    ...root.querySelectorAll<HTMLElement>(
+      '[data-qa="vacancy-shortlist-active"], [data-qa="vacancy-shortlist-remove"], [data-qa="vacancy-shortlist-button"], [data-qa="vacancy-shortlist"]',
+    ),
+  ].some((el) => {
+    if (
+      el.closest('[hidden], [aria-hidden="true"]') ||
+      el.ownerDocument.defaultView?.getComputedStyle(el).display === "none"
+    )
+      return false;
+    const qa = el.getAttribute("data-qa");
+    return (
+      qa === "vacancy-shortlist-active" ||
+      qa === "vacancy-shortlist-remove" ||
+      el.getAttribute("aria-pressed") === "true" ||
+      /убрать из избранного|удалить из избранного|в избранном/i.test(
+        [
+          el.textContent,
+          el.getAttribute("aria-label"),
+          el.getAttribute("title"),
+        ].join(" "),
+      )
+    );
+  });
+}
+export function parsePage(doc: Document, rawURL: string): Snapshot {
+  const snapshot = parseBasePage(doc, rawURL);
+  if (jobSite(rawURL) !== "hh") return snapshot;
+  const url = new URL(rawURL);
+  if (snapshot.vacancy && isFavorite(doc)) {
+    snapshot.vacancy.favorite = true;
+    snapshot.observations.push({
+      hhId: snapshot.vacancy.hhId,
+      status: "favorite",
+      url: snapshot.vacancy.url,
+      candidate: snapshot.vacancy,
+    });
+  } else if (
+    /^\/(?:applicant\/(?:vacancies|favorite)|search\/vacancy)(?:\/|$)/.test(
+      url.pathname,
+    )
+  ) {
+    const favoritesPage = /^\/applicant\/(?:vacancies|favorite)(?:\/|$)/.test(
+      url.pathname,
+    );
+    for (const row of doc.querySelectorAll(
+      '[data-qa="vacancy-serp__vacancy"], [data-qa="vacancy-serp__vacancy_standard"], .vacancy-serp-item, .serp-item',
+    )) {
+      if (
+        row.closest('[hidden], [aria-hidden="true"]') ||
+        (!favoritesPage && !isFavorite(row))
+      )
+        continue;
+      const link = row.querySelector<HTMLAnchorElement>(
+        'a[data-qa="serp-item__title"], a[data-qa="vacancy-serp__vacancy-title"]',
+      );
+      if (!link) continue;
+      const identity = jobIdentity(
+        new URL(link.getAttribute("href") ?? "", rawURL).href,
+      );
+      if (identity?.site !== "hh") continue;
+      const candidate = {
+        ...emptyApplication(),
+        url: identity.url,
+        hhId: identity.id,
+        favorite: true,
+        position: clean(link.textContent ?? ""),
+        company: text(row, [
+          '[data-qa="vacancy-serp__vacancy-employer"]',
+          '[data-qa="vacancy-serp-item__meta-info-company"]',
+        ]),
+      };
+      if (!candidate.company || !candidate.position) continue;
+      if (
+        !snapshot.observations.some(
+          (o) => o.hhId === identity.id && o.status === "favorite",
+        )
+      )
+        snapshot.observations.push({
+          hhId: identity.id,
+          status: "favorite",
+          url: url.origin + url.pathname,
+          candidate,
+        });
+    }
+    if (snapshot.observations.length) {
+      snapshot.supported = true;
+      snapshot.kind = "responses";
+    }
+  }
+  return snapshot;
 }

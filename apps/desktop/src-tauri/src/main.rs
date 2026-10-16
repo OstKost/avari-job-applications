@@ -384,12 +384,12 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         {
             Some(c) => (c, String::new()),
             None => (
-                Config { port: 8080 },
+                Config { port: 47831 },
                 "Не удалось прочитать настройки. Укажите порт и сохраните настройки ниже.".into(),
             ),
         }
     } else {
-        (Config { port: 8080 }, String::new())
+        (Config { port: 47831 }, String::new())
     };
     if !directory_error.is_empty() {
         config_error = directory_error;

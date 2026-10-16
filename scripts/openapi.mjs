@@ -52,6 +52,7 @@ const schemas = {
     workFormat: s,
     recruiter: s,
     companyLogo: s,
+    favorite: { type: "boolean" },
     externalStatus: s,
     custom: {
       type: "object",

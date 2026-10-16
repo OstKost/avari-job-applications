@@ -925,7 +925,10 @@ export function ApplicationForm({
             onChange={(e) => set("recruiter", e.target.value)}
           />
         </FieldInput>
-        <FieldInput label="Логотип компании (URL)" hint="Ссылка на аватар/логотип компании">
+        <FieldInput
+          label="Логотип компании (URL)"
+          hint="Ссылка на аватар/логотип компании"
+        >
           <input
             type="url"
             maxLength={2048}
@@ -1332,7 +1335,9 @@ export function ProposalCard({
       <p className="muted">{application?.position ?? p.current.position}</p>
       {p.kind === "create" && (
         <p className="muted">
-          Отклик за последний месяц отсутствует в журнале. Добавить вакансию?
+          {p.detectedStatus === "favorite"
+            ? "Избранная вакансия отсутствует в журнале. Сохранить?"
+            : "Отклик за последний месяц отсутствует в журнале. Добавить вакансию?"}
         </p>
       )}
       {p.kind === "create" && (
@@ -1499,7 +1504,11 @@ export function CompanyAvatar({
 
   if (logoUrl && !imgFailed) {
     return (
-      <span className={`${classes} company-avatar-has-img`} data-color={colorIndex} aria-hidden="true">
+      <span
+        className={`${classes} company-avatar-has-img`}
+        data-color={colorIndex}
+        aria-hidden="true"
+      >
         <img
           src={logoUrl}
           alt=""

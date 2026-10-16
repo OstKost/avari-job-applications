@@ -857,3 +857,26 @@ body:has(.popup-collapsed) {
   align-items: center;
   gap: 6px;
 }
+
+.storage-choice {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  margin: 0;
+  padding: 16px;
+  border: 1px solid var(--border, #d8dee8);
+  border-radius: 12px;
+}
+.storage-choice legend {
+  padding: 0 6px;
+  font-weight: 600;
+}
+.storage-choice p {
+  margin: 0;
+}
+.storage-choice summary {
+  cursor: pointer;
+}
+.storage-choice details[open] summary {
+  margin-bottom: 12px;
+}

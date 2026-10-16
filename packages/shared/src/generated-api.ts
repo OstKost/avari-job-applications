@@ -557,6 +557,7 @@ export interface components {
             workFormat: string;
             recruiter: string;
             companyLogo?: string;
+            favorite: boolean;
             externalStatus: string;
             custom: {
                 [key: string]: string | number | boolean | null;
@@ -724,6 +725,7 @@ export interface components {
             workFormat?: string;
             recruiter?: string;
             companyLogo?: string;
+            favorite?: boolean;
             externalStatus?: string;
             custom?: {
                 [key: string]: string | number | boolean | null;

@@ -44,34 +44,32 @@ test("real MV3 extension: login, DOM capture, save, dedup, proposal confirmation
       await fresh.goto(`chrome-extension://${id}/index.html`);
       await expect(fresh.getByLabel("Email", { exact: true })).toBeVisible();
       await expect(
-        fresh.getByRole("textbox", { name: "Адрес сервиса", exact: true }),
-      ).toHaveCount(0);
+        fresh.getByRole("radio", { name: "Онлайн сохранение", exact: true }),
+      ).toBeChecked();
       expect(
         await worker.evaluate(
           async () => (await chrome.storage.local.get("server")).server,
         ),
       ).toBe(defaultServer);
-      await fresh
-        .getByRole("checkbox", {
-          name: "Использовать свой сервер",
-          exact: true,
-        })
-        .check();
+      await fresh.getByText("Настройки адресов", { exact: true }).click();
       await expect(
-        fresh.getByRole("textbox", { name: "Адрес сервиса", exact: true }),
+        fresh.getByRole("textbox", { name: "Онлайн сервис", exact: true }),
       ).toHaveValue(defaultServer);
       await fresh
-        .getByRole("textbox", { name: "Адрес сервиса", exact: true })
+        .getByRole("textbox", { name: "Онлайн сервис", exact: true })
         .fill("https://custom.example.com");
       await fresh
-        .getByRole("checkbox", {
-          name: "Использовать свой сервер",
-          exact: true,
-        })
-        .uncheck();
+        .getByRole("radio", { name: "Локальное сохранение", exact: true })
+        .check();
       await expect(
-        fresh.getByRole("textbox", { name: "Адрес сервиса", exact: true }),
-      ).toHaveCount(0);
+        fresh.getByRole("textbox", { name: "Локальный сервис", exact: true }),
+      ).toHaveValue("http://127.0.0.1:47831");
+      await fresh
+        .getByRole("radio", { name: "Онлайн сохранение", exact: true })
+        .check();
+      await expect(
+        fresh.getByRole("textbox", { name: "Онлайн сервис", exact: true }),
+      ).toHaveValue("https://custom.example.com");
       expect(
         await worker.evaluate(
           async () => (await chrome.storage.local.get("server")).server,
@@ -85,13 +83,11 @@ test("real MV3 extension: login, DOM capture, save, dedup, proposal confirmation
     await popup.goto(`chrome-extension://${id}/index.html`);
     {
       await popup
-        .getByRole("checkbox", {
-          name: "Использовать свой сервер",
-          exact: true,
-        })
+        .getByRole("radio", { name: "Локальное сохранение", exact: true })
         .check();
+      await popup.getByText("Настройки адресов", { exact: true }).click();
       await popup
-        .getByRole("textbox", { name: "Адрес сервиса", exact: true })
+        .getByRole("textbox", { name: "Локальный сервис", exact: true })
         .fill(process.env.AVARI_TEST_URL!);
     }
     await popup

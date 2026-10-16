@@ -30,8 +30,8 @@ func main() {
 	launcher := flag.Bool("launcher", false, "Accept shutdown through the native launcher's stdin")
 	flag.Parse()
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
-	addr := env("AVARI_ADDR", "127.0.0.1:8080")
-	origin := env("AVARI_ORIGIN", "http://localhost:8080")
+	addr := env("AVARI_ADDR", "127.0.0.1:47831")
+	origin := env("AVARI_ORIGIN", "http://localhost:47831")
 	if *personal {
 		host, port, err := net.SplitHostPort(addr)
 		parsed, originErr := url.Parse(origin)

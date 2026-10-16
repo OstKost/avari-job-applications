@@ -10,6 +10,8 @@ import {
 import type { Snapshot } from "./parser";
 type Config = {
   server?: string;
+  storageMode?: "online" | "local";
+  serverAddresses?: { online: string; local: string };
   token?: string;
   notifications?: boolean;
   lastNotification?: string;
@@ -19,6 +21,8 @@ const inFlight = new Map<string, Promise<unknown>>();
 async function config(): Promise<Config> {
   const saved: Config = await chrome.storage.local.get([
     "server",
+    "storageMode",
+    "serverAddresses",
     "token",
     "notifications",
     "lastNotification",
@@ -258,7 +262,11 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
           }
           await chrome.storage.local.remove(["token", "lastNotification"]);
         }
-        await chrome.storage.local.set({ server: u.origin });
+        await chrome.storage.local.set({
+          server: u.origin,
+          storageMode: message.storageMode,
+          serverAddresses: message.serverAddresses,
+        });
         return { ok: true };
       }
       case "API": {

@@ -49,6 +49,7 @@ export const outcomes: Record<string, string> = {
   other: "Другое",
 };
 export const externalStatuses: Record<string, string> = {
+  favorite: "В избранном",
   applied: "Отклик отправлен",
   waiting: "Ожидание",
   viewed: "Просмотрен",
@@ -66,6 +67,7 @@ export const externalStatuses: Record<string, string> = {
   unknown: "Неизвестно",
 };
 export const fieldLabels: Record<string, string> = {
+  favorite: "Избранное",
   groups: "Группа",
   tags: "Теги",
   company: "Компания",
@@ -98,6 +100,7 @@ export function displayValue(
   applications: Application[] = [],
 ): string {
   if (value == null || value === "") return "—";
+  if (key === "favorite") return value ? "Да" : "Нет";
   if (key === "stage") return stages[String(value)] ?? String(value);
   if (key === "state")
     return (
@@ -207,6 +210,7 @@ export function emptyApplication(): Application {
     workFormat: "",
     recruiter: "",
     companyLogo: "",
+    favorite: false,
     externalStatus: "",
     custom: {},
     version: 0,

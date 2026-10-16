@@ -39,6 +39,7 @@ type Salary struct {
 	Tax      string   `json:"tax"`
 }
 type Application struct {
+	Favorite       bool           `json:"favorite"`
 	Groups         []string       `json:"groups"`
 	Tags           []string       `json:"tags"`
 	ID             string         `json:"id"`

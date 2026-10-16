@@ -4461,6 +4461,9 @@
           "companyLogo": {
             "type": "string"
           },
+          "favorite": {
+            "type": "boolean"
+          },
           "externalStatus": {
             "type": "string"
           },
@@ -4504,6 +4507,7 @@
           "location",
           "workFormat",
           "recruiter",
+          "favorite",
           "externalStatus",
           "custom",
           "version",
@@ -5095,6 +5099,9 @@
           },
           "companyLogo": {
             "type": "string"
+          },
+          "favorite": {
+            "type": "boolean"
           },
           "externalStatus": {
             "type": "string"

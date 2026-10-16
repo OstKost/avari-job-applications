@@ -2360,6 +2360,15 @@ function Applications() {
               to={"/applications/" + a.id}
             >
               {a.company}
+              {a.favorite && (
+                <span
+                  title="В избранном"
+                  aria-label="В избранном"
+                  style={{ color: "#e879a0", marginLeft: 6 }}
+                >
+                  ♥
+                </span>
+              )}
             </Link>
             <div className="position-sub" title={a.position}>
               {a.position}
@@ -2461,7 +2470,14 @@ function Applications() {
           </div>
           <Badge value={a.stage} />
         </header>
-        <p className="application-card-position">{a.position}</p>
+        <p className="application-card-position">
+          {a.favorite && (
+            <span title="В избранном" aria-label="В избранном">
+              ♥{" "}
+            </span>
+          )}
+          {a.position}
+        </p>
         <div className="application-card-salary">
           {salaryLabel(a) || "Зарплата не указана"}
         </div>
@@ -3968,14 +3984,72 @@ function salaryLabel(a: Application) {
 function Proposals() {
   const { data, refresh } = useApp();
   const proposals = data.proposals.filter((p) => p.status === "pending");
+  const [busy, setBusy] = useState(false);
+  const applying = useRef(false);
+  const [notice, setNotice] = useState("");
+  const [error, setError] = useState<unknown>();
+  const applyAll = async () => {
+    if (applying.current || !proposals.length) return;
+    applying.current = true;
+    setBusy(true);
+    setNotice("");
+    setError(undefined);
+    let applied = 0;
+    let failed = 0;
+    let firstError: unknown;
+    try {
+      for (const proposal of proposals) {
+        try {
+          await api("/proposals/" + proposal.id, "POST", {
+            action: "apply",
+            version: proposal.current.version,
+          });
+          applied++;
+        } catch (e) {
+          failed++;
+          firstError ??= e;
+        }
+      }
+      setNotice(`Применено: ${applied}.`);
+      if (failed) {
+        setError(
+          new Error(
+            `Не удалось применить: ${failed}. Проверьте оставшиеся предложения. ${firstError instanceof Error ? firstError.message : ""}`,
+          ),
+        );
+      }
+    } finally {
+      refresh();
+      applying.current = false;
+      setBusy(false);
+    }
+  };
   return (
     <>
       <PageHeader
         title="Предложения"
         subtitle="Вы решаете, какие изменения попадут в журнал"
-      />
+      >
+        {proposals.length > 0 && (
+          <button className="text-button" disabled={busy} onClick={applyAll}>
+            {busy ? "Применяем…" : "Применить всё"}
+          </button>
+        )}
+      </PageHeader>
+      {notice && (
+        <p className="notice" role="status">
+          {notice}
+        </p>
+      )}
+      <ErrorBox error={error} />
       {proposals.length ? (
-        <div className="proposals-grid">
+        <fieldset
+          className="proposals-grid"
+          disabled={busy}
+          aria-label="Предложения изменений"
+          aria-busy={busy}
+          style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}
+        >
           {proposals.map((p) => (
             <ProposalCard
               key={p.id}
@@ -3987,7 +4061,7 @@ function Proposals() {
               onResolved={refresh}
             />
           ))}
-        </div>
+        </fieldset>
       ) : (
         <Empty title="Всё актуально">
           Здесь появятся изменения, обнаруженные расширением на поддерживаемых
@@ -3997,6 +4071,7 @@ function Proposals() {
     </>
   );
 }
+
 function CalendarSubscriptionPanel() {
   const client = useQueryClient();
   const subscription = useQuery({

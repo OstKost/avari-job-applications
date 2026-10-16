@@ -7,9 +7,14 @@ import (
 	"time"
 )
 
+var hhFavoriteList = regexp.MustCompile(`^/(?:applicant/(?:vacancies|favorite)|search/vacancy)/?$`)
+
 var hhIDPattern = regexp.MustCompile(`^\d+$`)
 
 func recommend(a Application, status string) map[string]any {
+	if status == "favorite" {
+		return map[string]any{"favorite": true}
+	}
 	out := map[string]any{"externalStatus": status}
 	stages := []string{"saved", "applied", "hr", "interview", "final", "offer"}
 	rank := func(s string) int {
@@ -70,7 +75,7 @@ func (s *Store) Observe(user string, o Observation) (*Proposal, error) {
 		}
 		o.VacancyURL = lookupURL
 	} else {
-		if jobSiteURL(parsed) != "hh.ru" || urlID != "" && urlID != o.HHID || urlID == "" && parsed.Path != "/applicant/negotiations" && parsed.Path != "/applicant/negotiations/" {
+		if jobSiteURL(parsed) != "hh.ru" || urlID != "" && urlID != o.HHID || urlID == "" && parsed.Path != "/applicant/negotiations" && parsed.Path != "/applicant/negotiations/" && !(o.Status == "favorite" && hhFavoriteList.MatchString(parsed.Path)) {
 			return nil, Fail(400, "Наблюдение hh.ru должно соответствовать вакансии или списку откликов")
 		}
 		lookupURL = "https://hh.ru/vacancy/" + o.HHID
@@ -92,11 +97,15 @@ func (s *Store) Observe(user string, o Observation) (*Proposal, error) {
 			}
 		}
 		if a.ID == "" {
-			if o.Candidate == nil || jobResponsesSite(original) != "hh.ru" {
+			if o.Candidate == nil || (o.Status != "favorite" && jobResponsesSite(original) != "hh.ru") {
 				return nil
 			}
 			candidate := Application{Company: o.Candidate.Company, Position: o.Candidate.Position, URL: lookupURL, AppliedDate: o.Candidate.AppliedDate, SavedDate: localDate(tx, user), Stage: "applied", State: "active", Salary: Salary{Currency: "RUB", Period: "month"}, Custom: map[string]any{}}
-			if !recentResponseDate(candidate.AppliedDate, candidate.SavedDate) {
+			if o.Status == "favorite" {
+				candidate.Stage, candidate.AppliedDate, candidate.Favorite = "saved", "", true
+				candidate.Salary, candidate.Location, candidate.WorkFormat, candidate.CompanyLogo = o.Candidate.Salary, o.Candidate.Location, o.Candidate.WorkFormat, o.Candidate.CompanyLogo
+			}
+			if o.Status != "favorite" && !recentResponseDate(candidate.AppliedDate, candidate.SavedDate) {
 				return nil
 			}
 			if e = candidate.Validate(); e != nil {
@@ -107,7 +116,7 @@ func (s *Store) Observe(user string, o Observation) (*Proposal, error) {
 				return e
 			}
 			for _, p := range proposals {
-				if p.Kind == "create" && trackedJobURL(p.Current.URL) == lookupURL {
+				if p.Kind == "create" && trackedJobURL(p.Current.URL) == lookupURL && (p.DetectedStatus == "favorite") == (o.Status == "favorite") {
 					if p.Status == "pending" && p.DetectedStatus != o.Status {
 						p.Current, p.DetectedStatus, p.Changes = candidate, o.Status, creationChanges(candidate, o.Status)
 						return put(tx, user, "proposal", p.ID, p)
@@ -130,7 +139,7 @@ func (s *Store) Observe(user string, o Observation) (*Proposal, error) {
 		}
 		appID := a.ID
 		var lastRaw string
-		e = tx.QueryRow("SELECT payload FROM documents WHERE user_id=? AND kind='observation' AND json_extract(payload,'$.applicationId')=? ORDER BY created_at DESC,id DESC LIMIT 1", user, appID).Scan(&lastRaw)
+		e = tx.QueryRow("SELECT payload FROM documents WHERE user_id=? AND kind='observation' AND json_extract(payload,'$.applicationId')=? AND (json_extract(payload,'$.status')='favorite')=? ORDER BY created_at DESC,id DESC LIMIT 1", user, appID, o.Status == "favorite").Scan(&lastRaw)
 		if e == nil {
 			var last Observation
 			if e = decode(lastRaw, &last); e != nil {
@@ -148,7 +157,7 @@ func (s *Store) Observe(user string, o Observation) (*Proposal, error) {
 		if e = put(tx, user, "observation", o.ID, o); e != nil {
 			return e
 		}
-		if a.ExternalStatus == o.Status {
+		if (o.Status == "favorite" && a.Favorite) || a.ExternalStatus == o.Status {
 			return nil
 		}
 		p := Proposal{ID: ID(), ApplicationID: appID, ObservationID: o.ID, Status: "pending", DetectedStatus: o.Status, URL: o.URL, Current: a, Changes: recommend(a, o.Status), CreatedAt: now(), Source: "extension"}
@@ -192,6 +201,30 @@ func (s *Store) ResolveProposal(user, id, action string, version int, patch map[
 			}
 			for _, existing := range applications {
 				if trackedJobURL(existing.URL) == trackedJobURL(p.Current.URL) {
+					updates := map[string]any{}
+					if p.DetectedStatus == "favorite" || (existing.Favorite && existing.Stage == "saved") {
+						updates = recommend(existing, p.DetectedStatus)
+					}
+					if len(updates) > 0 && p.DetectedStatus != "favorite" && existing.AppliedDate == "" && p.Current.AppliedDate != "" {
+						updates["appliedDate"] = p.Current.AppliedDate
+					}
+					out, err := applyPatch(existing, updates)
+					if err != nil {
+						return err
+					}
+					if err = out.Validate(); err != nil {
+						return err
+					}
+					if len(changes(existing, out)) > 0 {
+						out.Version++
+						out.UpdatedAt = now()
+						if e = put(tx, user, "application", out.ID, out); e != nil {
+							return e
+						}
+						if e = event(tx, user, out.ID, "proposal", "extension", changes(existing, out)); e != nil {
+							return e
+						}
+					}
 					p.Status, p.ApplicationID = "applied", existing.ID
 					if e = put(tx, user, "proposal", p.ID, p); e != nil {
 						return e
@@ -207,7 +240,9 @@ func (s *Store) ResolveProposal(user, id, action string, version int, patch map[
 			if patch != nil {
 				updates = patch
 			}
-			updates["externalStatus"] = p.DetectedStatus
+			if p.DetectedStatus != "favorite" {
+				updates["externalStatus"] = p.DetectedStatus
+			}
 			out, e := applyPatch(p.Current, updates)
 			if e != nil {
 				return e
@@ -246,7 +281,9 @@ func (s *Store) ResolveProposal(user, id, action string, version int, patch map[
 		if patch != nil {
 			updates = patch
 		}
-		updates["externalStatus"] = p.DetectedStatus
+		if p.DetectedStatus != "favorite" {
+			updates["externalStatus"] = p.DetectedStatus
+		}
 		out, e := applyPatch(a, updates)
 		if e != nil {
 			return e
@@ -294,6 +331,9 @@ func recentResponseDate(date, today string) bool {
 }
 
 func creationChanges(candidate Application, status string) map[string]any {
+	if status == "favorite" {
+		return map[string]any{"favorite": true, "stage": "saved"}
+	}
 	updates := recommend(candidate, status)
 	updates["appliedDate"] = candidate.AppliedDate
 	if _, ok := updates["stage"]; !ok {

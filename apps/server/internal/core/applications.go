@@ -373,7 +373,7 @@ func (s *Store) SaveFields(user string, fields []Field, confirmDelete bool) ([]F
 	return fields, e
 }
 func applyPatch(a Application, patch map[string]any) (Application, error) {
-	allowed := map[string]bool{"stage": true, "state": true, "outcome": true, "externalStatus": true, "appliedDate": true}
+	allowed := map[string]bool{"favorite": true, "stage": true, "state": true, "outcome": true, "externalStatus": true, "appliedDate": true}
 	for k := range patch {
 		if !allowed[k] {
 			return a, Fail(400, "Неподдерживаемое изменение предложения")
