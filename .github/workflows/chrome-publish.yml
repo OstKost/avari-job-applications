@@ -37,17 +37,29 @@ jobs:
           cd /tmp/avari-chrome
           awk '$2 == "avari-extension.zip"' SHA256SUMS | sha256sum -c -
           unzip -p avari-extension.zip manifest.json | python3 -c 'import json,os,sys; assert json.load(sys.stdin)["version"] == os.environ["TAG"][1:]'
-      - uses: google-github-actions/auth@v3
-        id: google
-        with:
-          credentials_json: ${{ secrets.CHROME_SERVICE_ACCOUNT_JSON }}
-          service_account: ${{ vars.CHROME_SERVICE_ACCOUNT_EMAIL }}
-          token_format: access_token
-          access_token_scopes: https://www.googleapis.com/auth/chromewebstore
+      - name: Obtain Chrome Web Store access token
+        id: token
+        env:
+          CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
+        run: |
+          ACCESS_TOKEN=$(curl -fsS -X POST "https://oauth2.googleapis.com/token" \
+            -d "client_id=${CLIENT_ID}" \
+            -d "client_secret=${CLIENT_SECRET}" \
+            -d "refresh_token=${REFRESH_TOKEN}" \
+            -d "grant_type=refresh_token" | jq -r '.access_token')
+          if [ -z "$ACCESS_TOKEN" ] || [ "$ACCESS_TOKEN" = "null" ]; then
+            echo "Failed to obtain access token"
+            exit 1
+          fi
+          echo "::add-mask::$ACCESS_TOKEN"
+          echo "access_token=$ACCESS_TOKEN" >> "$GITHUB_OUTPUT"
       - name: Submit to Chrome Web Store
         env:
-          CHROME_ACCESS_TOKEN: ${{ steps.google.outputs.access_token }}
+          CHROME_ACCESS_TOKEN: ${{ steps.token.outputs.access_token }}
           CHROME_PUBLISHER_ID: ${{ vars.CHROME_PUBLISHER_ID }}
           CHROME_EXTENSION_ID: ${{ vars.CHROME_EXTENSION_ID }}
           TAG: ${{ inputs.tag }}
         run: node scripts/publish-chrome.mjs /tmp/avari-chrome/avari-extension.zip
+
