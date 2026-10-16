@@ -20,7 +20,7 @@ if (defaultServer) {
   defaultServer = url.origin;
   process.env.VITE_AVARI_DEFAULT_SERVER = defaultServer;
 }
-const version = process.env.AVARI_VERSION || "1.1.0";
+const version = process.env.AVARI_VERSION || "1.1.1";
 if (
   !/^\d{1,5}\.\d{1,5}\.\d{1,5}$/.test(version) ||
   version
@@ -66,7 +66,7 @@ const manifest = {
   name: "Avari.Jobs — журнал откликов",
   version,
   description:
-    "Сохраняйте вакансии hh.ru, LinkedIn, Getmatch, Hirify, Geekjob и Habr Career в своём журнале.",
+    "Сохраняйте вакансии с популярных карьерных сайтов в личном журнале откликов.",
   permissions: ["storage", "activeTab", "scripting"],
   optional_permissions: ["notifications"],
   ...(defaultServer ? { host_permissions: [defaultServer + "/*"] } : {}),
