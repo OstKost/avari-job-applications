@@ -1,13 +1,14 @@
 import { expect, it, vi } from "vitest";
 const page = vi.hoisted(() => ({
+  supported: true,
   vacancy: { url: "https://hh.ru/vacancy/123", company: "", position: "" },
 }));
 vi.mock("./parser", () => ({
   parsePage: () => ({
-    supported: true,
+    supported: page.supported,
     kind: "vacancy",
     observations: [],
-    vacancy: page.vacancy,
+    vacancy: page.supported ? page.vacancy : undefined,
   }),
 }));
 it("opens manually and auto-opens compactly for new content, respecting dismissal", async () => {
@@ -211,6 +212,43 @@ it("opens manually and auto-opens compactly for new content, respecting dismissa
       .querySelector("#avari-quick-popup")!
       .hasAttribute("data-collapsed"),
   ).toBe(true);
+  const currentFrame = document
+    .querySelector("#avari-quick-popup")!
+    .shadowRoot!.querySelector("iframe")!;
+  Object.defineProperty(currentFrame, "contentWindow", { value: window });
+  window.dispatchEvent(
+    new MessageEvent("message", {
+      source: window,
+      origin: "chrome-extension://avari",
+      data: { type: "AVARI_READY" },
+    }),
+  );
+  page.supported = false;
+  const sentBeforeUnsupported = vi.mocked(chrome.runtime.sendMessage).mock.calls
+    .length;
+  const reply = vi.fn();
+  receive!({ type: "READ_PAGE" }, {}, reply);
+  expect(reply).toHaveBeenCalledWith(
+    expect.objectContaining({ supported: false }),
+  );
+  expect(document.querySelector("#avari-quick-popup")).not.toBeNull();
+  expect(chrome.runtime.sendMessage).toHaveBeenCalledTimes(
+    sentBeforeUnsupported,
+  );
+  const opened = vi.fn();
+  receive!({ type: "OPEN_PANEL" }, {}, opened);
+  expect(opened).toHaveBeenCalledWith({ opened: true, supported: false });
+  document
+    .querySelector("#avari-quick-popup")!
+    .shadowRoot!.querySelector<HTMLButtonElement>(
+      'button[aria-label="Закрыть мини-окно"]',
+    )!
+    .click();
+  const blocked = vi.fn();
+  receive!({ type: "OPEN_PANEL" }, {}, blocked);
+  vi.advanceTimersByTime(4000);
+  expect(blocked).toHaveBeenCalledWith({ opened: false, supported: false });
+  expect(document.querySelector("#avari-quick-popup")).toBeNull();
   Object.defineProperty(chrome.runtime, "id", {
     value: undefined,
     configurable: true,

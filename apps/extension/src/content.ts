@@ -278,6 +278,8 @@ let panelURL = "";
 let host: HTMLDivElement | undefined;
 let frame: HTMLIFrameElement | undefined;
 let opened = false;
+let frameReady = false;
+const readyWaiters = new Set<(ready: boolean) => void>();
 let pendingExpand = false;
 let collapsed = false;
 let dismissed = "";
@@ -297,7 +299,8 @@ function place() {
 }
 function showPanel(snapshot: Snapshot) {
   if (!contextAlive()) return;
-  if (!snapshot.supported || !opened) {
+  if (!opened) {
+    frameReady = false;
     host?.remove();
     host = undefined;
     frame = undefined;
@@ -310,6 +313,7 @@ function showPanel(snapshot: Snapshot) {
     return;
   }
   panelURL = url;
+  frameReady = false;
   host = document.createElement("div");
   host.id = "avari-quick-popup";
   const shadow = host.attachShadow({ mode: "open" });
@@ -395,6 +399,10 @@ window.addEventListener("message", (event) => {
     event.origin !== chrome.runtime.getURL("/").replace(/\/$/, "")
   )
     return;
+  if (event.data?.type === "AVARI_READY") {
+    frameReady = true;
+    for (const ready of readyWaiters) ready(true);
+  }
   if (
     event.data?.type === "AVARI_THEME" &&
     (event.data.theme === "light" || event.data.theme === "dark")
@@ -466,6 +474,13 @@ function send() {
   if (fingerprint === last) return;
   last = fingerprint;
   const observedURL = location.href;
+  if (!snapshot.supported) {
+    frame?.contentWindow?.postMessage(
+      { type: "AVARI_PAGE_UPDATED" },
+      chrome.runtime.getURL("/").replace(/\/$/, ""),
+    );
+    return;
+  }
   chrome.runtime
     .sendMessage({ type: "PAGE_SNAPSHOT", snapshot })
     .then((reply) => {
@@ -537,13 +552,14 @@ observer.observe(document.documentElement, {
     "aria-label",
     "title",
     "class",
+    "data-active",
   ],
 });
 chrome.runtime.onMessage.addListener((message, _sender, reply) => {
   if (message?.type === "OPEN_PANEL") {
     const snapshot = parsePage(document, location.href);
-    opened = snapshot.supported;
-    pendingExpand = snapshot.supported;
+    opened = true;
+    pendingExpand = true;
     collapsed = false;
     host?.removeAttribute("data-collapsed");
     frame?.contentWindow?.postMessage(
@@ -551,7 +567,22 @@ chrome.runtime.onMessage.addListener((message, _sender, reply) => {
       chrome.runtime.getURL("/").replace(/\/$/, ""),
     );
     showPanel(snapshot);
-    reply({ supported: snapshot.supported });
+    if (frameReady) {
+      reply({ opened: true, supported: snapshot.supported });
+    } else {
+      const done = (ready: boolean) => {
+        clearTimeout(timeout);
+        readyWaiters.delete(done);
+        if (!ready) {
+          opened = false;
+          showPanel(snapshot);
+        }
+        reply({ opened: ready, supported: snapshot.supported });
+      };
+      const timeout = setTimeout(() => done(false), 4000);
+      readyWaiters.add(done);
+    }
+    return true;
   }
   if (message?.type === "READ_PAGE") {
     const snapshot = parsePage(document, location.href);

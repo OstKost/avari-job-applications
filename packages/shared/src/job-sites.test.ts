@@ -93,3 +93,32 @@ describe("observations belong to the opened site", () => {
     },
   );
 });
+
+it("accepts saved-list observations only for matching sites and favorite status", () => {
+  for (const [page, vacancy] of [
+    [
+      "https://www.linkedin.com/my-items/saved-jobs/",
+      "https://www.linkedin.com/jobs/view/123",
+    ],
+    ["https://hirify.me/account/favorites", "https://hirify.me/jobs/123"],
+    [
+      "https://career.habr.com/vacancies",
+      "https://career.habr.com/vacancies/123",
+    ],
+  ]) {
+    const o = { url: page, vacancyUrl: vacancy, status: "favorite" };
+    expect(observationBelongsToPage(o, page)).toBe(true);
+    expect(observationBelongsToPage({ ...o, status: "viewed" }, page)).toBe(
+      false,
+    );
+    expect(
+      observationBelongsToPage(
+        { ...o, vacancyUrl: "https://hh.ru/vacancy/123" },
+        page,
+      ),
+    ).toBe(false);
+    expect(observationBelongsToPage(o, new URL("/profile", page).href)).toBe(
+      false,
+    );
+  }
+});

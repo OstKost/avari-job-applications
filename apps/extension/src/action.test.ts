@@ -16,14 +16,14 @@ it("opens the page panel and closes the toolbar popup", async () => {
   expect(close).toHaveBeenCalledOnce();
 });
 
-it("keeps an unsupported page error in the toolbar popup", async () => {
+it("keeps opening failures in the toolbar popup", async () => {
   vi.resetModules();
   document.body.innerHTML = '<p id="status" role="status"></p>';
   vi.stubGlobal("chrome", {
     runtime: {
       sendMessage: vi.fn().mockResolvedValue({
         ok: false,
-        error: "Эта страница не поддерживается",
+        error: "Не удалось открыть окно",
       }),
     },
   });
@@ -31,6 +31,6 @@ it("keeps an unsupported page error in the toolbar popup", async () => {
   await import("./action");
   expect(close).not.toHaveBeenCalled();
   expect(document.querySelector('[role="alert"]')?.textContent).toBe(
-    "Эта страница не поддерживается",
+    "Не удалось открыть окно",
   );
 });

@@ -306,42 +306,45 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
           active: true,
           currentWindow: true,
         });
-        if (!tab?.id || !jobSite(tab.url ?? ""))
-          throw new Error(
-            "Эта страница не поддерживается. Откройте вакансию на hh.ru, LinkedIn, Getmatch или Hirify либо список откликов hh.ru, Getmatch или Hirify.",
-          );
-        let result;
+        if (!tab?.id) throw new Error("Не найдена открытая вкладка");
         try {
-          result = await chrome.tabs.sendMessage(tab.id, {
-            type: "OPEN_PANEL",
-          });
+          let result;
+          try {
+            result = await chrome.tabs.sendMessage(tab.id, {
+              type: "OPEN_PANEL",
+            });
+          } catch {
+            await chrome.scripting.executeScript({
+              target: { tabId: tab.id },
+              files: ["content.js"],
+            });
+            result = await chrome.tabs.sendMessage(tab.id, {
+              type: "OPEN_PANEL",
+            });
+          }
+          if (!result?.opened) throw new Error("Панель не открылась");
+          return result;
         } catch {
-          // Existing tabs and SPA navigation may have no content script yet.
-          await chrome.scripting.executeScript({
-            target: { tabId: tab.id },
-            files: ["content.js"],
+          await chrome.windows.create({
+            url: chrome.runtime.getURL("index.html?tabId=" + tab.id),
+            type: "popup",
+            width: 420,
+            height: 720,
           });
-          result = await chrome.tabs.sendMessage(tab.id, {
-            type: "OPEN_PANEL",
-          });
+          return { opened: true };
         }
-        if (!result?.supported)
-          throw new Error(
-            "Эта страница не поддерживается. Откройте карточку вакансии или список откликов.",
-          );
-        return result;
       }
       case "READ_ACTIVE": {
+        // Chrome can omit tab.url without the tabs permission; READ_PAGE is handled by our script.
+        const requestedId = message.tabId;
+        const embedded = new URL(sender.url!).searchParams.has("embedded");
         const tab =
-          (sender.tab && jobSite(sender.tab.url ?? "")
-            ? sender.tab
-            : undefined) ??
-          (
-            await chrome.tabs.query({
-              active: true,
-              currentWindow: true,
-            })
-          )[0];
+          (embedded ? sender.tab : undefined) ??
+          (Number.isInteger(requestedId) && requestedId > 0
+            ? await chrome.tabs.get(requestedId).catch(() => undefined)
+            : (
+                await chrome.tabs.query({ active: true, currentWindow: true })
+              )[0]);
         if (!tab?.id)
           return { supported: false, kind: "unsupported", observations: [] };
         try {

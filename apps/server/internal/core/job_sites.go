@@ -78,3 +78,23 @@ func jobResponsesSite(u *url.URL) string {
 	}
 	return ""
 }
+
+func jobFavoritesSite(u *url.URL) string {
+	site := jobSiteURL(u)
+	path := strings.TrimSuffix(u.Path, "/")
+	switch site {
+	case "linkedin.com":
+		if path == "/my-items/saved-jobs" || path == "/jobs/collections/saved" {
+			return site
+		}
+	case "hirify.me":
+		if path == "/account/favorites" {
+			return site
+		}
+	case "career.habr.com":
+		if path == "/vacancies" {
+			return site
+		}
+	}
+	return ""
+}

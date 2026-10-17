@@ -33,11 +33,11 @@ import {
   dateToday,
   stages,
   jobIdentity,
-  jobSite,
   jobSitesLabel,
 } from "@avari/shared";
 import {
   ThemeButton,
+  useTheme,
   Loading,
   ErrorBox,
   Empty,
@@ -77,11 +77,12 @@ type FormDraft = {
 };
 const embedded = new URLSearchParams(location.search).has("embedded");
 function Popup() {
+  useTheme();
   const [collapsed, setCollapsed] = useState(
     embedded && new URLSearchParams(location.search).get("collapsed") === "1",
   );
   const [section, setSection] = useState<
-    "page" | "applications" | "tasks" | "changes"
+    "page" | "applications" | "tasks" | "changes" | "settings"
   >("page");
   const [server, setServer] = useState("");
   const [setup, setSetup] = useState(false);
@@ -104,6 +105,8 @@ function Popup() {
   const [notifications, setNotifications] = useState(false);
   const [form, updateForm] = useState<FormDraft>();
   const draftKey = useRef("");
+  const reloadGeneration = useRef(0);
+  const pageUpdatePending = useRef(false);
   const [captureGroup, setCaptureGroup] = useState("");
   const [busy, setBusy] = useState(false);
   const [lastScanned, setLastScanned] = useState<Date>();
@@ -147,6 +150,9 @@ function Popup() {
     updateForm(value);
   };
   useEffect(() => {
+    if (embedded) window.parent.postMessage({ type: "AVARI_READY" }, "*");
+  }, []);
+  useEffect(() => {
     if (!embedded) return;
     const observer = new ResizeObserver(() => {
       window.parent.postMessage(
@@ -182,14 +188,18 @@ function Popup() {
     return () => observer.disconnect();
   }, []);
   const reload = async () => {
+    const generation = ++reloadGeneration.current;
     setLoading(true);
     setError(undefined);
+    setDetail(undefined);
+    setSnapshot({ supported: false, kind: "unsupported", observations: [] });
     try {
       const c = await message<{
         server?: string;
         token?: string;
         notifications?: boolean;
       }>({ type: "CONFIG" });
+      if (generation !== reloadGeneration.current) return;
       setServer(c.server ?? "");
       setSetup(!c.server);
       setNotifications(c.notifications ?? false);
@@ -202,9 +212,16 @@ function Popup() {
         return;
       }
       const u = await api<User>("/me");
+      if (generation !== reloadGeneration.current) return;
       setUser(u);
       if (u.status !== "active") return;
-      const page = await message<Snapshot>({ type: "READ_ACTIVE" });
+      const page = await message<Snapshot>({
+        type: "READ_ACTIVE",
+        tabId:
+          Number(new URLSearchParams(location.search).get("tabId")) ||
+          undefined,
+      });
+      if (generation !== reloadGeneration.current) return;
       setSnapshot(page);
       const key =
         "avari-draft:" +
@@ -229,6 +246,7 @@ function Popup() {
         api<Proposal[]>("/proposals"),
         api<Task[]>("/tasks"),
       ]);
+      if (generation !== reloadGeneration.current) return;
       setData({ applications, fields, proposals, tasks });
       const existing = page.vacancy
         ? applications.find((a) => {
@@ -236,11 +254,11 @@ function Popup() {
             return !!url && jobIdentity(a.url)?.url === url;
           })
         : undefined;
-      setDetail(
-        existing
-          ? await api<Detail>("/applications/" + existing.id)
-          : undefined,
-      );
+      const currentDetail = existing
+        ? await api<Detail>("/applications/" + existing.id)
+        : undefined;
+      if (generation !== reloadGeneration.current) return;
+      setDetail(currentDetail);
       setLastScanned(new Date());
 
       // Notify if an existing saved vacancy was detected on the current page
@@ -260,10 +278,11 @@ function Popup() {
         notifiedVacancyUrl.current = "";
       }
     } catch (e) {
+      if (generation !== reloadGeneration.current) return;
       setError(e);
       if (e instanceof APIError && e.status === 401) setUser(undefined);
     } finally {
-      setLoading(false);
+      if (generation === reloadGeneration.current) setLoading(false);
     }
   };
   useEffect(() => {
@@ -274,11 +293,12 @@ function Popup() {
     const changed = (event: MessageEvent) => {
       if (
         event.source === window.parent &&
-        jobSite(event.origin) &&
-        event.data?.type === "AVARI_PAGE_UPDATED" &&
-        !form
-      )
-        void reload();
+        /^https?:\/\//.test(event.origin) &&
+        event.data?.type === "AVARI_PAGE_UPDATED"
+      ) {
+        if (form) pageUpdatePending.current = true;
+        else void reload();
+      }
     };
     window.addEventListener("message", changed);
     return () => window.removeEventListener("message", changed);
@@ -286,7 +306,8 @@ function Popup() {
   useEffect(() => {
     if (!embedded) return;
     const toggle = (event: MessageEvent) => {
-      if (event.source !== window.parent || !jobSite(event.origin)) return;
+      if (event.source !== window.parent || !/^https?:\/\//.test(event.origin))
+        return;
       if (event.data?.type === "AVARI_COLLAPSE") setCollapsed(true);
       if (event.data?.type === "AVARI_EXPAND") setCollapsed(false);
     };
@@ -304,6 +325,33 @@ function Popup() {
       "*",
     );
   }, [collapsed]);
+  useEffect(() => {
+    const tabId = Number(new URLSearchParams(location.search).get("tabId"));
+    if (embedded || !tabId) return;
+    const changed = () => {
+      if (form) pageUpdatePending.current = true;
+      else void reload();
+    };
+    const updated = (id: number, change: chrome.tabs.OnUpdatedInfo) => {
+      if (id === tabId && (change.url || change.status === "complete"))
+        changed();
+    };
+    const removed = (id: number) => {
+      if (id === tabId) changed();
+    };
+    chrome.tabs.onUpdated.addListener(updated);
+    chrome.tabs.onRemoved.addListener(removed);
+    return () => {
+      chrome.tabs.onUpdated.removeListener(updated);
+      chrome.tabs.onRemoved.removeListener(removed);
+    };
+  }, [form]);
+  useEffect(() => {
+    if (!form && pageUpdatePending.current) {
+      pageUpdatePending.current = false;
+      void reload();
+    }
+  }, [form]);
   const saved = (msg?: unknown) => {
     setForm(undefined);
     notify(typeof msg === "string" ? msg : "Сохранено в журнале");
@@ -536,7 +584,6 @@ function Popup() {
               <ExternalLink size={16} />
             </button>
           )}
-          <ThemeButton />
           {embedded && (
             <button
               className="icon-button"
@@ -548,23 +595,9 @@ function Popup() {
               <X size={17} />
             </button>
           )}
-          {server && user && (
-            <button
-              className="icon-button"
-              aria-label="Адрес сервиса"
-              onClick={() => setSetup((v) => !v)}
-            >
-              <Settings size={17} />
-            </button>
-          )}
-          {user && (
-            <button className="icon-button" aria-label="Выйти" onClick={logout}>
-              <LogOut size={17} />
-            </button>
-          )}
         </div>
       </header>
-      {user?.status === "active" && (
+      {(user?.status === "active" || !loading) && (
         <nav className="popup-nav" aria-label="Разделы плагина">
           {(
             [
@@ -572,13 +605,19 @@ function Popup() {
               ["applications", "Вакансии", Bookmark],
               ["tasks", "Задачи", CalendarDays],
               ["changes", "Изменения", RefreshCw],
+              ["settings", "Настройки", Settings],
             ] as const
           ).map(([value, label, Icon]) => (
             <button
               key={value}
               type="button"
               aria-current={!setup && section === value ? "page" : undefined}
-              disabled={!!form}
+              disabled={
+                !!form ||
+                (value !== "settings" &&
+                  value !== "page" &&
+                  user?.status !== "active")
+              }
               onClick={() => {
                 setSection(value);
                 setSetup(false);
@@ -634,7 +673,51 @@ function Popup() {
                     : section
         }
       >
-        {setup ? (
+        {section === "settings" && !form ? (
+          <div className="form settings-screen">
+            <h2>Настройки</h2>
+            <label className="checkbox-label">
+              Тема оформления <ThemeButton />
+            </label>
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={notifications}
+                onChange={async (e) => {
+                  const enabled = e.target.checked;
+                  try {
+                    if (
+                      enabled &&
+                      !(await chrome.permissions.request({
+                        permissions: ["notifications"],
+                      }))
+                    )
+                      return;
+                    await message({ type: "NOTIFICATIONS", enabled });
+                    setNotifications(enabled);
+                  } catch (e) {
+                    setError(e);
+                  }
+                }}
+              />
+              <Bell size={16} /> Системные уведомления
+            </label>
+            <ServerSetup
+              initial={server}
+              preferences
+              onSaved={() => {
+                setSetup(false);
+                notify("Настройки подключения сохранены");
+                void reload();
+              }}
+            />
+            {user && (
+              <button type="button" onClick={logout}>
+                <LogOut size={17} /> Выйти из аккаунта
+              </button>
+            )}
+          </div>
+        ) : setup ? (
           <ServerSetup
             initial={server}
             onCancel={server ? () => setSetup(false) : undefined}
@@ -831,7 +914,9 @@ function Popup() {
               <RefreshCw size={16} /> Обновить
             </button>
           </>
-        ) : embedded && !form ? (
+        ) : embedded &&
+          !form &&
+          (snapshot.kind === "vacancy" || snapshot.kind === "responses") ? (
           <section className="vacancy-card mini-save">
             {detail ? (
               <>
@@ -1207,11 +1292,16 @@ function Popup() {
                   }
                 >
                   Откройте карточку вакансии на {jobSitesLabel} или список
-                  откликов hh.ru, Getmatch или Hirify.
+                  откликов hh.ru, Getmatch или Hirify либо поддерживаемый список
+                  избранного.
                 </Empty>
               ) : (
                 <div className="responses-screen-header">
-                  <h2>Отклики на открытой странице</h2>
+                  <h2>
+                    {snapshot.kind === "favorites"
+                      ? "Избранное на открытой странице"
+                      : "Отклики на открытой странице"}
+                  </h2>
                   <p className="responses-timestamp">
                     <Clock size={15} />
                     <span>
@@ -1224,7 +1314,7 @@ function Popup() {
                     <div className="responses-changes-badge warning">
                       <strong>Обнаружены изменения: {pending.length}</strong>
                       <small>
-                        Найдены обновления статусов по откликам. Подтвердите или
+                        Найдены предложения для журнала. Подтвердите или
                         отклоните их ниже.
                       </small>
                     </div>
@@ -1232,8 +1322,8 @@ function Popup() {
                     <div className="responses-changes-badge success">
                       <strong>Изменений нет</strong>
                       <small>
-                        Все найденные на странице отклики совпадают с данными в
-                        вашем журнале.
+                        Все распознанные записи совпадают с данными в вашем
+                        журнале.
                       </small>
                     </div>
                   )}
@@ -1273,37 +1363,15 @@ function Popup() {
                 ))}
               </>
             )}
-            {snapshot.kind === "responses" && !pending.length && (
-              <Empty title="Новых предложений нет">
-                Нет изменений по сохранённым вакансиям и новых откликов с
-                распознанной датой за последний месяц. Проверены только
-                загруженные строки страницы.
-              </Empty>
-            )}
+            {(snapshot.kind === "responses" || snapshot.kind === "favorites") &&
+              !pending.length && (
+                <Empty title="Новых предложений нет">
+                  {snapshot.kind === "favorites"
+                    ? "Новых избранных вакансий не обнаружено. Проверены только загруженные строки страницы. Если список требует входа, войдите на сайте и обновите страницу."
+                    : "Нет изменений по сохранённым вакансиям и новых откликов с распознанной датой за последний месяц. Проверены только загруженные строки страницы."}
+                </Empty>
+              )}
             <div className="popup-utilities">
-              <label className="checkbox-label notification-setting">
-                <input
-                  type="checkbox"
-                  checked={notifications}
-                  onChange={async (e) => {
-                    const enabled = e.target.checked;
-                    try {
-                      if (
-                        enabled &&
-                        !(await chrome.permissions.request({
-                          permissions: ["notifications"],
-                        }))
-                      )
-                        return;
-                      await message({ type: "NOTIFICATIONS", enabled });
-                      setNotifications(enabled);
-                    } catch (e) {
-                      setError(e);
-                    }
-                  }}
-                />
-                <Bell size={16} /> Системные уведомления
-              </label>
               <button
                 className="text-button refresh-button"
                 onClick={() => reload()}
@@ -1408,7 +1476,9 @@ function ServerSetup({
   initial,
   onSaved,
   onCancel,
+  preferences = false,
 }: {
+  preferences?: boolean;
   initial: string;
   onSaved: () => void;
   onCancel?: () => void;
@@ -1437,13 +1507,13 @@ function ServerSetup({
       <div className="setup-emblem tile-icon">
         <Settings size={24} />
       </div>
-      <div className="eyebrow">Начнём с подключения</div>
-      <h2>Ваш журнал, всегда рядом</h2>
+      {!preferences && <div className="eyebrow">Начнём с подключения</div>}
+      <h2>{preferences ? "Подключение" : "Ваш журнал, всегда рядом"}</h2>
       <p className="muted">Выберите, где будет храниться ваш журнал.</p>
       <ErrorBox error={error} />
       <StorageChoice settings={settings} busy={busy} />
       <button className="primary" disabled={busy}>
-        Подключить
+        {preferences ? "Сохранить подключение" : "Подключить"}
         <SubmitShortcutHint />
       </button>
       {onCancel && (

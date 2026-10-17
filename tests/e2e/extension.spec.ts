@@ -2,7 +2,7 @@ import { test, expect, chromium, type Worker } from "@playwright/test";
 import { mkdtemp, cp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-test("real MV3 extension: login, DOM capture, save, dedup, proposal confirmation, restart", async () => {
+test("real MV3 extension: login, DOM capture, save, dedup, proposal confirmation, restart", async ({}, testInfo) => {
   test.setTimeout(90000);
   const temp = await mkdtemp(path.join(tmpdir(), "avari-extension-"));
   const extension = path.join(temp, "extension");
@@ -14,6 +14,7 @@ test("real MV3 extension: login, DOM capture, save, dedup, proposal confirmation
   manifest.host_permissions = [
     ...originalHosts,
     new URL(process.env.AVARI_TEST_URL!).origin + "/*",
+    "https://example.test/*",
   ];
   await writeFile(
     path.join(extension, "manifest.json"),
@@ -75,6 +76,16 @@ test("real MV3 extension: login, DOM capture, save, dedup, proposal confirmation
           async () => (await chrome.storage.local.get("server")).server,
         ),
       ).toBe(defaultServer);
+      await fresh
+        .getByRole("button", { name: "Настройки", exact: true })
+        .click();
+      await expect(
+        fresh.getByRole("heading", { name: "Настройки", exact: true }),
+      ).toBeVisible();
+      await fresh
+        .getByRole("button", { name: "Страница", exact: true })
+        .click();
+      await expect(fresh.getByLabel("Email", { exact: true })).toBeVisible();
       await fresh.close();
     }
     let popup = await context.newPage();
@@ -106,6 +117,93 @@ test("real MV3 extension: login, DOM capture, save, dedup, proposal confirmation
       ),
     ).toBe(process.env.AVARI_TEST_URL!);
     await expect(popup.locator("html")).toHaveAttribute("data-theme", "dark");
+    await popup.getByRole("button", { name: "Настройки", exact: true }).click();
+    await expect(
+      popup.getByRole("heading", { name: "Настройки", exact: true }),
+    ).toBeVisible();
+    await expect(popup.getByLabel("Системные уведомления")).toBeVisible();
+    await expect(
+      popup.getByRole("radio", { name: "Локальное сохранение", exact: true }),
+    ).toBeChecked();
+    await popup.screenshot({ path: testInfo.outputPath("settings-dark.png") });
+    await popup.getByRole("button", { name: /светлую тему/i }).click();
+    await expect(popup.locator("html")).toHaveAttribute("data-theme", "light");
+    await popup.screenshot({ path: testInfo.outputPath("settings-light.png") });
+    await popup.getByRole("button", { name: /тёмную тему/i }).click();
+    await popup
+      .getByRole("button", { name: "Сохранить подключение", exact: true })
+      .click();
+    await expect(
+      popup.getByRole("button", { name: "Выйти из аккаунта", exact: true }),
+    ).toBeVisible();
+    await popup.getByRole("button", { name: "Страница", exact: true }).click();
+
+    // Only the page tab depends on the site's parser. No broad host permission is needed in production.
+    const unrelated = await context.newPage();
+    await unrelated.route("https://example.test/**", (route) =>
+      route.fulfill({
+        contentType: "text/html; charset=utf-8",
+        body: "<h1>Обычный сайт</h1>",
+      }),
+    );
+    await unrelated.goto("https://example.test/");
+    const openReply = await popup.evaluate(() =>
+      chrome.runtime.sendMessage({ type: "OPEN_PANEL" }),
+    );
+    expect(openReply.ok).toBe(true);
+    const unrelatedPanel = unrelated.frameLocator("#avari-quick-popup iframe");
+    await expect(
+      unrelatedPanel.getByRole("heading", {
+        name: "Эта страница не поддерживается",
+      }),
+    ).toBeVisible();
+    for (const name of ["Вакансии", "Задачи", "Изменения", "Настройки"]) {
+      await unrelatedPanel.getByRole("button", { name, exact: true }).click();
+      await expect(
+        unrelatedPanel.getByRole("button", { name, exact: true }),
+      ).toHaveAttribute("aria-current", "page");
+    }
+    await unrelatedPanel
+      .locator("main")
+      .screenshot({ path: testInfo.outputPath("unrelated-settings.png") });
+    // Restricted browser pages cannot host a content script.
+    await unrelated.goto("chrome://version/");
+    const fallbackOpened = context.waitForEvent("page");
+    await popup.evaluate(() =>
+      chrome.runtime.sendMessage({ type: "OPEN_PANEL" }),
+    );
+    const fallback = await fallbackOpened;
+    await expect(fallback).toHaveURL(/index\.html\?tabId=\d+$/);
+    await expect(
+      fallback.getByRole("heading", { name: "Эта страница не поддерживается" }),
+    ).toBeVisible();
+    await fallback.getByRole("button", { name: "Задачи", exact: true }).click();
+    await expect(
+      fallback.getByRole("button", { name: "Задачи", exact: true }),
+    ).toHaveAttribute("aria-current", "page");
+    await fallback.close();
+    await unrelated.close();
+
+    const favorites = await context.newPage();
+    await favorites.route(
+      "https://hh.ru/applicant/favorites?tab=vacancies",
+      (route) =>
+        route.fulfill({ contentType: "text/html", body: "<h1>Избранное</h1>" }),
+    );
+    await favorites.goto("https://hh.ru/applicant/favorites?tab=vacancies");
+    await popup.evaluate(() =>
+      chrome.runtime.sendMessage({ type: "OPEN_PANEL" }),
+    );
+    const favoritesPanel = favorites.frameLocator("#avari-quick-popup iframe");
+    await expect(
+      favoritesPanel.getByRole("heading", {
+        name: "Избранное на открытой странице",
+      }),
+    ).toBeVisible();
+    await expect(
+      favoritesPanel.getByText("Новых предложений нет", { exact: true }),
+    ).toBeVisible();
+    await favorites.close();
     const hh = await context.newPage();
     await hh.route("https://hh.ru/vacancy/111222333", (route) =>
       route.fulfill({
@@ -480,6 +578,7 @@ test("real MV3 extension: login, DOM capture, save, dedup, proposal confirmation
     await sdui.close();
 
     expect(errors).toEqual([]);
+    await popup.getByRole("button", { name: "Настройки", exact: true }).click();
     await popup.getByRole("button", { name: "Включить светлую тему" }).click();
     await context.close();
     context = await chromium.launchPersistentContext(

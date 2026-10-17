@@ -122,7 +122,7 @@ func TestImportDismissalManualSaveAndDateFiltering(t *testing.T) {
 func TestFavoriteProposal(t *testing.T) {
 	s := testStore(t)
 	u := testUser(t, s, "favorite@example.com")
-	o := Observation{HHID: "987", URL: "https://hh.ru/applicant/vacancies", Status: "favorite", Candidate: &Application{Company: "Example", Position: "Developer"}}
+	o := Observation{HHID: "987", URL: "https://rostov.hh.ru/applicant/favorites?tab=vacancies", Status: "favorite", Candidate: &Application{Company: "Example", Position: "Developer"}}
 	p, err := s.Observe(u.ID, o)
 	if err != nil || p == nil || p.Kind != "create" {
 		t.Fatal(p, err)
@@ -186,5 +186,43 @@ func TestFavoriteExistingApplicationPreservesStatus(t *testing.T) {
 	a, _ = s.Application(u.ID, a.ID)
 	if !a.Favorite || a.ExternalStatus != "interview" || a.Stage != "interview" {
 		t.Fatal(a)
+	}
+}
+
+func TestOtherSiteFavoriteLists(t *testing.T) {
+	for _, pair := range [][2]string{
+		{"https://www.linkedin.com/my-items/saved-jobs/", "https://www.linkedin.com/jobs/view/123"},
+		{"https://hirify.me/account/favorites", "https://hirify.me/jobs/123"},
+		{"https://career.habr.com/vacancies", "https://career.habr.com/vacancies/123"},
+	} {
+		t.Run(pair[0], func(t *testing.T) {
+			s := testStore(t)
+			u := testUser(t, s, "favorite-list@example.com")
+			o := Observation{URL: pair[0], VacancyURL: pair[1], Status: "favorite", Candidate: &Application{Company: "Example", Position: "Developer"}}
+			p, err := s.Observe(u.ID, o)
+			if err != nil || p == nil || p.Kind != "create" {
+				t.Fatal(p, err)
+			}
+			again, err := s.Observe(u.ID, o)
+			if err != nil || again != nil {
+				t.Fatal("duplicate", again, err)
+			}
+			resolved, err := s.ResolveProposal(u.ID, p.ID, "apply", 0, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			a, err := s.Application(u.ID, resolved.ApplicationID)
+			if err != nil || !a.Favorite || a.Stage != "saved" || a.AppliedDate != "" {
+				t.Fatal(a, err)
+			}
+			o.Status = "viewed"
+			if _, err = s.Observe(u.ID, o); err == nil {
+				t.Fatal("accepted response on favorite list")
+			}
+			o.Status, o.VacancyURL = "favorite", "https://hh.ru/vacancy/123"
+			if _, err = s.Observe(u.ID, o); err == nil {
+				t.Fatal("accepted cross-site observation")
+			}
+		})
 	}
 }

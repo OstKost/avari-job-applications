@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-var hhFavoriteList = regexp.MustCompile(`^/(?:applicant/(?:vacancies|favorite)|search/vacancy)/?$`)
+var hhFavoriteList = regexp.MustCompile(`^/(?:applicant/(?:vacancies|favorites?)|search/vacancy)/?$`)
 
 var hhIDPattern = regexp.MustCompile(`^\d+$`)
 
@@ -70,6 +70,7 @@ func (s *Store) Observe(user string, o Observation) (*Proposal, error) {
 		vacancy, _ := url.Parse(lookupURL)
 		matchesCard := lookupURL != "" && lookupURL == trackedJobURL(o.URL)
 		matchesList := jobResponsesSite(original) != "" && jobResponsesSite(original) == jobSiteURL(vacancy)
+		matchesList = matchesList || (o.Status == "favorite" && jobFavoritesSite(original) != "" && jobFavoritesSite(original) == jobSiteURL(vacancy))
 		if lookupURL == "" || (!matchesCard && !matchesList) || o.HHID != "" {
 			return nil, Fail(400, "Ссылка вакансии не соответствует странице наблюдения")
 		}

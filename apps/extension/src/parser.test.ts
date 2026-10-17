@@ -459,3 +459,75 @@ it("offers favorites visible in lists, with no application date", () => {
     parsePage(page, "https://hh.ru/search/vacancy").observations,
   ).toHaveLength(0);
 });
+
+describe("saved job lists", () => {
+  it.each([
+    "https://hh.ru/applicant/vacancies",
+    "https://hh.ru/applicant/favorite",
+    "https://rostov.hh.ru/applicant/favorites?tab=vacancies",
+    "https://www.linkedin.com/my-items/saved-jobs/",
+    "https://www.linkedin.com/jobs/collections/saved/",
+    "https://hirify.me/account/favorites",
+  ])("recognizes an empty list at %s", (url) => {
+    expect(parsePage(doc(""), url)).toMatchObject({
+      supported: true,
+      kind: "favorites",
+      observations: [],
+    });
+  });
+  it("reads Hirify card metadata without collecting private text, hidden rows or duplicate jobs", () => {
+    const row =
+      '<div class="vacancy-card"><a href="/jobs/123-developer"><div class="company">Example</div><h3 class="title">Developer</h3></a><p>private text</p></div>';
+    const snapshot = parsePage(
+      doc(row + row + "<div hidden>" + row.replaceAll("123", "456") + "</div>"),
+      "https://hirify.me/account/favorites",
+    );
+    expect(snapshot.observations).toHaveLength(1);
+    expect(snapshot.observations[0]).toMatchObject({
+      vacancyUrl: "https://hirify.me/jobs/123",
+      status: "favorite",
+      candidate: {
+        company: "Example",
+        position: "Developer",
+        favorite: true,
+        appliedDate: "",
+        stage: "saved",
+      },
+    });
+    expect(JSON.stringify(snapshot)).not.toContain("private text");
+  });
+  it("reads LinkedIn saved job cards", () => {
+    const snapshot = parsePage(
+      doc(
+        '<div class="job-card-container"><a class="job-card-list__title" href="/jobs/view/developer-123/">Developer</a><div class="job-card-container__primary-description">Example</div></div>',
+      ),
+      "https://www.linkedin.com/my-items/saved-jobs/",
+    );
+    expect(snapshot.observations[0]).toMatchObject({
+      vacancyUrl: "https://www.linkedin.com/jobs/view/123",
+      status: "favorite",
+      candidate: { company: "Example", position: "Developer" },
+    });
+  });
+  it("only collects explicitly selected Habr favorites", () => {
+    const row = (id: number, active: boolean) =>
+      `<div class="vacancy-card"><a class="vacancy-card__title-link" href="/vacancies/${id}">Developer</a><div class="vacancy-card__company-title">Example</div><button class="vacancy-favorite-btn" data-active="${active}"></button></div>`;
+    expect(
+      parsePage(
+        doc(row(123, true) + row(456, false)),
+        "https://career.habr.com/vacancies",
+      ).observations.map((o) => o.vacancyUrl),
+    ).toEqual(["https://career.habr.com/vacancies/123"]);
+  });
+  it("does not treat ordinary search rows or arbitrary sites as favorites", () => {
+    const row =
+      '<div class="vacancy-card"><a href="/jobs/123"><h3 class="title">Developer</h3></a><div class="company">Example</div></div>';
+    for (const url of [
+      "https://hirify.me/",
+      "https://getmatch.ru/vacancies",
+      "https://geekjob.ru/vacancies",
+      "https://example.com/account/favorites",
+    ])
+      expect(parsePage(doc(row), url).observations).toEqual([]);
+  });
+});

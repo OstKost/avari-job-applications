@@ -3,6 +3,7 @@ import {
   jobIdentity,
   jobSite,
   jobResponsesSite,
+  jobFavoritesSite,
   type Application,
 } from "@avari/shared";
 export type ParsedObservation = {
@@ -14,7 +15,7 @@ export type ParsedObservation = {
 };
 export type Snapshot = {
   supported: boolean;
-  kind: "vacancy" | "responses" | "unsupported";
+  kind: "vacancy" | "responses" | "favorites" | "unsupported";
   vacancy?: Application;
   observations: ParsedObservation[];
   warning?: string;
@@ -824,7 +825,7 @@ function isFavorite(root: ParentNode): boolean {
 }
 export function parsePage(doc: Document, rawURL: string): Snapshot {
   const snapshot = parseBasePage(doc, rawURL);
-  if (jobSite(rawURL) !== "hh") return snapshot;
+  if (jobSite(rawURL) !== "hh") return parseFavorites(doc, rawURL, snapshot);
   const url = new URL(rawURL);
   if (snapshot.vacancy && isFavorite(doc)) {
     snapshot.vacancy.favorite = true;
@@ -835,13 +836,10 @@ export function parsePage(doc: Document, rawURL: string): Snapshot {
       candidate: snapshot.vacancy,
     });
   } else if (
-    /^\/(?:applicant\/(?:vacancies|favorite)|search\/vacancy)(?:\/|$)/.test(
-      url.pathname,
-    )
+    jobFavoritesSite(rawURL) === "hh" ||
+    /^\/search\/vacancy\/?$/.test(url.pathname)
   ) {
-    const favoritesPage = /^\/applicant\/(?:vacancies|favorite)(?:\/|$)/.test(
-      url.pathname,
-    );
+    const favoritesPage = jobFavoritesSite(rawURL) === "hh";
     for (const row of doc.querySelectorAll(
       '[data-qa="vacancy-serp__vacancy"], [data-qa="vacancy-serp__vacancy_standard"], .vacancy-serp-item, .serp-item',
     )) {
@@ -882,10 +880,94 @@ export function parsePage(doc: Document, rawURL: string): Snapshot {
           candidate,
         });
     }
-    if (snapshot.observations.length) {
+    if (favoritesPage || snapshot.observations.length) {
       snapshot.supported = true;
-      snapshot.kind = "responses";
+      snapshot.kind = "favorites";
     }
   }
   return snapshot;
+}
+
+function parseFavorites(
+  doc: Document,
+  rawURL: string,
+  snapshot: Snapshot,
+): Snapshot {
+  const site = jobFavoritesSite(rawURL);
+  if (!site) return snapshot;
+  const selectors = {
+    linkedin: {
+      rows: ".job-card-container, .jobs-saved-job-card, .entity-result, .reusable-search__result-container",
+      link: 'a[href*="/jobs/view/"]',
+      title: [
+        ".job-card-list__title",
+        ".job-card-list__title--link",
+        ".entity-result__title-text a",
+      ],
+      company: [
+        ".job-card-container__primary-description",
+        ".artdeco-entity-lockup__subtitle",
+        ".entity-result__primary-subtitle",
+      ],
+    },
+    hirify: {
+      rows: ".vacancy-card",
+      link: 'a[href*="/jobs/"]',
+      title: [".title", "h2", "h3"],
+      company: [".company", ".vacancy-company .company"],
+    },
+    habr: {
+      rows: ".vacancy-card",
+      link: 'a.vacancy-card__title-link, a[href*="/vacancies/"]',
+      title: [".vacancy-card__title-link", ".vacancy-card__title"],
+      company: [
+        ".vacancy-card__company-title",
+        ".vacancy-card__company a",
+        ".company_name",
+      ],
+    },
+  }[site as "linkedin" | "hirify" | "habr"];
+  if (!selectors) return snapshot;
+  for (const row of doc.querySelectorAll(selectors.rows)) {
+    if (
+      row.closest('[hidden], [aria-hidden="true"]') ||
+      doc.defaultView?.getComputedStyle(row).display === "none"
+    )
+      continue;
+    // Habr's public list mixes saved and unsaved vacancies.
+    if (
+      site === "habr" &&
+      !row.querySelector('.vacancy-favorite-btn[data-active="true"]')
+    )
+      continue;
+    const link = row.querySelector<HTMLAnchorElement>(selectors.link);
+    if (!link) continue;
+    const identity = jobIdentity(
+      new URL(link.getAttribute("href") ?? "", rawURL).href,
+    );
+    if (!identity || identity.site !== site) continue;
+    const position =
+      text(row, selectors.title) || clean(link.textContent ?? "");
+    const company = text(row, selectors.company);
+    if (
+      !position ||
+      !company ||
+      snapshot.observations.some((o) => o.vacancyUrl === identity.url)
+    )
+      continue;
+    const candidate = {
+      ...emptyApplication(),
+      url: identity.url,
+      position,
+      company,
+      favorite: true,
+    };
+    snapshot.observations.push({
+      vacancyUrl: identity.url,
+      status: "favorite",
+      url: rawURL,
+      candidate,
+    });
+  }
+  return { ...snapshot, supported: true, kind: "favorites" };
 }

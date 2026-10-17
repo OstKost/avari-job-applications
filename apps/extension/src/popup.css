@@ -807,7 +807,7 @@ body:has(.popup-collapsed) {
 
 .popup-nav {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 4px;
   margin-bottom: 14px;
   padding: 4px;
@@ -879,4 +879,17 @@ body:has(.popup-collapsed) {
 }
 .storage-choice details[open] summary {
   margin-bottom: 12px;
+}
+
+.popup input:is([type="checkbox"], [type="radio"]) {
+  width: 16px;
+  height: 16px;
+  min-height: 16px;
+  padding: 0;
+  margin: 0;
+  flex: 0 0 16px;
+  accent-color: var(--accent-strong);
+}
+.settings-screen > .checkbox-label {
+  gap: 8px;
 }

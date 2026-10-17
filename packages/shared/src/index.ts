@@ -4,6 +4,7 @@ export {
   jobSite,
   jobSitesLabel,
   jobResponsesSite,
+  jobFavoritesSite,
   observationBelongsToPage,
 } from "./job-sites";
 export { exportApplicationsToCSV, downloadCSV } from "./csv";

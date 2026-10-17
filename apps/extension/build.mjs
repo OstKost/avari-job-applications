@@ -20,7 +20,7 @@ if (defaultServer) {
   defaultServer = url.origin;
   process.env.VITE_AVARI_DEFAULT_SERVER = defaultServer;
 }
-const version = process.env.AVARI_VERSION || "1.2.0";
+const version = process.env.AVARI_VERSION || "1.3.0";
 if (
   !/^\d{1,5}\.\d{1,5}\.\d{1,5}$/.test(version) ||
   version
@@ -91,13 +91,18 @@ const manifest = {
       matches: [
         "https://*.hh.ru/vacancy/*",
         "https://*.hh.ru/applicant/negotiations*",
+        "https://*.hh.ru/applicant/vacancies*",
+        "https://*.hh.ru/applicant/favorite*",
+        "https://*.hh.ru/search/vacancy*",
         "https://*.linkedin.com/jobs/*",
+        "https://*.linkedin.com/my-items/saved-jobs*",
         "https://*.getmatch.ru/vacancies/*",
         "https://*.getmatch.ru/applications*",
         "https://*.hirify.me/jobs/*",
         "https://*.hirify.me/applications*",
+        "https://*.hirify.me/account/favorites*",
         "https://*.geekjob.ru/vacancy/*",
-        "https://*.career.habr.com/vacancies/*",
+        "https://*.career.habr.com/vacancies*",
       ],
       js: ["content.js"],
       run_at: "document_idle",
@@ -106,14 +111,7 @@ const manifest = {
   web_accessible_resources: [
     {
       resources: ["index.html", "assets/*", "brand/*"],
-      matches: [
-        "https://*.hh.ru/*",
-        "https://*.linkedin.com/*",
-        "https://*.getmatch.ru/*",
-        "https://*.hirify.me/*",
-        "https://*.geekjob.ru/*",
-        "https://*.career.habr.com/*",
-      ],
+      matches: ["http://*/*", "https://*/*"],
     },
   ],
   icons: {

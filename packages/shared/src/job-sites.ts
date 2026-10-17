@@ -70,6 +70,22 @@ export function jobResponsesSite(raw: string): JobSite | undefined {
     return site;
 }
 
+// Dedicated saved-job lists, plus Habr's list where each row must prove its state.
+export function jobFavoritesSite(raw: string): JobSite | undefined {
+  const site = jobSite(raw);
+  if (!site) return;
+  const path = new URL(raw).pathname;
+  if (site === "hh" && /^\/applicant\/(?:vacancies|favorites?)\/?$/.test(path))
+    return site;
+  if (
+    site === "linkedin" &&
+    /^\/(?:my-items\/saved-jobs|jobs\/collections\/saved)\/?$/.test(path)
+  )
+    return site;
+  if (site === "hirify" && /^\/account\/favorites\/?$/.test(path)) return site;
+  if (site === "habr" && /^\/vacancies\/?$/.test(path)) return site;
+}
+
 export function observationBelongsToPage(
   observation: {
     hhId?: string;
@@ -90,7 +106,7 @@ export function observationBelongsToPage(
         ? page.id === observation.hhId
         : jobResponsesSite(pageURL) === site ||
           (observation.status === "favorite" &&
-            /^\/(?:applicant\/(?:vacancies|favorite)|search\/vacancy)(?:\/|$)/.test(
+            /^\/(?:applicant\/(?:vacancies|favorites?)|search\/vacancy)\/?$/.test(
               new URL(pageURL).pathname,
             )))
     );
@@ -99,6 +115,9 @@ export function observationBelongsToPage(
   if (observation.hhId || !vacancy || vacancy.site !== site) return false;
   return page
     ? page.url === vacancy.url && jobIdentity(observation.url)?.url === page.url
-    : jobResponsesSite(pageURL) === site &&
-        jobResponsesSite(observation.url) === site;
+    : (jobResponsesSite(pageURL) === site &&
+        jobResponsesSite(observation.url) === site) ||
+        (observation.status === "favorite" &&
+          jobFavoritesSite(pageURL) === site &&
+          jobFavoritesSite(observation.url) === site);
 }
