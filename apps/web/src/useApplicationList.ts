@@ -451,11 +451,30 @@ export function useApplicationList({
   const savingIdsRef = useRef<Set<string>>(new Set());
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
   const [saveError, setSaveError] = useState<unknown>();
-  const [conflictApp, setConflictApp] = useState<{ local: Application; server: Application } | null>(null);
+  const [conflictApp, setConflictApp] = useState<{
+    local: Application;
+    server: Application;
+    patch?: {
+      type: "stage" | "state" | "favorite";
+      stage?: string;
+      state?: string;
+      outcome?: string;
+      favorite?: boolean;
+    };
+  } | null>(null);
   const [outcomeModalApp, setOutcomeModalApp] = useState<Application | null>(null);
   const [staleModalApp, setStaleModalApp] = useState<Application | null>(null);
 
-  const saveApplication = async (updated: Application) => {
+  const saveApplication = async (
+    updated: Application,
+    patchIntent?: {
+      type: "stage" | "state" | "favorite";
+      stage?: string;
+      state?: string;
+      outcome?: string;
+      favorite?: boolean;
+    },
+  ) => {
     if (savingIdsRef.current.has(updated.id)) return;
     savingIdsRef.current.add(updated.id);
     setSavingIds(new Set(savingIdsRef.current));
@@ -469,7 +488,13 @@ export function useApplicationList({
         // Retain server version, do not blindly overwrite, refresh queries
         const serverApp = err.current as Application | undefined;
         if (serverApp) {
-          setConflictApp({ local: updated, server: serverApp });
+          setConflictApp({ local: updated, server: serverApp, patch: patchIntent });
+          setOutcomeModalApp((current) =>
+            current && current.id === serverApp.id ? serverApp : current,
+          );
+          setStaleModalApp((current) =>
+            current && current.id === serverApp.id ? serverApp : current,
+          );
         }
         await refresh();
       }
@@ -486,7 +511,10 @@ export function useApplicationList({
     const appliedDate =
       newStage !== "saved" && !a.appliedDate ? dateToday(user.timezone) : a.appliedDate;
     try {
-      await saveApplication({ ...a, stage: newStage, appliedDate });
+      await saveApplication(
+        { ...a, stage: newStage, appliedDate },
+        { type: "stage", stage: newStage },
+      );
     } catch {
       /* error captured in saveError state */
     }
@@ -500,7 +528,10 @@ export function useApplicationList({
     }
     // Paused or active clears incompatible outcome via API rules
     try {
-      await saveApplication({ ...a, state: newState, outcome: "" });
+      await saveApplication(
+        { ...a, state: newState, outcome: "" },
+        { type: "state", state: newState, outcome: "" },
+      );
     } catch {
       /* error captured in saveError state */
     }
@@ -510,7 +541,10 @@ export function useApplicationList({
     if (!outcomeModalApp) return;
     const app = outcomeModalApp;
     // Do NOT dismiss modal before await; outcome modal stays open until success
-    await saveApplication({ ...app, state: "closed", outcome });
+    await saveApplication(
+      { ...app, state: "closed", outcome },
+      { type: "state", state: "closed", outcome },
+    );
     setOutcomeModalApp(null);
   };
 
@@ -520,8 +554,12 @@ export function useApplicationList({
 
   const toggleFavorite = async (a: Application) => {
     if (savingIdsRef.current.has(a.id)) return;
+    const nextFavorite = !a.favorite;
     try {
-      await saveApplication({ ...a, favorite: !a.favorite });
+      await saveApplication(
+        { ...a, favorite: nextFavorite },
+        { type: "favorite", favorite: nextFavorite },
+      );
     } catch {
       /* error captured in saveError state */
     }
@@ -530,14 +568,20 @@ export function useApplicationList({
   const handleStalePause = async () => {
     if (!staleModalApp) return;
     const app = staleModalApp;
-    await saveApplication({ ...app, state: "paused", outcome: "" });
+    await saveApplication(
+      { ...app, state: "paused", outcome: "" },
+      { type: "state", state: "paused", outcome: "" },
+    );
     setStaleModalApp(null);
   };
 
   const handleStaleCloseOutcome = async (outcome: string) => {
     if (!staleModalApp) return;
     const app = staleModalApp;
-    await saveApplication({ ...app, state: "closed", outcome });
+    await saveApplication(
+      { ...app, state: "closed", outcome },
+      { type: "state", state: "closed", outcome },
+    );
     setStaleModalApp(null);
   };
 
@@ -641,9 +685,52 @@ export function useApplicationList({
     setConflictApp,
     retryConflict: async () => {
       if (!conflictApp) return;
-      // User explicitly wants to save current version
-      const toSave = { ...conflictApp.local, version: conflictApp.server.version };
-      await saveApplication(toSave);
+      const { server: serverApp, patch } = conflictApp;
+      let patchFields: Partial<Application> = {};
+
+      if (patch?.type === "stage" && patch.stage !== undefined) {
+        // Sparse stage update: preserve concurrent server changes to favorite, state, outcome, contact, salary, etc.
+        // appliedDate auto-fill is derived: preserve latest nonempty server appliedDate; fill only if current still empty
+        const appliedDate =
+          (serverApp.stage === "saved" || !serverApp.appliedDate) && patch.stage !== "saved"
+            ? (serverApp.appliedDate || dateToday(user.timezone))
+            : serverApp.appliedDate;
+        patchFields = {
+          stage: patch.stage,
+          appliedDate,
+        };
+      } else if (patch?.type === "state" && patch.state !== undefined) {
+        // Sparse state update: preserve concurrent company, contact, salary, favorite, etc.
+        patchFields = {
+          state: patch.state,
+          outcome: patch.outcome ?? (patch.state === "closed" ? conflictApp.local.outcome : ""),
+        };
+      } else if (patch?.type === "favorite" && patch.favorite !== undefined) {
+        // Sparse favorite update
+        patchFields = {
+          favorite: patch.favorite,
+        };
+      } else {
+        // Fallback if no explicit quick patch tracked: take minimal fields from local if known, or version
+        patchFields = {
+          stage: conflictApp.local.stage,
+          state: conflictApp.local.state,
+          outcome: conflictApp.local.outcome,
+          favorite: conflictApp.local.favorite,
+        };
+      }
+
+      const toSave: Application = {
+        ...serverApp,
+        ...patchFields,
+        version: serverApp.version,
+      };
+
+      try {
+        await saveApplication(toSave, patch);
+      } catch {
+        /* rejection captured in saveError state, prevent unhandled rejection */
+      }
     },
     outcomeModalApp,
     setOutcomeModalApp,

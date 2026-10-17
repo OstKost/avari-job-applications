@@ -2694,9 +2694,11 @@ function Applications({
                 <button
                   type="button"
                   className="primary"
-                  onClick={() => void listState.retryConflict()}
+                  onClick={() => {
+                    void listState.retryConflict().catch(() => {});
+                  }}
                 >
-                  Перезаписать моей версией
+                  Повторить изменение
                 </button>
                 <button
                   type="button"
@@ -3544,7 +3546,18 @@ function ApplicationDetail() {
   const [detailSaving, setDetailSaving] = useState(false);
   const detailSavingRef = useRef(false);
   const [detailError, setDetailError] = useState<unknown>();
-  const [detailConflict, setDetailConflict] = useState<{ local: Application; server: Application } | null>(null);
+  const [detailConflict, setDetailConflict] = useState<{
+    local: Application;
+    server: Application;
+    patch?: {
+      type: "stage" | "state" | "favorite" | "tags";
+      stage?: string;
+      state?: string;
+      outcome?: string;
+      favorite?: boolean;
+      tags?: string[];
+    };
+  } | null>(null);
   const [outcomeDetailOpen, setOutcomeDetailOpen] = useState(false);
   const [staleDetailModalOpen, setStaleDetailModalOpen] = useState(false);
 
@@ -3557,7 +3570,17 @@ function ApplicationDetail() {
   const d = q.data!;
   const a = d.application;
 
-  const saveDetailApplication = async (updated: Application) => {
+  const saveDetailApplication = async (
+    updated: Application,
+    patchIntent?: {
+      type: "stage" | "state" | "favorite" | "tags";
+      stage?: string;
+      state?: string;
+      outcome?: string;
+      favorite?: boolean;
+      tags?: string[];
+    },
+  ) => {
     if (detailSavingRef.current) return;
     detailSavingRef.current = true;
     setDetailSaving(true);
@@ -3572,7 +3595,11 @@ function ApplicationDetail() {
         await refresh();
         const res = await q.refetch();
         if (res.data?.application) {
-          setDetailConflict({ local: updated, server: res.data.application });
+          setDetailConflict({
+            local: updated,
+            server: res.data.application,
+            patch: patchIntent,
+          });
         }
         setDetailError(new Error("Конфликт изменений: вакансия была обновлена на сервере."));
       } else {
@@ -3591,7 +3618,14 @@ function ApplicationDetail() {
     if (a.stage === "saved" && newStage !== "saved" && !appliedDate) {
       appliedDate = dateToday(user.timezone);
     }
-    await saveDetailApplication({ ...a, stage: newStage, appliedDate });
+    try {
+      await saveDetailApplication(
+        { ...a, stage: newStage, appliedDate },
+        { type: "stage", stage: newStage },
+      );
+    } catch {
+      /* error captured in detailError */
+    }
   };
 
   const handleDetailStateChange = async (newState: string) => {
@@ -3600,12 +3634,27 @@ function ApplicationDetail() {
       setOutcomeDetailOpen(true);
       return;
     }
-    await saveDetailApplication({ ...a, state: newState, outcome: "" });
+    try {
+      await saveDetailApplication(
+        { ...a, state: newState, outcome: "" },
+        { type: "state", state: newState, outcome: "" },
+      );
+    } catch {
+      /* error captured in detailError */
+    }
   };
 
   const handleDetailToggleFavorite = async () => {
     if (detailSavingRef.current) return;
-    await saveDetailApplication({ ...a, favorite: !a.favorite });
+    const nextFavorite = !a.favorite;
+    try {
+      await saveDetailApplication(
+        { ...a, favorite: nextFavorite },
+        { type: "favorite", favorite: nextFavorite },
+      );
+    } catch {
+      /* error captured in detailError */
+    }
   };
 
   const saveTags = async (tags: string[]) => {
@@ -3736,14 +3785,49 @@ function ApplicationDetail() {
               type="button"
               className="primary"
               onClick={async () => {
-                const toSave = {
-                  ...detailConflict.local,
-                  version: detailConflict.server.version,
+                const { server: serverApp, patch } = detailConflict;
+                let patchFields: Partial<Application> = {};
+
+                if (patch?.type === "stage" && patch.stage !== undefined) {
+                  const appliedDate =
+                    (serverApp.stage === "saved" || !serverApp.appliedDate) && patch.stage !== "saved"
+                      ? (serverApp.appliedDate || dateToday(user.timezone))
+                      : serverApp.appliedDate;
+                  patchFields = {
+                    stage: patch.stage,
+                    appliedDate,
+                  };
+                } else if (patch?.type === "state" && patch.state !== undefined) {
+                  patchFields = {
+                    state: patch.state,
+                    outcome: patch.outcome ?? (patch.state === "closed" ? detailConflict.local.outcome : ""),
+                  };
+                } else if (patch?.type === "favorite" && patch.favorite !== undefined) {
+                  patchFields = {
+                    favorite: patch.favorite,
+                  };
+                } else {
+                  patchFields = {
+                    stage: detailConflict.local.stage,
+                    state: detailConflict.local.state,
+                    outcome: detailConflict.local.outcome,
+                    favorite: detailConflict.local.favorite,
+                  };
+                }
+
+                const toSave: Application = {
+                  ...serverApp,
+                  ...patchFields,
+                  version: serverApp.version,
                 };
-                await saveDetailApplication(toSave);
+                try {
+                  await saveDetailApplication(toSave, patch);
+                } catch {
+                  /* handled in saveDetailApplication */
+                }
               }}
             >
-              Перезаписать моей версией
+              Повторить изменение
             </button>
             <button
               type="button"
@@ -4165,7 +4249,11 @@ function ApplicationDetail() {
         application={a}
         onClose={() => setOutcomeDetailOpen(false)}
         onConfirm={async (outcome) => {
-          await saveDetailApplication({ ...a, state: "closed", outcome });
+          const latestApp = (await q.refetch()).data?.application ?? a;
+          await saveDetailApplication(
+            { ...latestApp, state: "closed", outcome },
+            { type: "state", state: "closed", outcome },
+          );
           setOutcomeDetailOpen(false);
         }}
       />
@@ -4175,11 +4263,19 @@ function ApplicationDetail() {
         timezone={user.timezone}
         onClose={() => setStaleDetailModalOpen(false)}
         onPause={async () => {
-          await saveDetailApplication({ ...a, state: "paused", outcome: "" });
+          const latestApp = (await q.refetch()).data?.application ?? a;
+          await saveDetailApplication(
+            { ...latestApp, state: "paused", outcome: "" },
+            { type: "state", state: "paused", outcome: "" },
+          );
           setStaleDetailModalOpen(false);
         }}
         onCloseOutcome={async (outcome) => {
-          await saveDetailApplication({ ...a, state: "closed", outcome });
+          const latestApp = (await q.refetch()).data?.application ?? a;
+          await saveDetailApplication(
+            { ...latestApp, state: "closed", outcome },
+            { type: "state", state: "closed", outcome },
+          );
           setStaleDetailModalOpen(false);
         }}
         onCreateTask={async (task) => {

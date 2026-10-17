@@ -334,18 +334,23 @@ describe("useApplicationList hook integration", () => {
     expect(hookResult.conflictApp).toEqual({
       local: expect.objectContaining({ stage: "interview" }),
       server: serverApp,
+      patch: { type: "stage", stage: "interview" },
     });
     expect(hookResult.saveError).toBeDefined();
 
-    // Now test explicit retryConflict
-    apiMock.mockResolvedValueOnce({ ...mockApps[0], version: 3, stage: "interview" });
+    // Now test explicit retryConflict: preserves concurrent company and uses server version
+    apiMock.mockResolvedValueOnce({ ...serverApp, version: 3, stage: "interview" });
     await act(async () => {
       await hookResult.retryConflict();
     });
     expect(apiMock).toHaveBeenCalledWith(
       "/applications/" + mockApps[0].id,
       "PUT",
-      expect.objectContaining({ version: 2, stage: "interview" }),
+      expect.objectContaining({
+        version: 2,
+        stage: "interview",
+        company: "Acme Updated", // Preserves server's updated company!
+      }),
     );
   });
 
@@ -433,5 +438,211 @@ describe("useApplicationList hook integration", () => {
     // The saved preferences in localStorage should STILL have page 2, not 0!
     const prefs = loadStoredListPreferences("user-1", "applications");
     expect(prefs.page).toBe(2);
+  });
+
+  it("sparse retry preserves concurrent server recruiter, company, salary, tags, notes, favorite, state and appliedDate", async () => {
+    // Original app has empty recruiter, initial salary, tags ['react'], appliedDate '2026-10-10'
+    const originalApp = { ...mockApps[0], stage: "response", appliedDate: "2026-10-10", version: 1 };
+    // Server changes: recruiter changed to "Elena", company to "Acme Corp", salary updated, tag "typescript" added, custom field updated
+    const serverApp: Application = {
+      ...originalApp,
+      version: 2,
+      company: "Acme Corp",
+      recruiter: "Elena Recruiter",
+      salary: { min: 400000, max: 600000, currency: "USD", period: "month", tax: "net" },
+      tags: ["react", "typescript"],
+      custom: { "f-priority": "Средний" },
+      favorite: false,
+      state: "active",
+      appliedDate: "2026-10-12", // Server updated appliedDate concurrently
+    };
+
+    const apiMock = vi.fn().mockRejectedValueOnce(
+      new APIError(409, "Conflict", serverApp),
+    );
+    renderHook({ api: apiMock, applications: [originalApp] });
+
+    // User triggers a stage change to "interview"
+    await act(async () => {
+      await hookResult.handleStageChange(originalApp, "interview");
+    });
+
+    expect(hookResult.conflictApp).toBeDefined();
+    expect(hookResult.conflictApp?.server.version).toBe(2);
+
+    // Now retry conflict: retry MUST merge only intended stage change, keeping server's recruiter, company, salary, tags, custom, and existing appliedDate
+    apiMock.mockResolvedValueOnce({ ...serverApp, stage: "interview", version: 3 });
+    await act(async () => {
+      await hookResult.retryConflict();
+    });
+
+    expect(apiMock).toHaveBeenLastCalledWith(
+      "/applications/" + originalApp.id,
+      "PUT",
+      expect.objectContaining({
+        version: 2,
+        stage: "interview",
+        company: "Acme Corp",
+        recruiter: "Elena Recruiter",
+        salary: { min: 400000, max: 600000, currency: "USD", period: "month", tax: "net" },
+        tags: ["react", "typescript"],
+        custom: { "f-priority": "Средний" },
+        appliedDate: "2026-10-12", // Kept server's appliedDate
+      }),
+    );
+  });
+
+  it("sparse retry populates appliedDate only if server appliedDate is empty when moving from saved stage", async () => {
+    const originalApp = { ...mockApps[0], stage: "saved", appliedDate: "", version: 1 };
+    const serverApp: Application = {
+      ...originalApp,
+      version: 2,
+      company: "Acme Concurrent",
+      appliedDate: "", // Server appliedDate still empty
+    };
+
+    const apiMock = vi.fn().mockRejectedValueOnce(
+      new APIError(409, "Conflict", serverApp),
+    );
+    renderHook({
+      api: apiMock,
+      applications: [originalApp],
+      user: { ...mockUser, timezone: "Europe/Moscow" },
+    });
+
+    await act(async () => {
+      await hookResult.handleStageChange(originalApp, "interview");
+    });
+
+    apiMock.mockResolvedValueOnce({ ...serverApp, stage: "interview", version: 3 });
+    await act(async () => {
+      await hookResult.retryConflict();
+    });
+
+    expect(apiMock).toHaveBeenLastCalledWith(
+      "/applications/" + originalApp.id,
+      "PUT",
+      expect.objectContaining({
+        version: 2,
+        stage: "interview",
+        company: "Acme Concurrent",
+        appliedDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+      }),
+    );
+  });
+
+  it("sparse retry for favorite preserves server version and concurrent changes", async () => {
+    const originalApp = { ...mockApps[0], favorite: false, version: 1 };
+    const serverApp: Application = {
+      ...originalApp,
+      version: 5,
+      company: "Acme New",
+      recruiter: "Alice",
+    };
+
+    const apiMock = vi.fn().mockRejectedValueOnce(
+      new APIError(409, "Conflict", serverApp),
+    );
+    renderHook({ api: apiMock, applications: [originalApp] });
+
+    await act(async () => {
+      await hookResult.toggleFavorite(originalApp);
+    });
+
+    apiMock.mockResolvedValueOnce({ ...serverApp, favorite: true, version: 6 });
+    await act(async () => {
+      await hookResult.retryConflict();
+    });
+
+    expect(apiMock).toHaveBeenLastCalledWith(
+      "/applications/" + originalApp.id,
+      "PUT",
+      expect.objectContaining({
+        version: 5,
+        favorite: true,
+        company: "Acme New",
+        recruiter: "Alice",
+      }),
+    );
+  });
+
+  it("simulates 409 inside outcome modal, updates modal app to current server version without losing user outcome, and second submit succeeds", async () => {
+    const originalApp = { ...mockApps[0], state: "active", version: 1 };
+    const serverApp: Application = {
+      ...originalApp,
+      version: 2,
+      recruiter: "New Recruiter",
+      company: "Acme v2",
+    };
+
+    // First attempt rejects with 409
+    const apiMock = vi.fn().mockRejectedValueOnce(
+      new APIError(409, "Conflict", serverApp),
+    );
+    renderHook({ api: apiMock, applications: [originalApp] });
+
+    act(() => {
+      void hookResult.handleStateChange(originalApp, "closed");
+    });
+    expect(hookResult.outcomeModalApp?.version).toBe(1);
+
+    await act(async () => {
+      try {
+        await hookResult.handleConfirmOutcome("offer_declined");
+      } catch {}
+    });
+
+    // Modal app updated to serverApp (version 2), modal remains open
+    expect(hookResult.outcomeModalApp?.id).toBe(originalApp.id);
+    expect(hookResult.outcomeModalApp?.version).toBe(2);
+
+    // Second submit succeeds with latest version (2) and preserves server's concurrent recruiter and company
+    apiMock.mockResolvedValueOnce({ ...serverApp, state: "closed", outcome: "offer_declined", version: 3 });
+    await act(async () => {
+      await hookResult.handleConfirmOutcome("offer_declined");
+    });
+
+    expect(apiMock).toHaveBeenLastCalledWith(
+      "/applications/" + originalApp.id,
+      "PUT",
+      expect.objectContaining({
+        version: 2,
+        state: "closed",
+        outcome: "offer_declined",
+        recruiter: "New Recruiter",
+        company: "Acme v2",
+      }),
+    );
+    expect(hookResult.outcomeModalApp).toBeNull();
+  });
+
+  it("does not produce unhandled Promise rejection on repeated 409 conflict during retry", async () => {
+    const originalApp = { ...mockApps[0], stage: "saved", version: 1 };
+    const serverApp1: Application = { ...originalApp, version: 2 };
+    const serverApp2: Application = { ...originalApp, version: 3 };
+
+    // Initial action gets 409
+    const apiMock = vi.fn().mockRejectedValueOnce(
+      new APIError(409, "Conflict", serverApp1),
+    );
+    renderHook({ api: apiMock, applications: [originalApp] });
+
+    await act(async () => {
+      await hookResult.handleStageChange(originalApp, "applied");
+    });
+
+    // Next retry also gets 409
+    apiMock.mockRejectedValueOnce(
+      new APIError(409, "Conflict", serverApp2),
+    );
+
+    // Calling retryConflict should safely catch and not reject the returned promise
+    await act(async () => {
+      await expect(hookResult.retryConflict()).resolves.toBeUndefined();
+    });
+
+    // conflictApp updated to second server version
+    expect(hookResult.conflictApp?.server.version).toBe(3);
+    expect(hookResult.saveError).toBeDefined();
   });
 });
