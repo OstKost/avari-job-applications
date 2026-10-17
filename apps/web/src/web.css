@@ -4828,8 +4828,16 @@ button.primary:disabled::after {
   .sidebar-toggle-hint {
     display: none;
   }
+  .sidebar nav {
+    justify-content: flex-start;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+  }
   .sidebar-nav-hint {
     width: auto;
+    flex: 0 0 64px;
+    min-width: 0;
   }
 }
 

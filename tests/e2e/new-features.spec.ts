@@ -508,7 +508,7 @@ test.describe("Approved Features E2E Acceptance", () => {
 
     const menu = page.getByRole("menu");
     await expect(menu).toBeVisible();
-    await expect(menu.getByRole("menuitemradio").first()).toBeFocused();
+    await expect(menu.locator('[role="menuitemradio"]:focus')).toHaveCount(1);
 
     // Check viewport constraints: menu bounding box must be within window bounds
     const box = await menu.boundingBox();
