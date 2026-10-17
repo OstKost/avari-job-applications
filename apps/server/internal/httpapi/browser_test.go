@@ -51,6 +51,11 @@ func TestBrowser(t *testing.T) {
 				t.Fatal(err)
 			}
 
+			// This record represents a historical application predating reminder rollout.
+			if _, err := store.DB.Exec("DELETE FROM reminder_eligibility WHERE application_id=?", staleApp.ID); err != nil {
+				t.Fatal(err)
+			}
+
 			// 2. Saved eligible 49h-no-action (eligible for automatic task)
 			eligibleApp, err := store.SaveApplication(u.ID, core.Application{
 				Company:  "Auto Reminder Inc 49h",

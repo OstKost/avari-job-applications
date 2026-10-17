@@ -44,6 +44,26 @@ const createApiApp = async (
   return json as { id: string; company: string; position: string; stage: string; state: string; favorite?: boolean };
 };
 
+
+const showApplications = async (page: Page, search: string) => {
+  // Direct API fixture writes must bypass the dashboard query's freshness window.
+  await page.goto("/applications");
+  await expect(page.getByRole("heading", { name: "Отклики", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Поиск и фильтры" }).click();
+  const input = page.getByLabel("Поиск по компании и позиции");
+  await input.fill(search);
+  await input.press("Enter");
+};
+const moscowDate = () => new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Europe/Moscow", year: "numeric", month: "2-digit", day: "2-digit",
+}).format(new Date());
+const nextWeekday = () => {
+  const date = new Date(`${moscowDate()}T12:00:00Z`);
+  do { date.setUTCDate(date.getUTCDate() + 1); }
+  while ([0, 6].includes(date.getUTCDay()));
+  return date.toISOString().slice(0, 10);
+};
+
 test.describe("Approved Features E2E Acceptance", () => {
   test("1. Search/filter and page 2 restore after detail back/reload with initial async loading", async ({
     page,
@@ -56,15 +76,8 @@ test.describe("Approved Features E2E Acceptance", () => {
       await createApiApp(page, `${prefix}_${String(i).padStart(2, "0")}`);
     }
 
-    await page.getByRole("link", { name: "Отклики", exact: true }).click();
+    await showApplications(page, prefix);
     await expect(page.getByRole("heading", { name: "Отклики", exact: true })).toBeVisible();
-
-    // Open spotlight search/filter and filter by the unique prefix
-    await page.getByRole("button", { name: "Поиск и фильтры" }).click();
-    const searchInput = page.getByLabel("Поиск по компании и позиции");
-    await expect(searchInput).toBeVisible();
-    await searchInput.fill(prefix);
-    await searchInput.press("Enter");
 
     // Verify pagination controls: next page button should be enabled
     const nextBtn = page.getByRole("button", { name: "Следующая страница" });
@@ -106,11 +119,8 @@ test.describe("Approved Features E2E Acceptance", () => {
     const appFav = await createApiApp(page, `${prefPrefix}_FAV`, { favorite: true });
 
     // Go to /applications and set state filter to 'active'
-    await page.getByRole("link", { name: "Отклики", exact: true }).click();
+    await showApplications(page, appNormal.company);
     await expect(page.getByRole("heading", { name: "Отклики", exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Поиск и фильтры" }).click();
-    await page.getByLabel("Поиск по компании и позиции").fill(appNormal.company);
-    await page.getByLabel("Поиск по компании и позиции").press("Enter");
     await expect(page.locator("tr.application-data-row")).toHaveCount(1);
 
     // Go to /favorites
@@ -123,13 +133,13 @@ test.describe("Approved Features E2E Acceptance", () => {
     await page.getByLabel("Поиск по компании и позиции").fill(appFav.company);
     await page.getByLabel("Поиск по компании и позиции").press("Enter");
     await expect(page.locator("tr.application-data-row")).toHaveCount(1);
-    await expect(page.getByText(appFav.company)).toBeVisible();
+    await expect(page.locator("tr.application-data-row a.company-link", { hasText: appFav.company })).toBeVisible();
 
     // Switch back to /applications: search should still be appNormal.company, not appFav.company
     await page.getByRole("link", { name: "Отклики", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Отклики", exact: true })).toBeVisible();
-    await expect(page.getByText(appNormal.company)).toBeVisible();
-    await expect(page.getByText(appFav.company)).toHaveCount(0);
+    await expect(page.locator("tr.application-data-row a.company-link", { hasText: appNormal.company })).toBeVisible();
+    await expect(page.locator("tr.application-data-row a.company-link", { hasText: appFav.company })).toHaveCount(0);
   });
 
   test("3. Inline stage appliedDate account timezone, close requires outcome, and cancel is no-op", async ({
@@ -139,7 +149,7 @@ test.describe("Approved Features E2E Acceptance", () => {
     const prefix = `STG_${Date.now()}`;
     const testApp = await createApiApp(page, prefix);
 
-    await page.getByRole("link", { name: "Отклики", exact: true }).click();
+    await showApplications(page, testApp.company);
     await expect(page.getByRole("heading", { name: "Отклики", exact: true })).toBeVisible();
 
     // Find row
@@ -149,7 +159,7 @@ test.describe("Approved Features E2E Acceptance", () => {
     // 1. Stage change to 'applied' sets appliedDate in account timezone (Europe/Moscow)
     const stageTrigger = row.locator("button.badge-dropdown-trigger").first();
     await stageTrigger.click();
-    const stageMenu = page.locator(".status-workflow-flow, [role='menu']");
+    const stageMenu = page.getByRole("menu");
     await expect(stageMenu).toBeVisible();
     // Select stage 'applied' (Отклик)
     await stageMenu.getByRole("menuitemradio", { name: /Отклик/ }).click();
@@ -158,6 +168,8 @@ test.describe("Approved Features E2E Acceptance", () => {
     await expect(row.locator("button.badge-dropdown-trigger").first()).toContainText("Отклик");
     const dateCell = row.locator("td.date-cell");
     await expect(dateCell).toContainText("Отклик");
+    const applied = await (await page.request.get(`/api/v1/applications/${testApp.id}`)).json();
+    expect(applied.application.appliedDate).toBe(moscowDate());
 
     // 2. State change to 'closed' triggers OutcomeModal
     const stateTrigger = row.locator("button.badge-dropdown-trigger").nth(1);
@@ -167,7 +179,7 @@ test.describe("Approved Features E2E Acceptance", () => {
     await stateMenu.getByRole("menuitemradio", { name: /Закрыт/ }).click();
 
     // Modal should appear
-    const outcomeModal = page.getByRole("dialog", { name: "Закрытие вакансии" });
+    const outcomeModal = page.getByRole("dialog", { name: `Результат закрытия: ${testApp.company}` });
     await expect(outcomeModal).toBeVisible();
 
     // Cancel outcome modal: must be a no-op, state must remain active
@@ -180,7 +192,7 @@ test.describe("Approved Features E2E Acceptance", () => {
     await page.locator("[role='menu']").getByRole("menuitemradio", { name: /Закрыт/ }).click();
     await expect(outcomeModal).toBeVisible();
     await outcomeModal.getByRole("combobox").selectOption({ label: "Отказ работодателя" });
-    await outcomeModal.getByRole("button", { name: "Подтвердить закрытие" }).click();
+    await outcomeModal.getByRole("button", { name: "Закрыть вакансию" }).click();
     await expect(outcomeModal).toHaveCount(0);
 
     // Verify row state is now 'Закрыт'
@@ -195,7 +207,7 @@ test.describe("Approved Features E2E Acceptance", () => {
     const testApp = await createApiApp(page, prefix);
 
     // 1. Toggle favorite in table row
-    await page.getByRole("link", { name: "Отклики", exact: true }).click();
+    await showApplications(page, testApp.company);
     const row = page.locator("tr.application-data-row", { hasText: testApp.company });
     await expect(row).toBeVisible();
     const starBtn = row.locator("button.favorite-star-btn");
@@ -206,10 +218,10 @@ test.describe("Approved Features E2E Acceptance", () => {
     // Verify presence in /favorites
     await page.getByRole("link", { name: "Избранные вакансии", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Избранные вакансии", exact: true })).toBeVisible();
-    await expect(page.getByText(testApp.company)).toBeVisible();
+    await expect(page.locator("tr.application-data-row a.company-link", { hasText: testApp.company })).toBeVisible();
 
     // 2. Open detail page and verify favorite toggle button
-    await page.getByRole("link", { name: testApp.company }).click();
+    await page.locator("tr.application-data-row a.company-link", { hasText: testApp.company }).click();
     await expect(page.getByRole("heading", { name: testApp.company, exact: true })).toBeVisible();
     const detailFavBtn = page.locator("button.favorite-toggle-btn");
     await expect(detailFavBtn).toBeVisible();
@@ -221,14 +233,13 @@ test.describe("Approved Features E2E Acceptance", () => {
 
     // Verify removed from /favorites
     await page.getByRole("link", { name: "Избранные вакансии", exact: true }).click();
-    await expect(page.getByText(testApp.company)).toHaveCount(0);
+    await expect(page.locator("tr.application-data-row a.company-link", { hasText: testApp.company })).toHaveCount(0);
 
     // 3. Switch to card view in /applications and toggle favorite on card
     await page.getByRole("link", { name: "Отклики", exact: true }).click();
     const cardViewBtn = page.getByRole("button", { name: "Карточки откликов" });
-    if (await cardViewBtn.isVisible()) {
-      await cardViewBtn.click();
-    }
+    await expect(cardViewBtn).toBeVisible();
+    await cardViewBtn.click();
     const card = page.locator(".application-card", { hasText: testApp.company });
     await expect(card).toBeVisible();
     const cardStar = card.locator("button.favorite-star-btn");
@@ -237,7 +248,7 @@ test.describe("Approved Features E2E Acceptance", () => {
 
     // Verify back in /favorites
     await page.getByRole("link", { name: "Избранные вакансии", exact: true }).click();
-    await expect(page.getByText(testApp.company)).toBeVisible();
+    await expect(page.locator("tr.application-data-row a.company-link", { hasText: testApp.company })).toBeVisible();
   });
 
   test("5. Warning modal for stale >240h application: table and detail actions (pause, close, or editable task next weekday)", async ({
@@ -246,7 +257,7 @@ test.describe("Approved Features E2E Acceptance", () => {
     await loginDedicated(page);
 
     // The seeded stale application is "Stale Corp 250h"
-    await page.getByRole("link", { name: "Отклики", exact: true }).click();
+    await showApplications(page, "Stale Corp 250h");
     await expect(page.getByRole("heading", { name: "Отклики", exact: true })).toBeVisible();
 
     const staleRow = page.locator("tr.application-data-row", { hasText: "Stale Corp 250h" });
@@ -266,13 +277,14 @@ test.describe("Approved Features E2E Acceptance", () => {
     await expect(taskTitleInput).toHaveValue("Связаться по вакансии");
     const taskDateInput = staleModal.getByLabel("Дата");
     const dateVal = await taskDateInput.inputValue();
-    expect(dateVal).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(dateVal).toBe(nextWeekday());
     const taskTimeInput = staleModal.getByLabel(/Время/);
     await expect(taskTimeInput).toHaveValue("");
 
     // Close modal without saving (cancel)
     await staleModal.getByRole("button", { name: "Отмена" }).click();
     await expect(staleModal).toHaveCount(0);
+    await expect(warningBtn).toBeVisible();
 
     // Open detail page and check larger warning button by company header
     await staleRow.locator("a.company-link").click();
@@ -285,12 +297,19 @@ test.describe("Approved Features E2E Acceptance", () => {
     const detailStaleModal = page.getByRole("dialog", { name: /Действие по вакансии: Stale Corp 250h/ });
     await expect(detailStaleModal).toBeVisible();
 
+    await expect(detailStaleModal.getByLabel("Дата", { exact: true })).toHaveValue(nextWeekday());
+    await detailStaleModal.getByRole("button", { name: "Отмена", exact: true }).click();
+    await expect(headerWarningBtn).toBeVisible();
+    await headerWarningBtn.click();
+
     // Click "Приостановить" tab/button
     await detailStaleModal.getByRole("button", { name: "Приостановить" }).click();
     await expect(detailStaleModal).toHaveCount(0);
 
     // After pausing, application state is paused and warning button disappears
     await expect(page.locator("button.stale-warning-btn-header")).toHaveCount(0);
+    const applications = await (await page.request.get("/api/v1/applications")).json();
+    expect(applications.find((a: { company: string }) => a.company === "Stale Corp 250h").state).toBe("paused");
   });
 
   test("6. Automatic reminder visible in calendar and API (single lifetime, no duplicate)", async ({
@@ -298,25 +317,33 @@ test.describe("Approved Features E2E Acceptance", () => {
   }) => {
     await loginDedicated(page);
 
-    // Dedicated seeded app "Auto Reminder Inc 49h" has been reconciled once before serving
-    const tasksRes = await page.request.get("/api/v1/tasks");
-    expect(tasksRes.status()).toBe(200);
-    const tasks = (await tasksRes.json()) as Array<{ id: string; title: string; state: string }>;
-    const autoTasks = tasks.filter((t) => t.title === "Сделать отклик по вакансии");
-    expect(autoTasks.length).toBe(1);
-
-    // Check Calendar view
+    const applications = await (await page.request.get("/api/v1/applications")).json();
+    const application = applications.find((a: { company: string }) => a.company === "Auto Reminder Inc 49h");
+    expect(application).toBeDefined();
+    const readAutomaticTasks = async () => {
+      const response = await page.request.get("/api/v1/tasks");
+      expect(response.status()).toBe(200);
+      return (await response.json()).filter((t: { applicationId: string; title: string; state: string }) =>
+        t.applicationId === application.id && t.title === "Сделать отклик по вакансии" && t.state === "open");
+    };
+    const tasks = await readAutomaticTasks();
+    expect(tasks).toHaveLength(1);
+    await page.reload();
+    expect((await readAutomaticTasks()).map((t: { id: string }) => t.id)).toEqual([tasks[0].id]);
     await page.getByRole("link", { name: "Календарь", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Календарь", exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Сделать отклик по вакансии/ })).toBeVisible();
+    const dayLabel = new Date(`${tasks[0].date}T12:00:00Z`).toLocaleDateString("ru-RU", {
+      day: "numeric", month: "long", year: "numeric", timeZone: "Europe/Moscow",
+    });
+    await page.getByRole("button", { name: dayLabel, exact: true }).click();
+    await expect(page.locator(".agenda-timeline .task-title", { hasText: tasks[0].title })).toBeVisible();
   });
 
-  test("7. Resume TXT upload -> rename PUT/PATCH -> add v2 -> download byte check -> delete version/resume", async ({
+  test("7. Resume TXT upload -> rename PUT -> add v2 -> download byte check -> delete version/resume", async ({
     page,
   }) => {
     await loginDedicated(page);
     await page.getByRole("link", { name: "Резюме", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Резюме", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Загрузить новое резюме", exact: true })).toBeVisible();
 
     const uniqueResumeTitle = `Resume_${Date.now()}`;
     const initialContent = "Test resume version 1 content";
@@ -346,7 +373,10 @@ test.describe("Approved Features E2E Acceptance", () => {
     await expect(renameModal).toBeVisible();
     const renamedTitle = `${uniqueResumeTitle}_Renamed`;
     await renameModal.getByLabel("Новое название резюме").fill(renamedTitle);
+    const renameResponse = page.waitForResponse((response) =>
+      /\/api\/v1\/resumes\/[^/]+$/.test(response.url()) && response.request().method() === "PUT");
     await renameModal.getByRole("button", { name: "Сохранить" }).click();
+    expect((await renameResponse).status()).toBe(200);
     await expect(renameModal).toHaveCount(0);
     await expect(page.locator(".resume-card", { hasText: renamedTitle })).toBeVisible();
 
@@ -400,7 +430,7 @@ test.describe("Approved Features E2E Acceptance", () => {
   test("8. Unsupported/oversize upload error remains inside modal", async ({ page }) => {
     await loginDedicated(page);
     await page.getByRole("link", { name: "Резюме", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Резюме", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Загрузить новое резюме", exact: true })).toBeVisible();
 
     await page.getByRole("button", { name: "Загрузить новое резюме" }).click();
     const uploadModal = page.getByRole("dialog");
@@ -414,11 +444,12 @@ test.describe("Approved Features E2E Acceptance", () => {
     });
     await uploadModal.getByRole("button", { name: "Загрузить" }).click();
 
-    // Modal must NOT close, error must remain inside modal or page error box
+    // Validation must remain inside the upload dialog with the selected file intact
     await expect(uploadModal).toBeVisible();
     await expect(
-      page.getByText(/Неподдерживаемый формат файла/i).or(page.locator(".error-box")),
-    ).toBeVisible();
+      uploadModal.getByRole("alert"),
+    ).toContainText(/формат/i);
+    expect(await uploadModal.locator("input[type=file]").evaluate((node: HTMLInputElement) => node.files?.[0]?.name)).toBe("exploit.exe");
 
     // 2. Oversize file (> 20 MiB)
     const largeBuffer = Buffer.alloc(21 * 1024 * 1024, 0x61);
@@ -432,8 +463,9 @@ test.describe("Approved Features E2E Acceptance", () => {
     // Modal must still remain open with error message
     await expect(uploadModal).toBeVisible();
     await expect(
-      page.getByText(/превышает лимит 20 МБ/i).or(page.locator(".error-box")),
-    ).toBeVisible();
+      uploadModal.getByRole("alert"),
+    ).toContainText(/20 МБ/i);
+    expect(await uploadModal.locator("input[type=file]").evaluate((node: HTMLInputElement) => node.files?.[0]?.name)).toBe("oversize.txt");
   });
 
   test("9. Responsive mobile at 390px: Settings, favorites, resumes reachable without horizontal overflow", async ({
@@ -443,18 +475,21 @@ test.describe("Approved Features E2E Acceptance", () => {
     await page.setViewportSize({ width: 390, height: 844 });
 
     // Navigate to /settings
-    await page.goto("/settings");
+    await page.locator("#workspace-navigation a[href='/settings']").scrollIntoViewIfNeeded();
+    await page.locator("#workspace-navigation a[href='/settings']").click();
     await expect(page.getByRole("heading", { name: "Настройки", exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
 
     // Navigate to /favorites
-    await page.goto("/favorites");
+    await page.locator("#workspace-navigation a[href='/favorites']").scrollIntoViewIfNeeded();
+    await page.locator("#workspace-navigation a[href='/favorites']").click();
     await expect(page.getByRole("heading", { name: "Избранные вакансии", exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
 
     // Navigate to /resumes
-    await page.goto("/resumes");
-    await expect(page.getByRole("heading", { name: "Резюме", exact: true })).toBeVisible();
+    await page.locator("#workspace-navigation a[href='/resumes']").scrollIntoViewIfNeeded();
+    await page.locator("#workspace-navigation a[href='/resumes']").click();
+    await expect(page.getByRole("button", { name: "Загрузить новое резюме", exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
   });
 
@@ -463,7 +498,7 @@ test.describe("Approved Features E2E Acceptance", () => {
     const prefix = `KEY_${Date.now()}`;
     const testApp = await createApiApp(page, prefix);
 
-    await page.getByRole("link", { name: "Отклики", exact: true }).click();
+    await showApplications(page, testApp.company);
     const row = page.locator("tr.application-data-row", { hasText: testApp.company });
     await expect(row).toBeVisible();
 
@@ -471,8 +506,9 @@ test.describe("Approved Features E2E Acceptance", () => {
     await trigger.focus();
     await page.keyboard.press("ArrowDown");
 
-    const menu = page.locator(".status-workflow-flow, [role='menu']");
+    const menu = page.getByRole("menu");
     await expect(menu).toBeVisible();
+    await expect(menu.getByRole("menuitemradio").first()).toBeFocused();
 
     // Check viewport constraints: menu bounding box must be within window bounds
     const box = await menu.boundingBox();
@@ -480,6 +516,9 @@ test.describe("Approved Features E2E Acceptance", () => {
     if (box) {
       expect(box.x).toBeGreaterThanOrEqual(0);
       expect(box.y).toBeGreaterThanOrEqual(0);
+      const viewport = page.viewportSize()!;
+      expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
+      expect(box.y + box.height).toBeLessThanOrEqual(viewport.height);
     }
 
     // Press Escape: closes dropdown and restores focus to trigger
