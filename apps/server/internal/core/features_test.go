@@ -744,3 +744,92 @@ func TestCompanyLogoPreservedOnEmptySave(t *testing.T) {
 		t.Fatalf("expected stored logo to be preserved, got: %s", stored.CompanyLogo)
 	}
 }
+
+func TestMeaningfulActivityNoteUpdateSameTextRegression(t *testing.T) {
+	s := testStore(t)
+	u := testUser(t, s, "noteregress@example.com")
+
+	app, err := s.SaveApplication(u.ID, Application{
+		Company:  "Компания Заметка",
+		Position: "Go Developer",
+		Stage:    "saved",
+		State:    "active",
+	}, "", "manual")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add note
+	note, err := s.AddNote(u.ID, Note{
+		ApplicationID: app.ID,
+		Text:          "Первичный контакт",
+	}, "", "manual")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Set historical event time deterministically for the app creation and note creation event
+	histAppTime := time.Now().UTC().Add(-72 * time.Hour).Truncate(time.Second)
+	histAppStr := histAppTime.Format(timestampLayout)
+	_, err = s.DB.Exec("UPDATE documents SET payload = json_set(payload, '$.createdAt', ?) WHERE id=?", histAppStr, app.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.DB.Exec("UPDATE documents SET payload = json_set(payload, '$.createdAt', ?) WHERE kind='event' AND json_extract(payload, '$.applicationId')=? AND json_extract(payload, '$.kind')='created'", histAppStr, app.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	app, err = s.Application(u.ID, app.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	histNoteTime := time.Now().UTC().Add(-48 * time.Hour).Truncate(time.Second)
+	histNoteStr := histNoteTime.Format(timestampLayout)
+	_, err = s.DB.Exec("UPDATE documents SET payload = json_set(payload, '$.createdAt', ?) WHERE kind='event' AND json_extract(payload, '$.applicationId')=? AND json_extract(payload, '$.kind')='note'", histNoteStr, app.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	events, err := s.Events(u.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actAfterNote := ComputeLastActivity(app, events)
+	if !actAfterNote.Equal(histNoteTime) {
+		t.Fatalf("expected last activity to match deterministic note event time %v, got %v", histNoteTime, actAfterNote)
+	}
+
+	// Now do same-text UpdateNote (no-op edit)
+	updatedNote, err := s.UpdateNote(u.ID, note, "manual")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	eventsAfterNoop, err := s.Events(u.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actAfterNoop := ComputeLastActivity(app, eventsAfterNoop)
+	if !actAfterNoop.Equal(histNoteTime) {
+		t.Fatalf("same-text UpdateNote must NOT advance meaningful activity: was %v, got %v", histNoteTime, actAfterNoop)
+	}
+
+	// And verify that actual text change DOES advance activity
+	time.Sleep(10 * time.Millisecond)
+	note.Text = "Изменённый текст заметки"
+	note.Version = updatedNote.Version
+	_, err = s.UpdateNote(u.ID, note, "manual")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	eventsAfterRealEdit, err := s.Events(u.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actAfterRealEdit := ComputeLastActivity(app, eventsAfterRealEdit)
+	if !actAfterRealEdit.After(histNoteTime) {
+		t.Fatalf("real text update MUST advance meaningful activity: was %v, got %v", histNoteTime, actAfterRealEdit)
+	}
+}

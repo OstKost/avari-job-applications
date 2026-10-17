@@ -80,7 +80,9 @@ func main() {
 	defer stop()
 	go func() {
 		// Startup reconciliation
-		_ = store.ReconcileReminders(ctx, time.Now().UTC())
+		if err := store.ReconcileReminders(ctx, time.Now().UTC()); err != nil && ctx.Err() == nil {
+			slog.Error("failed startup reminder reconciliation", "error", err)
+		}
 		ticker := time.NewTicker(1 * time.Minute)
 		defer ticker.Stop()
 		for {
@@ -88,7 +90,9 @@ func main() {
 			case <-ctx.Done():
 				return
 			case t := <-ticker.C:
-				_ = store.ReconcileReminders(ctx, t.UTC())
+				if err := store.ReconcileReminders(ctx, t.UTC()); err != nil && ctx.Err() == nil {
+					slog.Error("failed scheduled reminder reconciliation", "error", err)
+				}
 			}
 		}
 	}()

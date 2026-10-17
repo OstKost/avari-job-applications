@@ -32,8 +32,14 @@ func HasMeaningfulActivityEvent(e Event) bool {
 			}
 		}
 		return false
-	case "note", "note_updated":
+	case "note":
 		return true
+	case "note_updated":
+		if e.Changes == nil {
+			return false
+		}
+		_, hasText := e.Changes["text"]
+		return hasText
 	case "task":
 		if e.Source == ReminderTriggerSource {
 			return false
