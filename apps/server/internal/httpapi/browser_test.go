@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // Browser fixtures live only in a test binary; production has no approval backdoor.
@@ -21,13 +22,62 @@ func TestBrowser(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer store.Close()
-	for _, email := range []string{"browser@example.com", "extension@example.com"} {
+	for _, email := range []string{"browser@example.com", "extension@example.com", "features@example.com"} {
 		u, e := store.Register(email, "browser-test-password", "Europe/Moscow")
 		if e != nil {
 			t.Fatal(e)
 		}
 		if e = store.Admin("approve", u.ID, ""); e != nil {
 			t.Fatal(e)
+		}
+		if email == "features@example.com" {
+			// Seed two special apps ONLY for that account:
+			// 1. Old active stale > 240h
+			staleApp, err := store.SaveApplication(u.ID, core.Application{
+				Company:  "Stale Corp 250h",
+				Position: "Senior Stale Engineer",
+				Stage:    "saved",
+				State:    "active",
+			}, "", "manual")
+			if err != nil {
+				t.Fatal(err)
+			}
+			staleTime := time.Now().UTC().Add(-250 * time.Hour).Truncate(time.Second)
+			staleStr := staleTime.Format("2006-01-02T15:04:05.000000000Z07:00")
+			if _, err := store.DB.Exec("UPDATE documents SET payload = json_set(payload, '$.createdAt', ?) WHERE id=?", staleStr, staleApp.ID); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := store.DB.Exec("UPDATE documents SET payload = json_set(payload, '$.createdAt', ?) WHERE kind='event' AND json_extract(payload, '$.applicationId')=? AND json_extract(payload, '$.kind')='created'", staleStr, staleApp.ID); err != nil {
+				t.Fatal(err)
+			}
+
+			// 2. Saved eligible 49h-no-action (eligible for automatic task)
+			eligibleApp, err := store.SaveApplication(u.ID, core.Application{
+				Company:  "Auto Reminder Inc 49h",
+				Position: "Frontend Lead",
+				Stage:    "saved",
+				State:    "active",
+			}, "", "manual")
+			if err != nil {
+				t.Fatal(err)
+			}
+			eligibleTime := time.Now().UTC().Add(-49 * time.Hour).Truncate(time.Second)
+			eligibleStr := eligibleTime.Format("2006-01-02T15:04:05.000000000Z07:00")
+			if _, err := store.DB.Exec("UPDATE documents SET payload = json_set(payload, '$.createdAt', ?) WHERE id=?", eligibleStr, eligibleApp.ID); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := store.DB.Exec("UPDATE documents SET payload = json_set(payload, '$.createdAt', ?) WHERE kind='event' AND json_extract(payload, '$.applicationId')=? AND json_extract(payload, '$.kind')='created'", eligibleStr, eligibleApp.ID); err != nil {
+				t.Fatal(err)
+			}
+			// Update reminder_eligibility created_at as well
+			if _, err := store.DB.Exec("UPDATE reminder_eligibility SET created_at=? WHERE application_id=?", eligibleStr, eligibleApp.ID); err != nil {
+				t.Fatal(err)
+			}
+
+			// Reconcile Store once before serving for automatic task
+			if err := store.ReconcileReminders(t.Context(), time.Now().UTC()); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 	web, e := fs.Sub(assets.Files, "dist")
