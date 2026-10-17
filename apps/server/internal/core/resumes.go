@@ -1,14 +1,19 @@
 package core
 
 import (
+	"archive/zip"
 	"bytes"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"io"
 	"path/filepath"
 	"strings"
+	"unicode"
+	"unicode/utf16"
+	"unicode/utf8"
 )
 
 const (
@@ -24,6 +29,110 @@ var allowedResumeFormats = map[string]string{
 	".doc":  "DOC",
 	".odt":  "ODT",
 	".rtf":  "RTF",
+}
+
+func validateResumeZip(format string, content []byte) error {
+	if !bytes.HasPrefix(content, []byte{0x50, 0x4B, 0x03, 0x04}) {
+		return Fail(400, "Файл повреждён или не является допустимым архивом")
+	}
+	zr, err := zip.NewReader(bytes.NewReader(content), int64(len(content)))
+	if err != nil {
+		return Fail(400, "Файл повреждён или не является допустимым архивом")
+	}
+	if len(zr.File) > 1000 {
+		return Fail(400, "Слишком много файлов в архиве")
+	}
+	switch format {
+	case "DOCX":
+		hasContentTypes := false
+		hasDocumentXML := false
+		for _, f := range zr.File {
+			if f.Name == "[Content_Types].xml" {
+				hasContentTypes = true
+			}
+			if f.Name == "word/document.xml" {
+				hasDocumentXML = true
+			}
+		}
+		if !hasContentTypes && !hasDocumentXML {
+			return Fail(400, "Файл не содержит структуру DOCX документа")
+		}
+	case "ODT":
+		hasMimetype := false
+		hasContentXML := false
+		for _, f := range zr.File {
+			if f.Name == "mimetype" {
+				rc, err := f.Open()
+				if err == nil {
+					buf := make([]byte, 100)
+					n, _ := io.ReadFull(rc, buf)
+					rc.Close()
+					if strings.Contains(string(buf[:n]), "application/vnd.oasis.opendocument.text") {
+						hasMimetype = true
+					}
+				}
+			}
+			if f.Name == "content.xml" {
+				hasContentXML = true
+			}
+		}
+		if !hasMimetype && !hasContentXML {
+			return Fail(400, "Файл не содержит структуру ODT документа")
+		}
+	}
+	return nil
+}
+
+func validateTextContent(content []byte) error {
+	if len(content) == 0 {
+		return Fail(400, "Файл резюме пуст")
+	}
+	// Check UTF-16 LE BOM (FF FE)
+	if len(content) >= 2 && content[0] == 0xFF && content[1] == 0xFE {
+		if len(content)%2 != 0 {
+			return Fail(400, "Некорректный UTF-16 текст")
+		}
+		u16s := make([]uint16, (len(content)-2)/2)
+		for i := 0; i < len(u16s); i++ {
+			u16s[i] = binary.LittleEndian.Uint16(content[2+i*2:])
+		}
+		runes := utf16.Decode(u16s)
+		for _, r := range runes {
+			if r == 0 || r == unicode.ReplacementChar {
+				return Fail(400, "Файл содержит недопустимые бинарные данные")
+			}
+		}
+		return nil
+	}
+	// Check UTF-16 BE BOM (FE FF)
+	if len(content) >= 2 && content[0] == 0xFE && content[1] == 0xFF {
+		if len(content)%2 != 0 {
+			return Fail(400, "Некорректный UTF-16 текст")
+		}
+		u16s := make([]uint16, (len(content)-2)/2)
+		for i := 0; i < len(u16s); i++ {
+			u16s[i] = binary.BigEndian.Uint16(content[2+i*2:])
+		}
+		runes := utf16.Decode(u16s)
+		for _, r := range runes {
+			if r == 0 || r == unicode.ReplacementChar {
+				return Fail(400, "Файл содержит недопустимые бинарные данные")
+			}
+		}
+		return nil
+	}
+
+	text := content
+	if bytes.HasPrefix(text, []byte{0xEF, 0xBB, 0xBF}) {
+		text = text[3:]
+	}
+	if !utf8.Valid(text) {
+		return Fail(400, "Файл не является допустимым UTF-8 текстом")
+	}
+	if bytes.IndexByte(text, 0) != -1 {
+		return Fail(400, "Файл содержит недопустимые бинарные данные")
+	}
+	return nil
 }
 
 // ValidateResumeFile validates extension, size, and magic bytes / signatures.
@@ -58,18 +167,12 @@ func ValidateResumeFile(filename string, content []byte) (string, error) {
 			return "", Fail(400, "Файл повреждён или не является DOC")
 		}
 	case "DOCX", "ODT":
-		// PK Zip header: 0x50, 0x4B, 0x03, 0x04
-		if !bytes.HasPrefix(content, []byte{0x50, 0x4B, 0x03, 0x04}) {
-			return "", Fail(400, "Файл повреждён или не является документом архива")
+		if err := validateResumeZip(format, content); err != nil {
+			return "", err
 		}
 	case "TXT", "MD":
-		// Text / Markdown: check for binary zero bytes in first 512 bytes
-		sample := content
-		if len(sample) > 512 {
-			sample = sample[:512]
-		}
-		if bytes.IndexByte(sample, 0) != -1 {
-			return "", Fail(400, "Файл содержит недопустимые бинарные данные")
+		if err := validateTextContent(content); err != nil {
+			return "", err
 		}
 	}
 
@@ -198,7 +301,7 @@ func (s *Store) CreateResume(user, title, filename string, content []byte) (Resu
 
 		resID := ID()
 		nowStamp := now()
-		_, err := tx.Exec("INSERT INTO resumes(id, user_id, title, created_at, updated_at) VALUES(?,?,?,?,?)", resID, user, title, nowStamp, nowStamp)
+		_, err := tx.Exec("INSERT INTO resumes(id, user_id, title, next_version, created_at, updated_at) VALUES(?,?,?,?,?,?)", resID, user, title, 2, nowStamp, nowStamp)
 		if err != nil {
 			return err
 		}
@@ -252,24 +355,22 @@ func (s *Store) AddResumeVersion(user, resumeID, filename string, content []byte
 	var ver ResumeVersion
 	err = s.transaction(func(tx *sql.Tx) error {
 		var title string
-		err := tx.QueryRow("SELECT title FROM resumes WHERE id=? AND user_id=?", resumeID, user).Scan(&title)
+		var nextVer int
+		err := tx.QueryRow("SELECT title, next_version FROM resumes WHERE id=? AND user_id=?", resumeID, user).Scan(&title, &nextVer)
 		if errors.Is(err, sql.ErrNoRows) {
 			return Fail(404, "Резюме не найдено")
 		}
 		if err != nil {
 			return err
 		}
+		if nextVer < 1 {
+			nextVer = 1
+		}
 
 		if err := checkAccountResumeQuota(tx, user, size); err != nil {
 			return err
 		}
 
-		var maxVer int
-		err = tx.QueryRow("SELECT coalesce(max(version_number), 0) FROM resume_versions WHERE resume_id=?", resumeID).Scan(&maxVer)
-		if err != nil {
-			return err
-		}
-		nextVer := maxVer + 1
 		verID := ID()
 		nowStamp := now()
 
@@ -279,7 +380,7 @@ func (s *Store) AddResumeVersion(user, resumeID, filename string, content []byte
 			return err
 		}
 
-		_, err = tx.Exec("UPDATE resumes SET updated_at=? WHERE id=?", nowStamp, resumeID)
+		_, err = tx.Exec("UPDATE resumes SET next_version=?, updated_at=? WHERE id=?", nextVer+1, nowStamp, resumeID)
 		if err != nil {
 			return err
 		}

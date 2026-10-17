@@ -3,15 +3,15 @@ package core
 import (
 	"context"
 	"database/sql"
-	"strings"
+	"errors"
 	"time"
 )
 
 const (
-	StaleInactivityHours     = 240
+	StaleInactivityHours      = 240
 	AutomationInactivityHours = 48
-	ReminderTaskTitle        = "Сделать отклик по вакансии"
-	ReminderTriggerSource    = "system"
+	ReminderTaskTitle         = "Сделать отклик по вакансии"
+	ReminderTriggerSource     = "system"
 )
 
 // HasMeaningfulActivityEvent checks if an event represents meaningful user activity.
@@ -39,16 +39,26 @@ func HasMeaningfulActivityEvent(e Event) bool {
 			return false
 		}
 		if e.Changes == nil {
-			// New task created
+			// New task created without changes map
 			return true
 		}
-		for field := range e.Changes {
-			if field == "date" || field == "time" || field == "state" || field == "title" {
-				return true
-			}
+		// Task creation has applicationId in changes diff
+		if _, ok := e.Changes["applicationId"]; ok {
+			return true
 		}
-		// If changes map exists but doesn't change anything meaningful
-		return len(e.Changes) > 0
+		// Reschedule has date or time in changes
+		if _, ok := e.Changes["date"]; ok {
+			return true
+		}
+		if _, ok := e.Changes["time"]; ok {
+			return true
+		}
+		// Status change / complete has state in changes
+		if _, ok := e.Changes["state"]; ok {
+			return true
+		}
+		// Title-only or kind-only edits, or empty no-ops do NOT count
+		return false
 	default:
 		return false
 	}
@@ -117,25 +127,13 @@ func NextWeekdayInLocation(t time.Time, loc *time.Location) string {
 }
 
 // ReconcileReminders processes applications eligible for automatic reminders.
-// - Rollout cutoff: applications created on or after rolloutCutoff
+// - Explicit eligibility: only newly created live applications in reminder_eligibility (zero historic/imported)
 // - Active, saved stage, no appliedDate
 // - 48h since meaningful activity
 // - Suppressed while any open linked task exists
 // - Max 1 reminder lifetime per application (even if deleted by user)
 func (s *Store) ReconcileReminders(ctx context.Context, now time.Time) error {
 	return s.transaction(func(tx *sql.Tx) error {
-		var rolloutCutoff string
-		err := tx.QueryRowContext(ctx, "SELECT value FROM instance_metadata WHERE key='rollout_cutoff'").Scan(&rolloutCutoff)
-		if err != nil {
-			if err == sql.ErrNoRows {
-				return nil
-			}
-			return err
-		}
-		if rolloutCutoff == "" {
-			return nil
-		}
-
 		rows, err := tx.QueryContext(ctx, "SELECT id,email,status,timezone,created_at FROM users ORDER BY created_at DESC")
 		if err != nil {
 			return err
@@ -157,6 +155,47 @@ func (s *Store) ReconcileReminders(ctx context.Context, now time.Time) error {
 			loc, err := time.LoadLocation(u.Timezone)
 			if err != nil {
 				loc = time.UTC
+			}
+
+			// Load eligible applications for this user
+			elRows, err := tx.QueryContext(ctx, "SELECT application_id FROM reminder_eligibility WHERE user_id=?", u.ID)
+			if err != nil {
+				return err
+			}
+			eligibleMap := map[string]bool{}
+			for elRows.Next() {
+				var aid string
+				if err = elRows.Scan(&aid); err != nil {
+					elRows.Close()
+					return err
+				}
+				eligibleMap[aid] = true
+			}
+			elRows.Close()
+			if err = elRows.Err(); err != nil {
+				return err
+			}
+			if len(eligibleMap) == 0 {
+				continue
+			}
+
+			// Load reminder records to avoid duplicate reminders over application lifetime
+			recRows, err := tx.QueryContext(ctx, "SELECT application_id FROM reminder_records WHERE user_id=?", u.ID)
+			if err != nil {
+				return err
+			}
+			reminderCreatedMap := map[string]bool{}
+			for recRows.Next() {
+				var aid string
+				if err = recRows.Scan(&aid); err != nil {
+					recRows.Close()
+					return err
+				}
+				reminderCreatedMap[aid] = true
+			}
+			recRows.Close()
+			if err = recRows.Err(); err != nil {
+				return err
 			}
 
 			apps, err := list[Application](tx, u.ID, "application")
@@ -183,8 +222,8 @@ func (s *Store) ReconcileReminders(ctx context.Context, now time.Time) error {
 			}
 
 			for _, a := range apps {
-				// Eligible check
-				if a.CreatedAt < rolloutCutoff {
+				// Eligible check (only live created applications after rollout)
+				if !eligibleMap[a.ID] {
 					continue
 				}
 				if a.State != "active" || a.Stage != "saved" || a.AppliedDate != "" {
@@ -192,12 +231,7 @@ func (s *Store) ReconcileReminders(ctx context.Context, now time.Time) error {
 				}
 
 				// Check if automatic task was EVER created for this application
-				var reminderCreated int
-				err := tx.QueryRowContext(ctx, "SELECT count(*) FROM reminder_records WHERE user_id=? AND application_id=?", u.ID, a.ID).Scan(&reminderCreated)
-				if err != nil {
-					return err
-				}
-				if reminderCreated > 0 {
+				if reminderCreatedMap[a.ID] {
 					continue
 				}
 
@@ -254,6 +288,7 @@ func (s *Store) ReconcileReminders(ctx context.Context, now time.Time) error {
 				if _, err := tx.ExecContext(ctx, "INSERT INTO reminder_records(user_id, application_id, task_id, created_at) VALUES(?,?,?,?)", u.ID, a.ID, taskID, now.UTC().Format(timestampLayout)); err != nil {
 					return err
 				}
+				reminderCreatedMap[a.ID] = true
 			}
 		}
 		return nil
@@ -268,28 +303,37 @@ func (s *Store) OnApplicationStateOrStageChanged(tx *sql.Tx, user string, app Ap
 		return nil
 	}
 
-	tasks, err := related[Task](tx, user, "task", app.ID)
+	var reminderTaskID string
+	err := tx.QueryRow("SELECT task_id FROM reminder_records WHERE user_id=? AND application_id=?", user, app.ID).Scan(&reminderTaskID)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		return err
+	}
+	if reminderTaskID == "" {
+		return nil
+	}
+
+	t, err := get[Task](tx, user, "task", reminderTaskID)
+	if err != nil {
+		var appErr *Error
+		if errors.As(err, &appErr) && appErr.Status == 404 {
+			return nil
+		}
 		return err
 	}
 
-	for _, t := range tasks {
-		if t.State == "open" && strings.TrimSpace(t.Title) == ReminderTaskTitle {
-			// Check if this task was created as an automatic reminder
-			var isAuto int
-			_ = tx.QueryRow("SELECT count(*) FROM reminder_records WHERE user_id=? AND task_id=?", user, t.ID).Scan(&isAuto)
-			if isAuto > 0 {
-				old := t
-				t.State = "done"
-				t.Version++
-				t.UpdatedAt = now()
-				if err := put(tx, user, "task", t.ID, t); err != nil {
-					return err
-				}
-				if err := event(tx, user, app.ID, "task", ReminderTriggerSource, changes(old, t)); err != nil {
-					return err
-				}
-			}
+	if t.State == "open" {
+		old := t
+		t.State = "done"
+		t.Version++
+		t.UpdatedAt = now()
+		if err := put(tx, user, "task", t.ID, t); err != nil {
+			return err
+		}
+		if err := event(tx, user, app.ID, "task", ReminderTriggerSource, changes(old, t)); err != nil {
+			return err
 		}
 	}
 	return nil

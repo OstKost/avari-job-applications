@@ -3,8 +3,8 @@ package httpapi
 import (
 	"github.com/OstKost/avari-job-applications/apps/server/internal/core"
 	"io"
+	"mime"
 	"net/http"
-	"net/url"
 	"path/filepath"
 	"strings"
 	"time"
@@ -250,15 +250,30 @@ func (s *Server) api(w http.ResponseWriter, r *http.Request) {
 		v, e := s.Store.Resumes(user)
 		respond(v, e)
 	case p == "resumes" && method == "POST":
+		r.Body = http.MaxBytesReader(w, r.Body, 25*1024*1024)
+		if err := r.ParseMultipartForm(10 * 1024 * 1024); err != nil {
+			fail(w, core.Fail(400, "Ошибка чтения multipart формы или превышен лимит размера"))
+			return
+		}
+		defer func() {
+			if r.MultipartForm != nil {
+				_ = r.MultipartForm.RemoveAll()
+			}
+		}()
 		file, header, err := r.FormFile("file")
 		if err != nil {
 			fail(w, core.Fail(400, "Файл резюме обязателен"))
 			return
 		}
 		defer file.Close()
-		content, err := io.ReadAll(file)
+		lr := io.LimitReader(file, core.MaxResumeFileSize+1)
+		content, err := io.ReadAll(lr)
 		if err != nil {
 			fail(w, core.Fail(400, "Ошибка чтения файла резюме"))
+			return
+		}
+		if int64(len(content)) > core.MaxResumeFileSize {
+			fail(w, core.Fail(400, "Размер файла превышает лимит 20 МБ"))
 			return
 		}
 		title := r.FormValue("title")
@@ -285,15 +300,30 @@ func (s *Server) api(w http.ResponseWriter, r *http.Request) {
 		respond(map[string]bool{"ok": true}, e)
 	case strings.HasPrefix(p, "resumes/") && strings.HasSuffix(p, "/versions") && method == "POST":
 		id := strings.TrimSuffix(strings.TrimPrefix(p, "resumes/"), "/versions")
+		r.Body = http.MaxBytesReader(w, r.Body, 25*1024*1024)
+		if err := r.ParseMultipartForm(10 * 1024 * 1024); err != nil {
+			fail(w, core.Fail(400, "Ошибка чтения multipart формы или превышен лимит размера"))
+			return
+		}
+		defer func() {
+			if r.MultipartForm != nil {
+				_ = r.MultipartForm.RemoveAll()
+			}
+		}()
 		file, header, err := r.FormFile("file")
 		if err != nil {
 			fail(w, core.Fail(400, "Файл резюме обязателен"))
 			return
 		}
 		defer file.Close()
-		content, err := io.ReadAll(file)
+		lr := io.LimitReader(file, core.MaxResumeFileSize+1)
+		content, err := io.ReadAll(lr)
 		if err != nil {
 			fail(w, core.Fail(400, "Ошибка чтения файла резюме"))
+			return
+		}
+		if int64(len(content)) > core.MaxResumeFileSize {
+			fail(w, core.Fail(400, "Размер файла превышает лимит 20 МБ"))
 			return
 		}
 		v, e := s.Store.AddResumeVersion(user, id, header.Filename, content)
@@ -316,8 +346,9 @@ func (s *Server) api(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		safeFilename := filepath.Base(filename)
+		disposition := mime.FormatMediaType("attachment", map[string]string{"filename": safeFilename})
 		w.Header().Set("Content-Type", "application/octet-stream")
-		w.Header().Set("Content-Disposition", `attachment; filename="`+safeFilename+`"; filename*=UTF-8''`+url.PathEscape(safeFilename))
+		w.Header().Set("Content-Disposition", disposition)
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Cache-Control", "private, no-cache")
 		http.ServeContent(w, r, safeFilename, time.Time{}, content.(io.ReadSeeker))
@@ -330,10 +361,6 @@ func (s *Server) api(w http.ResponseWriter, r *http.Request) {
 		}
 		resumeID, versionID := parts[0], parts[1]
 		e := s.Store.DeleteResumeVersion(user, resumeID, versionID)
-		respond(map[string]bool{"ok": true}, e)
-	case p == "reminders/reconcile" && method == "POST":
-		// E2E test and maintenance reconciliation endpoint
-		e := s.Store.ReconcileReminders(r.Context(), time.Now().UTC())
 		respond(map[string]bool{"ok": true}, e)
 	default:
 		fail(w, core.Fail(404, "Маршрут не найден"))

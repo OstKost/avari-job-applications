@@ -57,10 +57,19 @@ func (s *Store) SaveApplication(user string, a Application, idempotency, source 
 			if a.Version != old.Version {
 				return &Error{Status: 409, Message: "Запись изменилась. Сравните актуальные значения", Current: old}
 			}
+			if a.CompanyLogo == "" && old.CompanyLogo != "" {
+				a.CompanyLogo = old.CompanyLogo
+			}
 			a.CreatedAt = old.CreatedAt
 			a.ExternalStatus = old.ExternalStatus
 			a.Version++
 		}
+		if a.Custom != nil {
+			delete(a.Custom, "lastActivityAt")
+			delete(a.Custom, "stale")
+		}
+		a.LastActivityAt = ""
+		a.Stale = false
 		if e := a.Validate(); e != nil {
 			return e
 		}
@@ -112,6 +121,11 @@ func (s *Store) SaveApplication(user string, a Application, idempotency, source 
 		}
 		if isNew && idempotency != "" {
 			if _, e = tx.Exec("INSERT INTO requests(user_id,key,resource) VALUES(?,?,?)", user, "application:"+idempotency, a.ID); e != nil {
+				return e
+			}
+		}
+		if isNew {
+			if _, e = tx.Exec("INSERT OR IGNORE INTO reminder_eligibility(user_id, application_id, created_at) VALUES(?,?,?)", user, a.ID, now()); e != nil {
 				return e
 			}
 		}

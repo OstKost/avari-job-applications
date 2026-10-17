@@ -1,10 +1,15 @@
 package core
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
+	"encoding/binary"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf16"
 )
 
 func TestActivityAndStaleBoundaries(t *testing.T) {
@@ -120,14 +125,7 @@ func TestAutomatedRemindersScheduleAndTimezones(t *testing.T) {
 	s := testStore(t)
 	u := testUser(t, s, "reminder@example.com")
 
-	// Set rollout cutoff in the past
-	pastTime := time.Now().UTC().Add(-100 * time.Hour)
-	_, err := s.DB.Exec("INSERT OR REPLACE INTO instance_metadata(key, value) VALUES('rollout_cutoff', ?)", pastTime.Format(timestampLayout))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Historic app created before rollout: ineligible
+	// Historic app created before rollout or imported: not in reminder_eligibility
 	historicApp, err := s.SaveApplication(u.ID, Application{
 		Company:  "СтараяКомпания",
 		Position: "Dev",
@@ -137,9 +135,8 @@ func TestAutomatedRemindersScheduleAndTimezones(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Backdate historic app
-	historicStamp := pastTime.Add(-10 * time.Hour).Format(timestampLayout)
-	_, err = s.DB.Exec("UPDATE documents SET payload = json_set(payload, '$.createdAt', ?) WHERE id=?", historicStamp, historicApp.ID)
+	// Simulate historic app by removing from reminder_eligibility
+	_, err = s.DB.Exec("DELETE FROM reminder_eligibility WHERE application_id=?", historicApp.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,6 +270,12 @@ func TestAutomatedReminderCompletedOnApplyPauseClose(t *testing.T) {
 		t.Fatalf("expected 1 open task, got %+v", tasks)
 	}
 
+	// Rename the task title to verify auto-completion works by reminder_records task ID regardless of renamed title
+	tasks[0].Title = "Пользователь переименовал задачу"
+	if _, err := s.SaveTask(u.ID, tasks[0], "", "manual"); err != nil {
+		t.Fatal(err)
+	}
+
 	// Now apply the vacancy
 	app.Stage = "applied"
 	app.AppliedDate = "2026-10-20"
@@ -282,7 +285,7 @@ func TestAutomatedReminderCompletedOnApplyPauseClose(t *testing.T) {
 
 	tasks, _ = s.Tasks(u.ID)
 	if len(tasks) != 1 || tasks[0].State != "done" {
-		t.Fatalf("expected task to be marked done on apply, got %+v", tasks)
+		t.Fatalf("expected task to be marked done on apply even after title rename, got %+v", tasks)
 	}
 }
 
@@ -332,6 +335,27 @@ func TestResumeLifecycleAndBlobStorage(t *testing.T) {
 	if v2.VersionNumber != 2 || v2.Format != "TXT" {
 		t.Fatalf("unexpected version 2: %+v", v2)
 	}
+
+	// Test monotonic version counter: add version 3, delete newest version 3, add another version
+	v3, err := s.AddResumeVersion(u.ID, res.ID, "developer-v3.txt", []byte("version 3 text"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v3.VersionNumber != 3 {
+		t.Fatalf("expected version 3, got %d", v3.VersionNumber)
+	}
+	if err := s.DeleteResumeVersion(u.ID, res.ID, v3.ID); err != nil {
+		t.Fatal(err)
+	}
+	// Uploading a new version must NOT reuse version 3
+	v4, err := s.AddResumeVersion(u.ID, res.ID, "developer-v4.txt", []byte("version 4 text"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v4.VersionNumber != 4 {
+		t.Fatalf("expected monotonic version 4 after deleting version 3, got %d", v4.VersionNumber)
+	}
+	_ = s.DeleteResumeVersion(u.ID, res.ID, v4.ID)
 
 	// List resumes
 	list, err := s.Resumes(u.ID)
@@ -434,5 +458,289 @@ func TestResumeBackupAndRestore(t *testing.T) {
 	_, _ = content.Read(data)
 	if string(data) != string(pdfContent) {
 		t.Fatal("restored resume content mismatch")
+	}
+}
+
+func createSampleDocx(t *testing.T) []byte {
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	w, err := zw.Create("[Content_Types].xml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?><Types></Types>`))
+	w2, err := zw.Create("word/document.xml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = w2.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?><w:document></w:document>`))
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+func createSampleOdt(t *testing.T) []byte {
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	w, err := zw.Create("mimetype")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = w.Write([]byte("application/vnd.oasis.opendocument.text"))
+	w2, err := zw.Create("content.xml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = w2.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?><office:document-content></office:document-content>`))
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+func createGenericZip(t *testing.T) []byte {
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	w, err := zw.Create("hello.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = w.Write([]byte("hello world inside a generic zip"))
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+func createUTF16LE(str string) []byte {
+	u16 := utf16.Encode([]rune(str))
+	b := make([]byte, 2+len(u16)*2)
+	b[0] = 0xFF
+	b[1] = 0xFE
+	for i, v := range u16 {
+		binary.LittleEndian.PutUint16(b[2+i*2:], v)
+	}
+	return b
+}
+
+func createUTF16BE(str string) []byte {
+	u16 := utf16.Encode([]rune(str))
+	b := make([]byte, 2+len(u16)*2)
+	b[0] = 0xFE
+	b[1] = 0xFF
+	for i, v := range u16 {
+		binary.BigEndian.PutUint16(b[2+i*2:], v)
+	}
+	return b
+}
+
+func TestResumeAdvancedFormatsValidation(t *testing.T) {
+	s := testStore(t)
+	u := testUser(t, s, "formats@example.com")
+
+	// 1. Generic zip uploaded as .docx or .odt must be rejected
+	genericZip := createGenericZip(t)
+	_, err := s.CreateResume(u.ID, "Generic DOCX", "resume.docx", genericZip)
+	requireStatus(t, err, 400)
+
+	_, err = s.CreateResume(u.ID, "Generic ODT", "resume.odt", genericZip)
+	requireStatus(t, err, 400)
+
+	// 2. Proper DOCX zip must be accepted
+	docxData := createSampleDocx(t)
+	rDocx, err := s.CreateResume(u.ID, "Valid DOCX", "resume.docx", docxData)
+	if err != nil || rDocx.Versions[0].Format != "DOCX" {
+		t.Fatalf("valid DOCX failed: %v, %+v", err, rDocx)
+	}
+
+	// 3. Proper ODT zip must be accepted
+	odtData := createSampleOdt(t)
+	rOdt, err := s.CreateResume(u.ID, "Valid ODT", "resume.odt", odtData)
+	if err != nil || rOdt.Versions[0].Format != "ODT" {
+		t.Fatalf("valid ODT failed: %v, %+v", err, rOdt)
+	}
+
+	// 4. UTF-16 LE text with BOM must be accepted and preserved exactly
+	utf16LEData := createUTF16LE("Текст резюме на русском в UTF-16 LE")
+	rTxtLE, err := s.CreateResume(u.ID, "UTF-16 LE", "resume-le.txt", utf16LEData)
+	if err != nil || rTxtLE.Versions[0].Format != "TXT" {
+		t.Fatalf("valid UTF-16 LE failed: %v, %+v", err, rTxtLE)
+	}
+	_, _, sz, contentLE, err := s.ResumeVersionDownload(u.ID, rTxtLE.ID, rTxtLE.Versions[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	downloadedLE := make([]byte, sz)
+	_, _ = contentLE.Read(downloadedLE)
+	if !bytes.Equal(downloadedLE, utf16LEData) {
+		t.Fatal("UTF-16 LE byte preservation failed")
+	}
+
+	// 5. UTF-16 BE text with BOM must be accepted
+	utf16BEData := createUTF16BE("Текст резюме в UTF-16 BE")
+	rTxtBE, err := s.CreateResume(u.ID, "UTF-16 BE", "resume-be.txt", utf16BEData)
+	if err != nil || rTxtBE.Versions[0].Format != "TXT" {
+		t.Fatalf("valid UTF-16 BE failed: %v, %+v", err, rTxtBE)
+	}
+
+	// 6. Corrupted UTF-16 (odd number of bytes) must be rejected
+	corruptedU16 := append(utf16LEData, 0xAA)
+	_, err = s.CreateResume(u.ID, "Corrupt", "corrupt.txt", corruptedU16)
+	requireStatus(t, err, 400)
+
+	// 7. Binary zeros in UTF-8 text must be rejected
+	binText := []byte("hello\x00world")
+	_, err = s.CreateResume(u.ID, "BinaryText", "binary.txt", binText)
+	requireStatus(t, err, 400)
+}
+
+func TestMeaningfulActivityRules(t *testing.T) {
+	s := testStore(t)
+	u := testUser(t, s, "meaningful@example.com")
+
+	// 1. Create application
+	app, err := s.SaveApplication(u.ID, Application{
+		Company:  "Компания1",
+		Position: "Разработчик",
+		Stage:    "saved",
+		State:    "active",
+		Custom: map[string]any{
+			"lastActivityAt": "2099-01-01T00:00:00Z",
+			"stale":          true,
+		},
+		LastActivityAt: "2099-01-01T00:00:00Z",
+		Stale:          true,
+	}, "", "manual")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify that client-supplied lastActivityAt and stale were stripped from persistence
+	var rawPayload string
+	err = s.DB.QueryRow("SELECT payload FROM documents WHERE id=? AND kind='application'", app.ID).Scan(&rawPayload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(rawPayload, "2099-01-01") {
+		t.Fatalf("client-supplied lastActivityAt must not enter persisted payload: %s", rawPayload)
+	}
+
+	initialActivity := app.LastActivityAt
+	if initialActivity == "" {
+		t.Fatal("initial activity should be computed")
+	}
+
+	time.Sleep(10 * time.Millisecond)
+
+	// 2. Create task -> counts as meaningful activity
+	task, err := s.SaveTask(u.ID, Task{
+		ApplicationID: app.ID,
+		Title:         "Первая задача",
+		Date:          "2026-10-25",
+		State:         "open",
+	}, "", "manual")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	appReloaded, err := s.Application(u.ID, app.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if appReloaded.LastActivityAt <= initialActivity {
+		t.Fatalf("task creation should update LastActivityAt: %s vs %s", appReloaded.LastActivityAt, initialActivity)
+	}
+	taskCreatedActivity := appReloaded.LastActivityAt
+
+	time.Sleep(10 * time.Millisecond)
+
+	// 3. Title-only edit on task -> must NOT count as meaningful activity
+	task.Title = "Обновлённое название"
+	task, err = s.SaveTask(u.ID, task, "", "manual")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	appAfterTitleEdit, _ := s.Application(u.ID, app.ID)
+	if appAfterTitleEdit.LastActivityAt != taskCreatedActivity {
+		t.Fatalf("title-only task edit must NOT update LastActivityAt: %s vs %s", appAfterTitleEdit.LastActivityAt, taskCreatedActivity)
+	}
+
+	// 4. Kind-only edit on task -> must NOT count
+	time.Sleep(10 * time.Millisecond)
+	task.Kind = "interview"
+	task, err = s.SaveTask(u.ID, task, "", "manual")
+	if err != nil {
+		t.Fatal(err)
+	}
+	appAfterKindEdit, _ := s.Application(u.ID, app.ID)
+	if appAfterKindEdit.LastActivityAt != taskCreatedActivity {
+		t.Fatalf("kind-only task edit must NOT update LastActivityAt: %s vs %s", appAfterKindEdit.LastActivityAt, taskCreatedActivity)
+	}
+
+	// 5. Task reschedule (date change) -> DOES count as meaningful activity
+	time.Sleep(10 * time.Millisecond)
+	task.Date = "2026-10-28"
+	task, err = s.SaveTask(u.ID, task, "", "manual")
+	if err != nil {
+		t.Fatal(err)
+	}
+	appAfterReschedule, _ := s.Application(u.ID, app.ID)
+	if appAfterReschedule.LastActivityAt <= taskCreatedActivity {
+		t.Fatalf("task reschedule must update LastActivityAt: %s vs %s", appAfterReschedule.LastActivityAt, taskCreatedActivity)
+	}
+	rescheduleActivity := appAfterReschedule.LastActivityAt
+
+	// 6. Task completion -> DOES count as meaningful activity
+	time.Sleep(10 * time.Millisecond)
+	task.State = "done"
+	task, err = s.SaveTask(u.ID, task, "", "manual")
+	if err != nil {
+		t.Fatal(err)
+	}
+	appAfterComplete, _ := s.Application(u.ID, app.ID)
+	if appAfterComplete.LastActivityAt <= rescheduleActivity {
+		t.Fatalf("task completion must update LastActivityAt: %s vs %s", appAfterComplete.LastActivityAt, rescheduleActivity)
+	}
+}
+
+func TestCompanyLogoPreservedOnEmptySave(t *testing.T) {
+	s := testStore(t)
+	u := testUser(t, s, "preservelogo@example.com")
+
+	app, err := s.SaveApplication(u.ID, Application{
+		Company:     "Компания с логотипом",
+		Position:    "Дизайнер",
+		Stage:       "saved",
+		State:       "active",
+		CompanyLogo: "https://example.com/brand/logo.svg",
+	}, "", "manual")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if app.CompanyLogo != "https://example.com/brand/logo.svg" {
+		t.Fatalf("expected logo to be saved, got %s", app.CompanyLogo)
+	}
+
+	// Now client sends update with empty logo
+	app.CompanyLogo = ""
+	app.Position = "Старший дизайнер"
+	updated, err := s.SaveApplication(u.ID, app, "", "manual")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if updated.CompanyLogo != "https://example.com/brand/logo.svg" {
+		t.Fatalf("expected logo to be preserved on empty save, got: %s", updated.CompanyLogo)
+	}
+
+	stored, err := s.Application(u.ID, app.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.CompanyLogo != "https://example.com/brand/logo.svg" {
+		t.Fatalf("expected stored logo to be preserved, got: %s", stored.CompanyLogo)
 	}
 }

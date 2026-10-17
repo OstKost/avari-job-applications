@@ -636,6 +636,15 @@ func (s *Store) ImportJournal(user string, req ImportRequest, apply bool) (Impor
 			if err = put(tx, user, w.kind, w.id, w.value); err != nil {
 				return err
 			}
+			if w.kind == "task" {
+				if tMap, ok := w.value.(map[string]any); ok {
+					title, _ := tMap["title"].(string)
+					appID, _ := tMap["applicationId"].(string)
+					if strings.TrimSpace(title) == ReminderTaskTitle && appID != "" {
+						_, _ = tx.Exec("INSERT OR IGNORE INTO reminder_records(user_id, application_id, task_id, created_at) VALUES(?,?,?,?)", user, appID, w.id, now())
+					}
+				}
+			}
 		}
 		for _, o := range originWrites {
 			if _, err = tx.Exec("INSERT INTO import_origins(user_id,kind,origin,target_id) VALUES(?,?,?,?) ON CONFLICT(user_id,kind,origin) DO UPDATE SET target_id=excluded.target_id", user, o[0], o[1], o[2]); err != nil {

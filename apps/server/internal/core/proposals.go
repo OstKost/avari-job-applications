@@ -266,6 +266,9 @@ func (s *Store) ResolveProposal(user, id, action string, version int, patch map[
 			if e = put(tx, user, "application", out.ID, out); e != nil {
 				return e
 			}
+			if _, e = tx.Exec("INSERT OR IGNORE INTO reminder_eligibility(user_id, application_id, created_at) VALUES(?,?,?)", user, out.ID, now()); e != nil {
+				return e
+			}
 			if e = event(tx, user, out.ID, "created", "extension", changes(Application{}, out)); e != nil {
 				return e
 			}

@@ -29,7 +29,7 @@ func TestCompanyLogoPersistenceAndRemoval(t *testing.T) {
 		t.Fatal(err)
 	}
 	stored, err = s.Application(u.ID, a.ID)
-	if err != nil || stored.CompanyLogo != "" {
-		t.Fatalf("logo was not removed: %+v, %v", stored, err)
+	if err != nil || stored.CompanyLogo != "https://example.com/logo.png" {
+		t.Fatalf("logo was not preserved on empty save: %+v, %v", stored, err)
 	}
 }

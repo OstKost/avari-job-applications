@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-const SchemaVersion = 8
+const SchemaVersion = 9
 
 type Store struct {
 	DB   *sql.DB
@@ -153,13 +153,14 @@ UPDATE documents SET payload = json_set(payload,
 `, `CREATE TABLE instance_metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL);
 INSERT INTO instance_metadata VALUES('transfer_source',lower(hex(randomblob(32))));
 CREATE TABLE import_origins(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,kind TEXT NOT NULL,origin TEXT NOT NULL,target_id TEXT NOT NULL,PRIMARY KEY(user_id,kind,origin));
-CREATE INDEX import_origins_target ON import_origins(user_id,kind,target_id);`, `CREATE TABLE IF NOT EXISTS resumes(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,title TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
+CREATE INDEX import_origins_target ON import_origins(user_id,kind,target_id);`, `CREATE TABLE IF NOT EXISTS resumes(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,title TEXT NOT NULL,next_version INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS resumes_user ON resumes(user_id,created_at);
 CREATE TABLE IF NOT EXISTS resume_versions(id TEXT PRIMARY KEY,resume_id TEXT NOT NULL REFERENCES resumes(id) ON DELETE CASCADE,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,version_number INTEGER NOT NULL,filename TEXT NOT NULL,format TEXT NOT NULL,size INTEGER NOT NULL,checksum TEXT NOT NULL,content BLOB NOT NULL,created_at TEXT NOT NULL,UNIQUE(resume_id,version_number));
 CREATE INDEX IF NOT EXISTS resume_versions_resume ON resume_versions(resume_id,version_number);
 CREATE INDEX IF NOT EXISTS resume_versions_user ON resume_versions(user_id);
 CREATE TABLE IF NOT EXISTS reminder_records(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,application_id TEXT NOT NULL,task_id TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(user_id,application_id));
-INSERT OR IGNORE INTO instance_metadata(key,value) VALUES('rollout_cutoff',datetime('now'));`}
+INSERT OR IGNORE INTO instance_metadata(key,value) VALUES('rollout_cutoff',datetime('now'));`, `CREATE TABLE IF NOT EXISTS reminder_eligibility(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,application_id TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(user_id,application_id));
+CREATE INDEX IF NOT EXISTS reminder_eligibility_user ON reminder_eligibility(user_id);`}
 	for i, migration := range migrations {
 		if i+1 <= version {
 			continue
@@ -169,6 +170,16 @@ INSERT OR IGNORE INTO instance_metadata(key,value) VALUES('rollout_cutoff',datet
 		}
 		if _, e = tx.ExecContext(ctx, "INSERT INTO schema_migrations(version) VALUES(?)", i+1); e != nil {
 			return e
+		}
+	}
+
+	var colCount int
+	_ = tx.QueryRowContext(ctx, "SELECT count(*) FROM pragma_table_info('resumes') WHERE name='next_version'").Scan(&colCount)
+	if colCount == 0 {
+		var tblCount int
+		_ = tx.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='resumes'").Scan(&tblCount)
+		if tblCount > 0 {
+			_, _ = tx.ExecContext(ctx, "ALTER TABLE resumes ADD COLUMN next_version INTEGER NOT NULL DEFAULT 1")
 		}
 	}
 

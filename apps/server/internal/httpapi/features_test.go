@@ -7,7 +7,9 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 )
 
 func postMultipart(t *testing.T, server *httptest.Server, path, fieldname, filename string, content []byte, extraFields map[string]string, headers map[string]string) (int, map[string]any) {
@@ -109,6 +111,10 @@ func TestHTTPResumeEndpoints(t *testing.T) {
 	if resp.StatusCode != 200 {
 		t.Fatalf("download failed with status %d", resp.StatusCode)
 	}
+	cd := resp.Header.Get("Content-Disposition")
+	if !strings.HasPrefix(cd, "attachment;") || !strings.Contains(cd, "filename=") {
+		t.Fatalf("expected valid attachment Content-Disposition from mime.FormatMediaType, got: %s", cd)
+	}
 	body, _ := io.ReadAll(resp.Body)
 	if string(body) != string(txtContent) {
 		t.Fatalf("downloaded content mismatch")
@@ -185,9 +191,14 @@ func TestHTTPApplicationActivityAndReconcile(t *testing.T) {
 		t.Fatal("detail application missing lastActivityAt")
 	}
 
-	// Test reconcile endpoint
+	// Verify that production POST /api/v1/reminders/reconcile is REMOVED (returns 404)
 	status, recRes, _ := call(t, server, "POST", "/api/v1/reminders/reconcile", nil, headers)
-	if status != 200 || recRes["ok"] != true {
-		t.Fatalf("reconcile endpoint failed: %d, %v", status, recRes)
+	if status != 404 {
+		t.Fatalf("expected 404 for removed reconcile endpoint, got %d: %v", status, recRes)
+	}
+
+	// Directly test Store reconciliation
+	if err := store.ReconcileReminders(t.Context(), time.Now().UTC()); err != nil {
+		t.Fatalf("store.ReconcileReminders failed: %v", err)
 	}
 }
