@@ -28,3 +28,11 @@ Implement through supervised Orca Antigravity workers; coordinator owns integrat
 - Backend owns server/core/httpapi/API schema; logo worker owns only CSP change in server.go plus extension changes; coordinate overlaps. Web owner owns web/shared UI. Integration owner merges commits and regenerates shared API after backend changes.
 - Tests: controlled clock 48/240h boundaries, timezone/weekends, startup, dedupe/concurrency, user isolation, migration, backup/restore, multipart file validation; UI storage/back navigation, dropdown keyboard/outcome/409, stale actions/calendar, favorites, resume versions; logo real HTTPS and fallback under CSP.
 - Run typecheck, Vitest, Go race/vet, API generation consistency, web/extension builds and relevant browser E2E. QA worker independently reviews assembled version and routes fixes to owners.
+
+## Final acceptance — 2026-10-17
+- All seven feature areas implemented and committed to `main`; final production source: `1de5c72`.
+- Passed TypeScript checking, 119 Vitest tests in 11 files, production web/extension builds, Go race tests and vet, and exact OpenAPI/generated-type consistency.
+- Passed all 18 real browser scenarios against temporary authenticated HTTP servers, including MV3 extension and local mode. New coverage verifies filter/page restoration, independent favorites preferences, inline stage/state and outcome cancellation, inactivity actions and calendar reminders, original resume download bytes and versions, modal validation, mobile navigation, dropdown focus/Escape and viewport positioning.
+- Browser acceptance exposed and fixed mobile navigation overflow and a dropdown portal focus race. The expanded feature suite reuses its real UI-created session to respect production login rate limits.
+- Feature implementation and independent source reviews ran through supervised Orca Antigravity workers. Antigravity exhausted its quota during final browser-test correction; the Codex replacement hit Orca readiness timeout. The coordinator completed acceptance corrections and the final passing run. Failed/superseded attempts have explicit outcomes; no feature blocker remains.
+- Resume preview/text extraction remains outside this release as agreed. Automatic reminders apply only to newly created eligible applications after rollout. No deployment or remote publication performed.
