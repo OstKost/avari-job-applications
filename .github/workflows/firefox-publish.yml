@@ -1,0 +1,74 @@
+name: Publish Firefox add-on
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Successful Avari.Jobs release tag (vX.Y.Z)
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: firefox-amo
+    concurrency:
+      group: avari-firefox-store
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate deployed release
+        env:
+          TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [[ "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft == false' | grep -qx true
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern deployed.json --dir /tmp/avari-deployed
+          python3 -c 'import json,os; assert json.load(open("/tmp/avari-deployed/deployed.json"))["tag"] == os.environ["TAG"]'
+          curl -fsS https://jobs.avari.dev/readyz
+          curl -fsS https://jobs.avari.dev/release.json | python3 -c 'import json,os,sys; assert json.load(sys.stdin)["version"] == os.environ["TAG"][1:]'
+      - name: Download release archive
+        env:
+          TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern 'avari-extension.zip' --pattern 'SHA256SUMS' --dir /tmp/avari-source
+          cd /tmp/avari-source
+          awk '$2 == "avari-extension.zip"' SHA256SUMS | sha256sum -c -
+      - name: Package Firefox extension
+        run: |
+          unzip -q /tmp/avari-source/avari-extension.zip -d /tmp/firefox-unpacked
+          node -e '
+            const fs = require("node:fs");
+            const manifest = JSON.parse(fs.readFileSync("/tmp/firefox-unpacked/manifest.json", "utf-8"));
+            manifest.browser_specific_settings = {
+              gecko: {
+                id: "jobs@avari.dev",
+                strict_min_version: "109.0",
+                data_collection_permissions: {
+                  required: ["authenticationInfo", "browsingActivity"]
+                }
+              }
+            };
+            manifest.background = {
+              scripts: ["background.js"]
+            };
+            fs.writeFileSync("/tmp/firefox-unpacked/manifest.json", JSON.stringify(manifest, null, 2));
+          '
+          cd /tmp/firefox-unpacked && zip -r -9 /tmp/avari-extension-firefox.zip .
+      - name: Submit to Firefox Add-ons (AMO)
+        env:
+          AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+          AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+          FIREFOX_EXTENSION_ID: ${{ vars.FIREFOX_EXTENSION_ID || 'jobs@avari.dev' }}
+        run: |
+          npx --yes web-ext sign \
+            --source-dir /tmp/firefox-unpacked \
+            --channel listed \
+            --api-key "$AMO_JWT_ISSUER" \
+            --api-secret "$AMO_JWT_SECRET" \
+            --id "$FIREFOX_EXTENSION_ID"

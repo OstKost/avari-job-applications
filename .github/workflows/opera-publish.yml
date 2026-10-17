@@ -1,0 +1,46 @@
+name: Publish Opera extension
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Successful Avari.Jobs release tag (vX.Y.Z)
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: opera-add-ons
+    concurrency:
+      group: avari-opera-store
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate deployed release
+        env:
+          TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [[ "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft == false' | grep -qx true
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern deployed.json --dir /tmp/avari-deployed
+          python3 -c 'import json,os; assert json.load(open("/tmp/avari-deployed/deployed.json"))["tag"] == os.environ["TAG"]'
+          curl -fsS https://jobs.avari.dev/readyz
+          curl -fsS https://jobs.avari.dev/release.json | python3 -c 'import json,os,sys; assert json.load(sys.stdin)["version"] == os.environ["TAG"][1:]'
+      - name: Download and check archive
+        env:
+          TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern 'avari-extension.zip' --pattern 'SHA256SUMS' --dir /tmp/avari-opera
+          cd /tmp/avari-opera
+          awk '$2 == "avari-extension.zip"' SHA256SUMS | sha256sum -c -
+          unzip -p avari-extension.zip manifest.json | python3 -c 'import json,os,sys; assert json.load(sys.stdin)["version"] == os.environ["TAG"][1:]'
+      - name: Submit to Opera Add-ons
+        env:
+          OPERA_SESSION_ID: ${{ secrets.OPERA_SESSION_ID }}
+          OPERA_CSRF_TOKEN: ${{ secrets.OPERA_CSRF_TOKEN }}
+          OPERA_PACKAGE_ID: ${{ vars.OPERA_PACKAGE_ID }}
+          TAG: ${{ inputs.tag }}
+        run: node scripts/publish-opera.mjs /tmp/avari-opera/avari-extension.zip
