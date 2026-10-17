@@ -5,7 +5,10 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-async function background(url = "https://example.com/") {
+async function background(
+  url = "https://example.com/",
+  initialStorage: Record<string, any> = {},
+) {
   vi.resetModules();
   let listener: (
     message: unknown,
@@ -27,7 +30,14 @@ async function background(url = "https://example.com/") {
     storage: {
       local: {
         setAccessLevel: vi.fn(),
-        get: vi.fn().mockResolvedValue({}),
+        get: vi.fn().mockImplementation(async (keys: any) => {
+          if (Array.isArray(keys)) {
+            const out: Record<string, any> = {};
+            for (const k of keys) out[k] = initialStorage[k];
+            return out;
+          }
+          return { ...initialStorage };
+        }),
         set: vi.fn(),
         remove: vi.fn(),
       },
@@ -153,4 +163,142 @@ it("reads a content script when Chrome omits tab URLs without tabs permission", 
     ok: true,
     data: { supported: true },
   });
+});
+
+it("enriches existing application companyLogo on revisit without overwriting manual fields", async () => {
+  const fetchMock = vi.fn();
+  vi.stubGlobal("fetch", fetchMock);
+
+  const existingApp = {
+    id: "app-123",
+    version: 1,
+    url: "https://hh.ru/vacancy/999",
+    position: "Senior Go Developer",
+    company: "Acme Corp",
+    companyLogo: "",
+  };
+
+  // Mock chrome storage with server & token
+  const { chromeMock: c, send } = await background(
+    "https://hh.ru/vacancy/999",
+    {
+      server: "https://avari.example.com",
+      token: "secret-token",
+    },
+  );
+
+  fetchMock.mockImplementation(async (url: string, options: any) => {
+    if (url.endsWith("/api/v1/applications") && (options?.method === "GET" || !options?.method)) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => [existingApp],
+      };
+    }
+    if (
+      url.endsWith("/api/v1/applications/app-123") &&
+      options?.method === "PUT"
+    ) {
+      const body = JSON.parse(options.body);
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ ...body, version: 2 }),
+      };
+    }
+    if (url.endsWith("/api/v1/proposals")) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => [],
+      };
+    }
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({}),
+    };
+  });
+
+  const snapshot = {
+    supported: true,
+    kind: "vacancy",
+    vacancy: {
+      url: "https://hh.ru/vacancy/999",
+      hhId: "999",
+      company: "Acme Corp",
+      position: "Senior Go Developer",
+      companyLogo: "https://hh.ru/employer-logo/123.png",
+    },
+    observations: [],
+  };
+
+  const response = await send(
+    { type: "PAGE_SNAPSHOT", snapshot },
+    {
+      id: "avari",
+      url: "https://hh.ru/vacancy/999",
+      tab: { id: 7 } as chrome.tabs.Tab,
+    },
+  );
+
+  expect(response.ok).toBe(true);
+
+  // Verify PUT /applications/app-123 was called with enriched companyLogo
+  const putCall = fetchMock.mock.calls.find(
+    ([url, opts]) =>
+      url === "https://avari.example.com/api/v1/applications/app-123" &&
+      opts?.method === "PUT",
+  );
+  expect(putCall).toBeDefined();
+  const putBody = JSON.parse(putCall![1].body);
+  expect(putBody.companyLogo).toBe("https://hh.ru/employer-logo/123.png");
+  expect(putBody.position).toBe("Senior Go Developer");
+});
+
+it("strips companyLogo on compatibility retry when server rejects with invalid JSON/unknown fields", async () => {
+  const fetchMock = vi.fn();
+  vi.stubGlobal("fetch", fetchMock);
+
+  const { chromeMock: c, send } = await background(
+    "https://example.com/",
+    {
+      server: "https://avari.example.com",
+      token: "secret-token",
+    },
+  );
+
+  let attempts = 0;
+  fetchMock.mockImplementation(async (url: string, options: any) => {
+    attempts++;
+    const body = options?.body ? JSON.parse(options.body) : {};
+    if (attempts === 1) {
+      expect(body.companyLogo).toBe("https://example.com/logo.png");
+      return {
+        ok: false,
+        status: 400,
+        json: async () => ({ error: "Некорректный JSON запроса" }),
+      };
+    }
+    expect(body.companyLogo).toBeUndefined();
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ id: "saved-app" }),
+    };
+  });
+
+  const res = await send({
+    type: "API",
+    path: "/applications",
+    method: "POST",
+    body: {
+      position: "Engineer",
+      company: "Corp",
+      companyLogo: "https://example.com/logo.png",
+    },
+  });
+
+  expect(res.ok).toBe(true);
+  expect(attempts).toBe(2);
 });

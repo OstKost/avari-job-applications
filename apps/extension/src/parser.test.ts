@@ -107,6 +107,36 @@ describe("hh.ru DOM parser", () => {
     expect(fromJsonLd.vacancy?.companyLogo).toBe(
       "https://hh.ru/employer-logo/456.png",
     );
+
+    const fromJsonLdObject = parsePage(
+      doc(
+        '<script type="application/ld+json">{"@type":"JobPosting","title":"Dev","hiringOrganization":{"name":"Acme","logo":{"@type":"ImageObject","url":"/employer-logo/789.png"}}}</script>',
+      ),
+      "https://hh.ru/vacancy/999",
+    );
+    expect(fromJsonLdObject.vacancy?.companyLogo).toBe(
+      "https://hh.ru/employer-logo/789.png",
+    );
+
+    const fromLazyDom = parsePage(
+      doc(
+        '<h1>Backend</h1><a data-qa="vacancy-company-name">Acme</a><div data-qa="vacancy-company-logo"><img data-src="/images/logo-lazy.png" /></div>',
+      ),
+      "https://hh.ru/vacancy/999",
+    );
+    expect(fromLazyDom.vacancy?.companyLogo).toBe(
+      "https://hh.ru/images/logo-lazy.png",
+    );
+
+    const fromProtocolRelative = parsePage(
+      doc(
+        '<h1>Backend</h1><a data-qa="vacancy-company-name">Acme</a><div data-qa="vacancy-company-logo"><img src="//cdn.example.com/logo.png" /></div>',
+      ),
+      "https://hh.ru/vacancy/999",
+    );
+    expect(fromProtocolRelative.vacancy?.companyLogo).toBe(
+      "https://cdn.example.com/logo.png",
+    );
   });
   it("extracts a vacancy and never infers an application from opening", () => {
     const p = parsePage(

@@ -226,3 +226,77 @@ func TestOtherSiteFavoriteLists(t *testing.T) {
 		})
 	}
 }
+
+func TestRepeatedFavoriteProposalAfterManualUnfavorite(t *testing.T) {
+	s := testStore(t)
+	u := testUser(t, s, "repeat-fav@example.com")
+	o := Observation{
+		HHID:      "777",
+		URL:       "https://hh.ru/applicant/favorites",
+		Status:    "favorite",
+		Candidate: &Application{Company: "Acme", Position: "Engineer", URL: "https://hh.ru/vacancy/777"},
+	}
+
+	// 1. Initial observation creates a pending proposal
+	p1, err := s.Observe(u.ID, o)
+	if err != nil || p1 == nil {
+		t.Fatalf("expected proposal p1, got: %v, err: %v", p1, err)
+	}
+
+	// 2. Duplicate observation while proposal is pending returns nil (deduplication)
+	dup, err := s.Observe(u.ID, o)
+	if err != nil || dup != nil {
+		t.Fatalf("expected duplicate proposal to be nil, got: %v, err: %v", dup, err)
+	}
+
+	// 3. User applies proposal, setting favorite=true
+	resolved, err := s.ResolveProposal(u.ID, p1.ID, "apply", 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	app, err := s.Application(u.ID, resolved.ApplicationID)
+	if err != nil || !app.Favorite {
+		t.Fatalf("expected application favorite=true, got: %+v, err: %v", app, err)
+	}
+
+	// 4. Observing again while favorite=true returns nil (no duplicate / no re-add)
+	pWhileFav, err := s.Observe(u.ID, o)
+	if err != nil || pWhileFav != nil {
+		t.Fatalf("expected nil when already favorite, got: %v, err: %v", pWhileFav, err)
+	}
+
+	// 5. User manually unsets favorite
+	app.Favorite = false
+	if err := put(s.DB, u.ID, "application", app.ID, app); err != nil {
+		t.Fatal(err)
+	}
+	app, _ = s.Application(u.ID, app.ID)
+	if app.Favorite {
+		t.Fatal("failed to unset favorite manually")
+	}
+
+	// 6. Observing favorite again after manual unfavorite proposes again (not auto-restored!)
+	p2, err := s.Observe(u.ID, o)
+	if err != nil || p2 == nil {
+		t.Fatalf("expected proposal p2 after manual unfavorite, got: %v, err: %v", p2, err)
+	}
+	if p2.Kind == "create" {
+		t.Fatalf("expected proposal on existing application, not create: %+v", p2)
+	}
+	if p2.ApplicationID != app.ID {
+		t.Fatalf("expected proposal for existing app ID %s, got %s", app.ID, p2.ApplicationID)
+	}
+
+	// Ensure application is not auto-restored before resolution
+	appCheck, _ := s.Application(u.ID, app.ID)
+	if appCheck.Favorite {
+		t.Fatal("application favorite must not be auto-restored without user confirmation")
+	}
+
+	// 7. Observing again while p2 is pending does not create duplicate pending proposal
+	dup2, err := s.Observe(u.ID, o)
+	if err != nil || dup2 != nil {
+		t.Fatalf("expected duplicate pending proposal to be deduped, got: %v, err: %v", dup2, err)
+	}
+}
+

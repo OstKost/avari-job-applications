@@ -112,18 +112,51 @@ function text(root: ParentNode, selectors: string[]) {
   }
   return "";
 }
-function imageSrc(root: ParentNode, selectors: string[]): string {
+function imageSrc(
+  root: ParentNode,
+  selectors: string[],
+  baseURL?: string,
+): string {
   for (const selector of selectors) {
     for (const el of root.querySelectorAll<HTMLElement>(selector)) {
       if (el.closest('[hidden], [aria-hidden="true"]')) continue;
       if (el.ownerDocument.defaultView?.getComputedStyle(el).display === "none")
         continue;
-      const src =
+      const raw =
         el.getAttribute("src") ||
         el.getAttribute("data-src") ||
+        el.getAttribute("data-lazy-src") ||
+        el.getAttribute("data-original") ||
         (el instanceof HTMLImageElement ? el.src : "");
-      if (src && /^https?:\/\//i.test(src)) return src.trim();
+      if (!raw) continue;
+      const normalized = normalizeLogoURL(raw, baseURL);
+      if (normalized) return normalized;
     }
+  }
+  return "";
+}
+
+export function normalizeLogoURL(
+  raw: string,
+  baseURL?: string,
+): string {
+  const trimmed = clean(raw);
+  if (!trimmed) return "";
+  try {
+    let resolved: URL;
+    if (trimmed.startsWith("//")) {
+      const baseProto = baseURL ? new URL(baseURL).protocol : "https:";
+      resolved = new URL(baseProto + trimmed);
+    } else if (baseURL) {
+      resolved = new URL(trimmed, baseURL);
+    } else {
+      resolved = new URL(trimmed);
+    }
+    if (resolved.protocol === "http:" || resolved.protocol === "https:") {
+      return resolved.href;
+    }
+  } catch {
+    return "";
   }
   return "";
 }
@@ -493,17 +526,19 @@ function parseOtherSite(doc: Document, rawURL: string): Snapshot {
         ? job.hiringOrganization.logo.url
         : "";
   vacancy.companyLogo =
-    (otherStructuredLogo && /^https?:\/\//i.test(otherStructuredLogo)
-      ? otherStructuredLogo.trim()
-      : "") ||
-    imageSrc(doc, [
-      ".job-details-jobs-unified-top-card__company-logo img",
-      ".topcard__org-name-link img",
-      ".b-vacancy-header img",
-      ".company-logo img",
-      ".company_logo img",
-      ".vacancy-header img",
-    ]);
+    normalizeLogoURL(otherStructuredLogo, rawURL) ||
+    imageSrc(
+      doc,
+      [
+        ".job-details-jobs-unified-top-card__company-logo img",
+        ".topcard__org-name-link img",
+        ".b-vacancy-header img",
+        ".company-logo img",
+        ".company_logo img",
+        ".vacancy-header img",
+      ],
+      rawURL,
+    );
   const locations = Array.isArray(job?.jobLocation)
     ? job.jobLocation
     : [job?.jobLocation];
@@ -632,15 +667,17 @@ function parseBasePage(doc: Document, rawURL: string): Snapshot {
           ? job.hiringOrganization.logo.url
           : "";
     vacancy.companyLogo =
-      (structuredLogo && /^https?:\/\//i.test(structuredLogo)
-        ? structuredLogo.trim()
-        : "") ||
-      imageSrc(doc, [
-        '[data-qa="vacancy-company-logo"] img',
-        ".vacancy-company-logo img",
-        'a[data-qa="vacancy-company-name"] img',
-        ".bloko-avatar img",
-      ]);
+      normalizeLogoURL(structuredLogo, rawURL) ||
+      imageSrc(
+        doc,
+        [
+          '[data-qa="vacancy-company-logo"] img',
+          ".vacancy-company-logo img",
+          'a[data-qa="vacancy-company-name"] img',
+          ".bloko-avatar img",
+        ],
+        rawURL,
+      );
     vacancy.location =
       text(doc, [
         '[data-qa="vacancy-view-raw-address"]',

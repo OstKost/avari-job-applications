@@ -139,18 +139,29 @@ func (s *Store) Observe(user string, o Observation) (*Proposal, error) {
 			return nil
 		}
 		appID := a.ID
-		var lastRaw string
-		e = tx.QueryRow("SELECT payload FROM documents WHERE user_id=? AND kind='observation' AND json_extract(payload,'$.applicationId')=? AND (json_extract(payload,'$.status')='favorite')=? ORDER BY created_at DESC,id DESC LIMIT 1", user, appID, o.Status == "favorite").Scan(&lastRaw)
-		if e == nil {
-			var last Observation
-			if e = decode(lastRaw, &last); e != nil {
+		if o.Status != "favorite" {
+			var lastRaw string
+			e = tx.QueryRow("SELECT payload FROM documents WHERE user_id=? AND kind='observation' AND json_extract(payload,'$.applicationId')=? AND (json_extract(payload,'$.status')='favorite')=? ORDER BY created_at DESC,id DESC LIMIT 1", user, appID, false).Scan(&lastRaw)
+			if e == nil {
+				var last Observation
+				if e = decode(lastRaw, &last); e != nil {
+					return e
+				}
+				if last.Status == o.Status {
+					return nil
+				}
+			} else if e != sql.ErrNoRows {
 				return e
 			}
-			if last.Status == o.Status {
+		}
+		proposals, e := list[Proposal](tx, user, "proposal")
+		if e != nil {
+			return e
+		}
+		for _, p := range proposals {
+			if p.Status == "pending" && p.ApplicationID == appID && p.DetectedStatus == o.Status {
 				return nil
 			}
-		} else if e != sql.ErrNoRows {
-			return e
 		}
 		o.ID = ID()
 		o.ApplicationID = appID
@@ -158,7 +169,7 @@ func (s *Store) Observe(user string, o Observation) (*Proposal, error) {
 		if e = put(tx, user, "observation", o.ID, o); e != nil {
 			return e
 		}
-		if (o.Status == "favorite" && a.Favorite) || a.ExternalStatus == o.Status {
+		if (o.Status == "favorite" && a.Favorite) || (o.Status != "favorite" && a.ExternalStatus == o.Status) {
 			return nil
 		}
 		p := Proposal{ID: ID(), ApplicationID: appID, ObservationID: o.ID, Status: "pending", DetectedStatus: o.Status, URL: o.URL, Current: a, Changes: recommend(a, o.Status), CreatedAt: now(), Source: "extension"}

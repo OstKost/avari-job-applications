@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -206,3 +207,32 @@ func TestHTTPPasswordChangeAndRecovery(t *testing.T) {
 		t.Fatal("failed to login with approved reset password")
 	}
 }
+
+func TestProductionContentSecurityPolicyImageDirective(t *testing.T) {
+	_, _, server := setup(t)
+	res, err := server.Client().Get(server.URL + "/api/v1/me")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+
+	csp := res.Header.Get("Content-Security-Policy")
+	if csp == "" {
+		t.Fatal("Content-Security-Policy header is missing")
+	}
+
+	expectedDirectives := []string{
+		"default-src 'self'",
+		"script-src 'self' https://www.googletagmanager.com",
+		"style-src 'self' 'unsafe-inline'",
+		"img-src 'self' data: https: https://www.gravatar.com",
+		"connect-src 'self' https://www.google-analytics.com https://region1.google-analytics.com",
+		"frame-ancestors 'none'",
+	}
+	for _, directive := range expectedDirectives {
+		if !strings.Contains(csp, directive) {
+			t.Fatalf("Content-Security-Policy %q missing expected directive %q", csp, directive)
+		}
+	}
+}
+

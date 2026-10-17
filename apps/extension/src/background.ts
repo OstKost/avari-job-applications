@@ -163,6 +163,28 @@ async function processObservation(snapshot: Snapshot) {
   if (!c.token || !snapshot.supported) return;
   try {
     const apps = (await request("/applications")) as Application[];
+    if (snapshot.kind === "vacancy" && snapshot.vacancy?.companyLogo) {
+      const vIdent = jobIdentity(snapshot.vacancy.url);
+      if (vIdent) {
+        const existingApp = apps.find(
+          (a) => jobIdentity(a.url)?.url === vIdent.url,
+        );
+        if (existingApp && !existingApp.companyLogo) {
+          try {
+            await request(`/applications/${existingApp.id}`, "PUT", {
+              ...existingApp,
+              companyLogo: snapshot.vacancy.companyLogo,
+            });
+            existingApp.companyLogo = snapshot.vacancy.companyLogo;
+          } catch (e: any) {
+            // Ignore 409 conflict or other errors gracefully so revisit is not interrupted
+            if (e?.status !== 409) {
+              console.warn("Failed to enrich application logo:", e);
+            }
+          }
+        }
+      }
+    }
     const known = new Set(
       apps.map((a) => jobIdentity(a.url)?.url).filter(Boolean),
     );
