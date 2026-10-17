@@ -165,7 +165,7 @@ it("reads a content script when Chrome omits tab URLs without tabs permission", 
   });
 });
 
-it("enriches existing application companyLogo on revisit without overwriting manual fields", async () => {
+it("enriches existing application companyLogo on revisit without overwriting manual fields and safely ignores 409 conflict", async () => {
   const fetchMock = vi.fn();
   vi.stubGlobal("fetch", fetchMock);
 
@@ -176,6 +176,8 @@ it("enriches existing application companyLogo on revisit without overwriting man
     position: "Senior Go Developer",
     company: "Acme Corp",
     companyLogo: "",
+    notes: "Custom user note",
+    salary: { min: 300000, currency: "RUB" },
   };
 
   // Mock chrome storage with server & token
@@ -187,6 +189,7 @@ it("enriches existing application companyLogo on revisit without overwriting man
     },
   );
 
+  let putCallCount = 0;
   fetchMock.mockImplementation(async (url: string, options: any) => {
     if (url.endsWith("/api/v1/applications") && (options?.method === "GET" || !options?.method)) {
       return {
@@ -199,6 +202,7 @@ it("enriches existing application companyLogo on revisit without overwriting man
       url.endsWith("/api/v1/applications/app-123") &&
       options?.method === "PUT"
     ) {
+      putCallCount++;
       const body = JSON.parse(options.body);
       return {
         ok: true,
@@ -226,8 +230,8 @@ it("enriches existing application companyLogo on revisit without overwriting man
     vacancy: {
       url: "https://hh.ru/vacancy/999",
       hhId: "999",
-      company: "Acme Corp",
-      position: "Senior Go Developer",
+      company: "Acme Corp (Updated in DOM)",
+      position: "Junior Go Developer (Different in DOM)",
       companyLogo: "https://hh.ru/employer-logo/123.png",
     },
     observations: [],
@@ -244,7 +248,7 @@ it("enriches existing application companyLogo on revisit without overwriting man
 
   expect(response.ok).toBe(true);
 
-  // Verify PUT /applications/app-123 was called with enriched companyLogo
+  // Verify PUT /applications/app-123 was called with enriched companyLogo while preserving existing user fields
   const putCall = fetchMock.mock.calls.find(
     ([url, opts]) =>
       url === "https://avari.example.com/api/v1/applications/app-123" &&
@@ -253,10 +257,53 @@ it("enriches existing application companyLogo on revisit without overwriting man
   expect(putCall).toBeDefined();
   const putBody = JSON.parse(putCall![1].body);
   expect(putBody.companyLogo).toBe("https://hh.ru/employer-logo/123.png");
-  expect(putBody.position).toBe("Senior Go Developer");
+  expect(putBody.position).toBe("Senior Go Developer"); // NOT overwritten by DOM
+  expect(putBody.company).toBe("Acme Corp"); // NOT overwritten by DOM
+  expect(putBody.notes).toBe("Custom user note"); // preserved
+  expect(putBody.version).toBe(1);
+
+  // Now test 409 conflict safety: when server responds with 409, revisit finishes gracefully without blind retry
+  fetchMock.mockClear();
+  let conflictPutCalls = 0;
+  fetchMock.mockImplementation(async (url: string, options: any) => {
+    if (url.endsWith("/api/v1/applications") && (options?.method === "GET" || !options?.method)) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => [{ ...existingApp, companyLogo: "" }],
+      };
+    }
+    if (
+      url.endsWith("/api/v1/applications/app-123") &&
+      options?.method === "PUT"
+    ) {
+      conflictPutCalls++;
+      return {
+        ok: false,
+        status: 409,
+        json: async () => ({ error: "Запись изменилась" }),
+      };
+    }
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ([]),
+    };
+  });
+
+  const conflictResponse = await send(
+    { type: "PAGE_SNAPSHOT", snapshot },
+    {
+      id: "avari",
+      url: "https://hh.ru/vacancy/999",
+      tab: { id: 7 } as chrome.tabs.Tab,
+    },
+  );
+  expect(conflictResponse.ok).toBe(true);
+  expect(conflictPutCalls).toBe(1); // exactly 1 attempt, no blind retry loops
 });
 
-it("strips companyLogo on compatibility retry when server rejects with invalid JSON/unknown fields", async () => {
+it("strips companyLogo on compatibility retry when server rejects with invalid JSON/unknown fields, but not for other errors", async () => {
   const fetchMock = vi.fn();
   vi.stubGlobal("fetch", fetchMock);
 
@@ -301,4 +348,30 @@ it("strips companyLogo on compatibility retry when server rejects with invalid J
 
   expect(res.ok).toBe(true);
   expect(attempts).toBe(2);
+
+  // Other 400 errors (e.g. validation error) should NOT strip logo and retry
+  fetchMock.mockClear();
+  let validationAttempts = 0;
+  fetchMock.mockImplementation(async (url: string, options: any) => {
+    validationAttempts++;
+    return {
+      ok: false,
+      status: 400,
+      json: async () => ({ error: "Некорректный адрес URL" }),
+    };
+  });
+
+  const failRes = await send({
+    type: "API",
+    path: "/applications",
+    method: "POST",
+    body: {
+      position: "Engineer",
+      company: "Corp",
+      companyLogo: "https://example.com/logo.png",
+    },
+  });
+  expect(failRes.ok).toBe(false);
+  expect(validationAttempts).toBe(1); // No retry
 });
+

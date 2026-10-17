@@ -259,15 +259,33 @@ func TestRepeatedFavoriteProposalAfterManualUnfavorite(t *testing.T) {
 		t.Fatalf("expected application favorite=true, got: %+v, err: %v", app, err)
 	}
 
-	// 4. Observing again while favorite=true returns nil (no duplicate / no re-add)
-	pWhileFav, err := s.Observe(u.ID, o)
-	if err != nil || pWhileFav != nil {
-		t.Fatalf("expected nil when already favorite, got: %v, err: %v", pWhileFav, err)
+	// Helper to count observations for this application
+	countObservations := func() int {
+		var cnt int
+		err := s.DB.QueryRow("SELECT count(*) FROM documents WHERE user_id=? AND kind='observation' AND json_extract(payload, '$.applicationId')=?", u.ID, app.ID).Scan(&cnt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return cnt
 	}
 
-	// 5. User manually unsets favorite
+	obsCountBefore := countObservations()
+
+	// 4. Observing repeatedly while favorite=true returns nil and does NOT insert redundant observations
+	for i := 0; i < 5; i++ {
+		pWhileFav, err := s.Observe(u.ID, o)
+		if err != nil || pWhileFav != nil {
+			t.Fatalf("expected nil when already favorite, got: %v, err: %v", pWhileFav, err)
+		}
+	}
+	if obsCountAfter := countObservations(); obsCountAfter != obsCountBefore {
+		t.Fatalf("observation count changed while already favorite: before=%d, after=%d", obsCountBefore, obsCountAfter)
+	}
+
+	// 5. User manually unsets favorite via SaveApplication
 	app.Favorite = false
-	if err := put(s.DB, u.ID, "application", app.ID, app); err != nil {
+	app, err = s.SaveApplication(u.ID, app, "", "manual")
+	if err != nil {
 		t.Fatal(err)
 	}
 	app, _ = s.Application(u.ID, app.ID)

@@ -163,14 +163,14 @@ func (s *Store) Observe(user string, o Observation) (*Proposal, error) {
 				return nil
 			}
 		}
+		if (o.Status == "favorite" && a.Favorite) || (o.Status != "favorite" && a.ExternalStatus == o.Status) {
+			return nil
+		}
 		o.ID = ID()
 		o.ApplicationID = appID
 		o.CreatedAt = now()
 		if e = put(tx, user, "observation", o.ID, o); e != nil {
 			return e
-		}
-		if (o.Status == "favorite" && a.Favorite) || (o.Status != "favorite" && a.ExternalStatus == o.Status) {
-			return nil
 		}
 		p := Proposal{ID: ID(), ApplicationID: appID, ObservationID: o.ID, Status: "pending", DetectedStatus: o.Status, URL: o.URL, Current: a, Changes: recommend(a, o.Status), CreatedAt: now(), Source: "extension"}
 		if _, ok := p.Changes["stage"]; ok && a.AppliedDate == "" {

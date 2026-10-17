@@ -128,6 +128,26 @@ describe("hh.ru DOM parser", () => {
       "https://hh.ru/images/logo-lazy.png",
     );
 
+    const fromPlaceholderSrcHH = parsePage(
+      doc(
+        '<h1>Backend</h1><a data-qa="vacancy-company-name">Acme</a><div data-qa="vacancy-company-logo"><img src="data:image/svg+xml;base64,PHN2Zy8+" data-src="/logos/real.png" /></div>',
+      ),
+      "https://hh.ru/vacancy/999",
+    );
+    expect(fromPlaceholderSrcHH.vacancy?.companyLogo).toBe(
+      "https://hh.ru/logos/real.png",
+    );
+
+    const fromPlaceholderSrcOther = parsePage(
+      doc(
+        '<div class="b-vacancy-header"><h1>Backend</h1><h2><a href="/companies/123">Acme</a></h2><img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" data-src="/logos/getmatch.png" /></div>',
+      ),
+      "https://getmatch.ru/vacancies/999",
+    );
+    expect(fromPlaceholderSrcOther.vacancy?.companyLogo).toBe(
+      "https://getmatch.ru/logos/getmatch.png",
+    );
+
     const fromProtocolRelative = parsePage(
       doc(
         '<h1>Backend</h1><a data-qa="vacancy-company-name">Acme</a><div data-qa="vacancy-company-logo"><img src="//cdn.example.com/logo.png" /></div>',

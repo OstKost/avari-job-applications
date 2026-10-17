@@ -122,15 +122,18 @@ function imageSrc(
       if (el.closest('[hidden], [aria-hidden="true"]')) continue;
       if (el.ownerDocument.defaultView?.getComputedStyle(el).display === "none")
         continue;
-      const raw =
-        el.getAttribute("src") ||
-        el.getAttribute("data-src") ||
-        el.getAttribute("data-lazy-src") ||
-        el.getAttribute("data-original") ||
-        (el instanceof HTMLImageElement ? el.src : "");
-      if (!raw) continue;
-      const normalized = normalizeLogoURL(raw, baseURL);
-      if (normalized) return normalized;
+      const candidates = [
+        el.getAttribute("data-src"),
+        el.getAttribute("data-lazy-src"),
+        el.getAttribute("data-original"),
+        el.getAttribute("src"),
+        el instanceof HTMLImageElement ? el.src : "",
+      ];
+      for (const candidate of candidates) {
+        if (!candidate || candidate.startsWith("data:")) continue;
+        const normalized = normalizeLogoURL(candidate, baseURL);
+        if (normalized) return normalized;
+      }
     }
   }
   return "";
