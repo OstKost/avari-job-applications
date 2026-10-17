@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"strings"
+	"time"
 )
 
 func sourceOK(source string) bool { return oneOf(source, "manual", "extension") }
@@ -106,12 +107,19 @@ func (s *Store) SaveApplication(user string, a Application, idempotency, source 
 		if e = event(tx, user, a.ID, kind, source, changes(old, a)); e != nil {
 			return e
 		}
+		if e = s.OnApplicationStateOrStageChanged(tx, user, a); e != nil {
+			return e
+		}
 		if isNew && idempotency != "" {
 			if _, e = tx.Exec("INSERT INTO requests(user_id,key,resource) VALUES(?,?,?)", user, "application:"+idempotency, a.ID); e != nil {
 				return e
 			}
 		}
-		result = a
+		events, err := related[Event](tx, user, "event", a.ID)
+		if err != nil {
+			return err
+		}
+		result = EnrichApplication(a, events, time.Now().UTC())
 		return nil
 	})
 	return result, e

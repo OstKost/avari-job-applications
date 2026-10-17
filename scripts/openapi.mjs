@@ -179,7 +179,29 @@ const schemas = {
     ["fields"],
   ),
   Success: object({ ok: { type: "boolean" } }),
+  ResumeVersion: object({
+    id: s,
+    resumeId: s,
+    versionNumber: integer,
+    filename: s,
+    format: s,
+    size: integer,
+    checksum: s,
+    createdAt: stamp,
+  }),
+  Resume: object({
+    id: s,
+    title: s,
+    createdAt: stamp,
+    updatedAt: stamp,
+    versions: array(ref("ResumeVersion")),
+  }),
+  ResumeUpdate: object({
+    title: s,
+  }),
 };
+schemas.Application.properties.lastActivityAt = stamp;
+schemas.Application.properties.stale = { type: "boolean" };
 schemas.Proposal.properties.kind = enumeration("create");
 schemas.Application.required = schemas.Application.required.filter(
   (field) => field !== "companyLogo",
@@ -555,6 +577,96 @@ downloadOperation.responses["200"].content = {
 downloadOperation.responses["200"].headers = { ETag: { schema: s } };
 downloadOperation.responses["304"] = {
   description: "Archive has not changed (If-None-Match)",
+};
+operation("/resumes", "get", "List own logical resumes with versions", array(ref("Resume")));
+operation("/resumes", "post", "Upload a new logical resume with version 1", "Resume", undefined, false, "201");
+paths["/resumes"].post.requestBody = {
+  required: true,
+  content: {
+    "multipart/form-data": {
+      schema: {
+        type: "object",
+        properties: {
+          file: { type: "string", format: "binary" },
+          title: s,
+        },
+        required: ["file"],
+      },
+    },
+  },
+};
+operation("/resumes/{id}", "put", "Rename a logical resume", "Resume", "ResumeUpdate");
+operation("/resumes/{id}", "delete", "Delete a logical resume and all its versions", "Success");
+operation("/resumes/{id}/versions", "post", "Upload a new version to an existing resume", "ResumeVersion", undefined, false, "201");
+paths["/resumes/{id}/versions"].post.requestBody = {
+  required: true,
+  content: {
+    "multipart/form-data": {
+      schema: {
+        type: "object",
+        properties: {
+          file: { type: "string", format: "binary" },
+        },
+        required: ["file"],
+      },
+    },
+  },
+};
+paths["/resumes/{id}/versions/{versionId}"] ??= {};
+paths["/resumes/{id}/versions/{versionId}"].delete = {
+  summary: "Delete a specific resume version (removes resume if last version)",
+  operationId: "delete__resumes__id__versions__versionId_",
+  security: [{ cookieAuth: [] }, { extensionToken: [] }],
+  parameters: [
+    { name: "id", in: "path", required: true, schema: s },
+    { name: "versionId", in: "path", required: true, schema: s },
+    {
+      name: "X-CSRF-Token",
+      in: "header",
+      description: "Required for website cookie sessions.",
+      schema: s,
+    },
+  ],
+  responses: {
+    "200": {
+      description: "Success",
+      content: { "application/json": { schema: ref("Success") } },
+    },
+    ...[400, 401, 403, 404, 409, 429, 500]
+      .map((code) => ({
+        [code]: {
+          description: "Error",
+          content: { "application/json": { schema: ref("Error") } },
+        },
+      }))
+      .reduce((a, b) => ({ ...a, ...b }), {}),
+  },
+};
+paths["/resumes/{id}/versions/{versionId}/download"] ??= {};
+paths["/resumes/{id}/versions/{versionId}/download"].get = {
+  summary: "Download a specific resume version file",
+  operationId: "get__resumes__id__versions__versionId__download",
+  security: [{ cookieAuth: [] }, { extensionToken: [] }],
+  parameters: [
+    { name: "id", in: "path", required: true, schema: s },
+    { name: "versionId", in: "path", required: true, schema: s },
+  ],
+  responses: {
+    "200": {
+      description: "File download",
+      content: {
+        "application/octet-stream": { schema: { type: "string", format: "binary" } },
+      },
+    },
+    ...[400, 401, 403, 404, 500]
+      .map((code) => ({
+        [code]: {
+          description: "Error",
+          content: { "application/json": { schema: ref("Error") } },
+        },
+      }))
+      .reduce((a, b) => ({ ...a, ...b }), {}),
+  },
 };
 const spec = {
   openapi: "3.1.0",

@@ -62,6 +62,26 @@ type Application struct {
 	Version        int            `json:"version"`
 	CreatedAt      string         `json:"createdAt"`
 	UpdatedAt      string         `json:"updatedAt"`
+	LastActivityAt string         `json:"lastActivityAt,omitempty"`
+	Stale          bool           `json:"stale"`
+}
+type Resume struct {
+	ID        string          `json:"id"`
+	UserID    string          `json:"-"`
+	Title     string          `json:"title"`
+	CreatedAt string          `json:"createdAt"`
+	UpdatedAt string          `json:"updatedAt"`
+	Versions  []ResumeVersion `json:"versions"`
+}
+type ResumeVersion struct {
+	ID            string `json:"id"`
+	ResumeID      string `json:"resumeId"`
+	VersionNumber int    `json:"versionNumber"`
+	Filename      string `json:"filename"`
+	Format        string `json:"format"`
+	Size          int64  `json:"size"`
+	Checksum      string `json:"checksum"`
+	CreatedAt     string `json:"createdAt"`
 }
 type Task struct {
 	ID            string `json:"id"`

@@ -146,6 +146,8 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 		limit := int64(256 * 1024)
 		if r.URL.Path == "/api/v1/journal/import/preview" || r.URL.Path == "/api/v1/journal/import" {
 			limit = 32 * 1024 * 1024
+		} else if r.Method == "POST" && (r.URL.Path == "/api/v1/resumes" || (strings.HasPrefix(r.URL.Path, "/api/v1/resumes/") && strings.HasSuffix(r.URL.Path, "/versions"))) {
+			limit = 25 * 1024 * 1024 // 20 MiB file + multipart overhead
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, limit)
 		next.ServeHTTP(w, r)

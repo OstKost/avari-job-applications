@@ -2,7 +2,10 @@ package httpapi
 
 import (
 	"github.com/OstKost/avari-job-applications/apps/server/internal/core"
+	"io"
 	"net/http"
+	"net/url"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -243,6 +246,95 @@ func (s *Server) api(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		write(w, 200, map[string]any{"today": today, "end": end, "tasks": upcoming, "overdue": overdue})
+	case p == "resumes" && method == "GET":
+		v, e := s.Store.Resumes(user)
+		respond(v, e)
+	case p == "resumes" && method == "POST":
+		file, header, err := r.FormFile("file")
+		if err != nil {
+			fail(w, core.Fail(400, "Файл резюме обязателен"))
+			return
+		}
+		defer file.Close()
+		content, err := io.ReadAll(file)
+		if err != nil {
+			fail(w, core.Fail(400, "Ошибка чтения файла резюме"))
+			return
+		}
+		title := r.FormValue("title")
+		v, e := s.Store.CreateResume(user, title, header.Filename, content)
+		if e != nil {
+			fail(w, e)
+			return
+		}
+		write(w, 201, v)
+	case strings.HasPrefix(p, "resumes/") && method == "PUT" && !strings.Contains(strings.TrimPrefix(p, "resumes/"), "/"):
+		id := strings.TrimPrefix(p, "resumes/")
+		var b struct {
+			Title string `json:"title"`
+		}
+		if e := read(r, &b); e != nil {
+			fail(w, e)
+			return
+		}
+		v, e := s.Store.RenameResume(user, id, b.Title)
+		respond(v, e)
+	case strings.HasPrefix(p, "resumes/") && method == "DELETE" && !strings.Contains(strings.TrimPrefix(p, "resumes/"), "/"):
+		id := strings.TrimPrefix(p, "resumes/")
+		e := s.Store.DeleteResume(user, id)
+		respond(map[string]bool{"ok": true}, e)
+	case strings.HasPrefix(p, "resumes/") && strings.HasSuffix(p, "/versions") && method == "POST":
+		id := strings.TrimSuffix(strings.TrimPrefix(p, "resumes/"), "/versions")
+		file, header, err := r.FormFile("file")
+		if err != nil {
+			fail(w, core.Fail(400, "Файл резюме обязателен"))
+			return
+		}
+		defer file.Close()
+		content, err := io.ReadAll(file)
+		if err != nil {
+			fail(w, core.Fail(400, "Ошибка чтения файла резюме"))
+			return
+		}
+		v, e := s.Store.AddResumeVersion(user, id, header.Filename, content)
+		if e != nil {
+			fail(w, e)
+			return
+		}
+		write(w, 201, v)
+	case strings.HasPrefix(p, "resumes/") && strings.Contains(p, "/versions/") && strings.HasSuffix(p, "/download") && method == "GET":
+		sub := strings.TrimSuffix(strings.TrimPrefix(p, "resumes/"), "/download")
+		parts := strings.Split(sub, "/versions/")
+		if len(parts) != 2 {
+			fail(w, core.Fail(404, "Маршрут не найден"))
+			return
+		}
+		resumeID, versionID := parts[0], parts[1]
+		filename, _, size, content, err := s.Store.ResumeVersionDownload(user, resumeID, versionID)
+		if err != nil {
+			fail(w, err)
+			return
+		}
+		safeFilename := filepath.Base(filename)
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Disposition", `attachment; filename="`+safeFilename+`"; filename*=UTF-8''`+url.PathEscape(safeFilename))
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Cache-Control", "private, no-cache")
+		http.ServeContent(w, r, safeFilename, time.Time{}, content.(io.ReadSeeker))
+		_ = size
+	case strings.HasPrefix(p, "resumes/") && strings.Contains(p, "/versions/") && method == "DELETE":
+		parts := strings.Split(strings.TrimPrefix(p, "resumes/"), "/versions/")
+		if len(parts) != 2 {
+			fail(w, core.Fail(404, "Маршрут не найден"))
+			return
+		}
+		resumeID, versionID := parts[0], parts[1]
+		e := s.Store.DeleteResumeVersion(user, resumeID, versionID)
+		respond(map[string]bool{"ok": true}, e)
+	case p == "reminders/reconcile" && method == "POST":
+		// E2E test and maintenance reconciliation endpoint
+		e := s.Store.ReconcileReminders(r.Context(), time.Now().UTC())
+		respond(map[string]bool{"ok": true}, e)
 	default:
 		fail(w, core.Fail(404, "Маршрут не найден"))
 	}

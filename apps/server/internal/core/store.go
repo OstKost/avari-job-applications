@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-const SchemaVersion = 7
+const SchemaVersion = 8
 
 type Store struct {
 	DB   *sql.DB
@@ -153,7 +153,13 @@ UPDATE documents SET payload = json_set(payload,
 `, `CREATE TABLE instance_metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL);
 INSERT INTO instance_metadata VALUES('transfer_source',lower(hex(randomblob(32))));
 CREATE TABLE import_origins(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,kind TEXT NOT NULL,origin TEXT NOT NULL,target_id TEXT NOT NULL,PRIMARY KEY(user_id,kind,origin));
-CREATE INDEX import_origins_target ON import_origins(user_id,kind,target_id);`}
+CREATE INDEX import_origins_target ON import_origins(user_id,kind,target_id);`, `CREATE TABLE IF NOT EXISTS resumes(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,title TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS resumes_user ON resumes(user_id,created_at);
+CREATE TABLE IF NOT EXISTS resume_versions(id TEXT PRIMARY KEY,resume_id TEXT NOT NULL REFERENCES resumes(id) ON DELETE CASCADE,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,version_number INTEGER NOT NULL,filename TEXT NOT NULL,format TEXT NOT NULL,size INTEGER NOT NULL,checksum TEXT NOT NULL,content BLOB NOT NULL,created_at TEXT NOT NULL,UNIQUE(resume_id,version_number));
+CREATE INDEX IF NOT EXISTS resume_versions_resume ON resume_versions(resume_id,version_number);
+CREATE INDEX IF NOT EXISTS resume_versions_user ON resume_versions(user_id);
+CREATE TABLE IF NOT EXISTS reminder_records(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,application_id TEXT NOT NULL,task_id TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(user_id,application_id));
+INSERT OR IGNORE INTO instance_metadata(key,value) VALUES('rollout_cutoff',datetime('now'));`}
 	for i, migration := range migrations {
 		if i+1 <= version {
 			continue
@@ -241,10 +247,30 @@ func (s *Store) transaction(fn func(*sql.Tx) error) error {
 }
 func (s *Store) Fields(user string) ([]Field, error) { return list[Field](s.DB, user, "field") }
 func (s *Store) Applications(user string) ([]Application, error) {
-	return list[Application](s.DB, user, "application")
+	apps, err := list[Application](s.DB, user, "application")
+	if err != nil {
+		return nil, err
+	}
+	events, err := list[Event](s.DB, user, "event")
+	if err != nil {
+		return nil, err
+	}
+	currentTime := time.Now().UTC()
+	for i := range apps {
+		apps[i] = EnrichApplication(apps[i], events, currentTime)
+	}
+	return apps, nil
 }
 func (s *Store) Application(user, id string) (Application, error) {
-	return get[Application](s.DB, user, "application", id)
+	app, err := get[Application](s.DB, user, "application", id)
+	if err != nil {
+		return app, err
+	}
+	events, err := s.Events(user)
+	if err != nil {
+		return app, err
+	}
+	return EnrichApplication(app, events, time.Now().UTC()), nil
 }
 func (s *Store) Tasks(user string) ([]Task, error)   { return list[Task](s.DB, user, "task") }
 func (s *Store) Notes(user string) ([]Note, error)   { return list[Note](s.DB, user, "note") }
@@ -313,6 +339,7 @@ func (s *Store) Detail(user, id string) (Detail, error) {
 		if e != nil {
 			return e
 		}
+		d.Application = EnrichApplication(d.Application, d.Events, time.Now().UTC())
 		d.Tasks, e = related[Task](tx, user, "task", id)
 		if e != nil {
 			return e

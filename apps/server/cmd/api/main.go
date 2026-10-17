@@ -78,6 +78,20 @@ func main() {
 	server := &http.Server{Addr: addr, Handler: api.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 120 * time.Second, IdleTimeout: 60 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	go func() {
+		// Startup reconciliation
+		_ = store.ReconcileReminders(ctx, time.Now().UTC())
+		ticker := time.NewTicker(1 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case t := <-ticker.C:
+				_ = store.ReconcileReminders(ctx, t.UTC())
+			}
+		}
+	}()
 	if *personal && *launcher {
 		go func() {
 			reader := bufio.NewReader(os.Stdin)
