@@ -21,6 +21,7 @@ const mockResumes: Resume[] = [
         filename: "cv_v1.pdf",
         format: "pdf",
         size: 1024 * 50,
+        checksum: "abc1",
         createdAt: "2026-10-01T10:00:00Z",
       },
       {
@@ -30,6 +31,7 @@ const mockResumes: Resume[] = [
         filename: "cv_v2.docx",
         format: "docx",
         size: 1024 * 80,
+        checksum: "abc2",
         createdAt: "2026-10-15T12:00:00Z",
       },
     ],

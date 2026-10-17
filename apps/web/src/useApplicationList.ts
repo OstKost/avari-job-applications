@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback, type SetStateAction } from "react";
 import type { Application, Field, Task, User } from "@avari/shared";
-import { stages, states, sortTasks, APIError } from "@avari/shared";
+import { stages, states, sortTasks, APIError, dateToday } from "@avari/shared";
 
 export interface StoredListPreferences {
   search?: string;
@@ -32,8 +32,42 @@ export function loadStoredListPreferences(
     const raw = localStorage.getItem(key);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === "object") {
-        return parsed;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        const validated: StoredListPreferences = {};
+        if (typeof parsed.search === "string") validated.search = parsed.search;
+        if (typeof parsed.stage === "string" && (parsed.stage in stages || parsed.stage === "")) {
+          validated.stage = parsed.stage;
+        }
+        if (typeof parsed.state === "string" && (parsed.state in states || parsed.state === "")) {
+          validated.state = parsed.state;
+        }
+        if (typeof parsed.priority === "string") validated.priority = parsed.priority;
+        if (typeof parsed.vacancyGroup === "string") validated.vacancyGroup = parsed.vacancyGroup;
+        if (typeof parsed.vacancyTag === "string") validated.vacancyTag = parsed.vacancyTag;
+        if (typeof parsed.hasTask === "boolean") validated.hasTask = parsed.hasTask;
+        if (typeof parsed.order === "string" && ["recent", "company", "task"].includes(parsed.order)) {
+          validated.order = parsed.order;
+        }
+        if (typeof parsed.selectedGroup === "string") validated.selectedGroup = parsed.selectedGroup;
+        if (typeof parsed.grouping === "string" && ["stage", "state", "group", "priority"].includes(parsed.grouping)) {
+          validated.grouping = parsed.grouping;
+        } else if (parsed.grouping === "") {
+          validated.grouping = "";
+        }
+        if (typeof parsed.cards === "boolean") validated.cards = parsed.cards;
+        if (typeof parsed.statistics === "boolean") validated.statistics = parsed.statistics;
+
+        // Finite integer page >= 0
+        if (typeof parsed.page === "number" && Number.isFinite(parsed.page) && Math.floor(parsed.page) === parsed.page && parsed.page >= 0) {
+          validated.page = parsed.page;
+        }
+
+        // Validate collapsed array of non-empty strings
+        if (Array.isArray(parsed.collapsed)) {
+          validated.collapsed = parsed.collapsed.filter((x: unknown): x is string => typeof x === "string");
+        }
+
+        return validated;
       }
     }
   } catch {
@@ -108,28 +142,28 @@ export function useApplicationList({
     [user.id, pageType],
   );
 
-  const [vacancyGroup, setVacancyGroup] = useState<string>(
+  const [vacancyGroup, setVacancyGroupRaw] = useState<string>(
     () => (typeof initialPrefs.vacancyGroup === "string" ? initialPrefs.vacancyGroup : ""),
   );
-  const [vacancyTag, setVacancyTag] = useState<string>(
+  const [vacancyTag, setVacancyTagRaw] = useState<string>(
     () => (typeof initialPrefs.vacancyTag === "string" ? initialPrefs.vacancyTag : ""),
   );
-  const [search, setSearch] = useState<string>(
+  const [search, setSearchRaw] = useState<string>(
     () => (typeof initialPrefs.search === "string" ? initialPrefs.search : ""),
   );
-  const [stage, setStage] = useState<string>(
+  const [stage, setStageRaw] = useState<string>(
     () => (typeof initialPrefs.stage === "string" ? initialPrefs.stage : ""),
   );
-  const [state, setState] = useState<string>(
+  const [state, setStateRaw] = useState<string>(
     () => (typeof initialPrefs.state === "string" ? initialPrefs.state : ""),
   );
-  const [priority, setPriority] = useState<string>(
+  const [priority, setPriorityRaw] = useState<string>(
     () => (typeof initialPrefs.priority === "string" ? initialPrefs.priority : ""),
   );
-  const [hasTask, setHasTask] = useState<boolean>(
+  const [hasTask, setHasTaskRaw] = useState<boolean>(
     () => Boolean(initialPrefs.hasTask),
   );
-  const [order, setOrder] = useState<string>(() =>
+  const [order, setOrderRaw] = useState<string>(() =>
     ["recent", "company", "task"].includes(initialPrefs.order ?? "")
       ? initialPrefs.order!
       : "recent",
@@ -137,7 +171,7 @@ export function useApplicationList({
   const [selectedGroup, setSelectedGroup] = useState<string>(
     () => (typeof initialPrefs.selectedGroup === "string" ? initialPrefs.selectedGroup : ""),
   );
-  const [grouping, setGrouping] = useState<string>(() =>
+  const [grouping, setGroupingRaw] = useState<string>(() =>
     ["stage", "state", "group", "priority"].includes(initialPrefs.grouping ?? "")
       ? initialPrefs.grouping!
       : "",
@@ -159,28 +193,56 @@ export function useApplicationList({
       : new Set(),
   );
 
-  // Is initial restore flag: filters reset page ONLY on user changes, not initial restore.
-  const isInitialRestore = useRef(true);
-
-  useEffect(() => {
-    if (isInitialRestore.current) {
-      isInitialRestore.current = false;
-      return;
-    }
+  const resetPaginationOnFilterChange = useCallback(() => {
     setPage(0);
     setCollapsed(new Set());
     setSelectedGroup("");
-  }, [
-    search,
-    stage,
-    state,
-    priority,
-    hasTask,
-    order,
-    grouping,
-    vacancyGroup,
-    vacancyTag,
-  ]);
+  }, []);
+
+  const setVacancyGroup = useCallback((value: SetStateAction<string>) => {
+    setVacancyGroupRaw(value);
+    resetPaginationOnFilterChange();
+  }, [resetPaginationOnFilterChange]);
+
+  const setVacancyTag = useCallback((value: SetStateAction<string>) => {
+    setVacancyTagRaw(value);
+    resetPaginationOnFilterChange();
+  }, [resetPaginationOnFilterChange]);
+
+  const setSearch = useCallback((value: SetStateAction<string>) => {
+    setSearchRaw(value);
+    resetPaginationOnFilterChange();
+  }, [resetPaginationOnFilterChange]);
+
+  const setStage = useCallback((value: SetStateAction<string>) => {
+    setStageRaw(value);
+    resetPaginationOnFilterChange();
+  }, [resetPaginationOnFilterChange]);
+
+  const setState = useCallback((value: SetStateAction<string>) => {
+    setStateRaw(value);
+    resetPaginationOnFilterChange();
+  }, [resetPaginationOnFilterChange]);
+
+  const setPriority = useCallback((value: SetStateAction<string>) => {
+    setPriorityRaw(value);
+    resetPaginationOnFilterChange();
+  }, [resetPaginationOnFilterChange]);
+
+  const setHasTask = useCallback((value: SetStateAction<boolean>) => {
+    setHasTaskRaw(value);
+    resetPaginationOnFilterChange();
+  }, [resetPaginationOnFilterChange]);
+
+  const setOrder = useCallback((value: SetStateAction<string>) => {
+    setOrderRaw(value);
+    resetPaginationOnFilterChange();
+  }, [resetPaginationOnFilterChange]);
+
+  const setGrouping = useCallback((value: SetStateAction<string>) => {
+    setGroupingRaw(value);
+    resetPaginationOnFilterChange();
+  }, [resetPaginationOnFilterChange]);
 
   const pf = fields.find((f) => f.role === "priority");
 
@@ -345,6 +407,8 @@ export function useApplicationList({
 
   // Persist filter & view preferences per account & page
   useEffect(() => {
+    // During initial async empty applications load, do NOT overwrite saved page with clamped zero
+    const pageToPersist = applications.length === 0 ? page : currentPage;
     saveStoredListPreferences(user.id, pageType, {
       search,
       stage,
@@ -358,12 +422,15 @@ export function useApplicationList({
       grouping,
       cards,
       statistics,
-      page: currentPage,
+      page: pageToPersist,
       collapsed: Array.from(collapsed),
     });
   }, [
     user.id,
     pageType,
+    applications.length,
+    page,
+    currentPage,
     search,
     stage,
     state,
@@ -380,50 +447,71 @@ export function useApplicationList({
     collapsed,
   ]);
 
-  // Save handling with duplicate-save lock and 409 conflict safety
+  // Save handling with synchronous ref lock and 409 conflict safety
+  const savingIdsRef = useRef<Set<string>>(new Set());
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
+  const [saveError, setSaveError] = useState<unknown>();
+  const [conflictApp, setConflictApp] = useState<{ local: Application; server: Application } | null>(null);
   const [outcomeModalApp, setOutcomeModalApp] = useState<Application | null>(null);
   const [staleModalApp, setStaleModalApp] = useState<Application | null>(null);
 
   const saveApplication = async (updated: Application) => {
-    if (savingIds.has(updated.id)) return;
-    setSavingIds((prev) => new Set(prev).add(updated.id));
+    if (savingIdsRef.current.has(updated.id)) return;
+    savingIdsRef.current.add(updated.id);
+    setSavingIds(new Set(savingIdsRef.current));
+    setSaveError(undefined);
     try {
       await api<Application>("/applications/" + updated.id, "PUT", updated);
+      setConflictApp(null);
       await refresh();
     } catch (err) {
       if (err instanceof APIError && err.status === 409) {
         // Retain server version, do not blindly overwrite, refresh queries
+        const serverApp = err.current as Application | undefined;
+        if (serverApp) {
+          setConflictApp({ local: updated, server: serverApp });
+        }
         await refresh();
       }
+      setSaveError(err);
+      throw err;
     } finally {
-      setSavingIds((prev) => {
-        const next = new Set(prev);
-        next.delete(updated.id);
-        return next;
-      });
+      savingIdsRef.current.delete(updated.id);
+      setSavingIds(new Set(savingIdsRef.current));
     }
   };
 
   const handleStageChange = async (a: Application, newStage: string) => {
-    if (a.stage === newStage || savingIds.has(a.id)) return;
-    await saveApplication({ ...a, stage: newStage });
+    if (a.stage === newStage || savingIdsRef.current.has(a.id)) return;
+    const appliedDate =
+      newStage !== "saved" && !a.appliedDate ? dateToday(user.timezone) : a.appliedDate;
+    try {
+      await saveApplication({ ...a, stage: newStage, appliedDate });
+    } catch {
+      /* error captured in saveError state */
+    }
   };
 
   const handleStateChange = async (a: Application, newState: string) => {
-    if (a.state === newState || savingIds.has(a.id)) return;
+    if (a.state === newState || savingIdsRef.current.has(a.id)) return;
     if (newState === "closed") {
       setOutcomeModalApp(a);
       return;
     }
-    await saveApplication({ ...a, state: newState });
+    // Paused or active clears incompatible outcome via API rules
+    try {
+      await saveApplication({ ...a, state: newState, outcome: "" });
+    } catch {
+      /* error captured in saveError state */
+    }
   };
 
   const handleConfirmOutcome = async (outcome: string) => {
     if (!outcomeModalApp) return;
     const app = outcomeModalApp;
-    setOutcomeModalApp(null);
+    // Do NOT dismiss modal before await; outcome modal stays open until success
     await saveApplication({ ...app, state: "closed", outcome });
+    setOutcomeModalApp(null);
   };
 
   const handleCancelOutcome = () => {
@@ -431,28 +519,34 @@ export function useApplicationList({
   };
 
   const toggleFavorite = async (a: Application) => {
-    if (savingIds.has(a.id)) return;
-    await saveApplication({ ...a, favorite: !a.favorite });
+    if (savingIdsRef.current.has(a.id)) return;
+    try {
+      await saveApplication({ ...a, favorite: !a.favorite });
+    } catch {
+      /* error captured in saveError state */
+    }
   };
 
   const handleStalePause = async () => {
     if (!staleModalApp) return;
     const app = staleModalApp;
+    await saveApplication({ ...app, state: "paused", outcome: "" });
     setStaleModalApp(null);
-    await saveApplication({ ...app, state: "paused" });
   };
 
   const handleStaleCloseOutcome = async (outcome: string) => {
     if (!staleModalApp) return;
     const app = staleModalApp;
-    setStaleModalApp(null);
     await saveApplication({ ...app, state: "closed", outcome });
+    setStaleModalApp(null);
   };
 
+  const creatingTaskRef = useRef(false);
+
   const handleStaleCreateTask = async (task: { title: string; date: string; time: string }) => {
-    if (!staleModalApp) return;
+    if (!staleModalApp || creatingTaskRef.current) return;
+    creatingTaskRef.current = true;
     const app = staleModalApp;
-    setStaleModalApp(null);
     try {
       await api("/tasks", "POST", {
         applicationId: app.id,
@@ -462,7 +556,10 @@ export function useApplicationList({
         state: "open",
       });
       await refresh();
-    } catch {}
+      setStaleModalApp(null);
+    } finally {
+      creatingTaskRef.current = false;
+    }
   };
 
   const filterCount =
@@ -538,7 +635,18 @@ export function useApplicationList({
     pf,
     next,
     savingIds,
+    saveError,
+    setSaveError,
+    conflictApp,
+    setConflictApp,
+    retryConflict: async () => {
+      if (!conflictApp) return;
+      // User explicitly wants to save current version
+      const toSave = { ...conflictApp.local, version: conflictApp.server.version };
+      await saveApplication(toSave);
+    },
     outcomeModalApp,
+    setOutcomeModalApp,
     staleModalApp,
     setStaleModalApp,
     handleStageChange,

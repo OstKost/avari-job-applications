@@ -65,6 +65,12 @@ export function ResumeManager() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>();
 
+  const [uploadError, setUploadError] = useState<unknown>();
+  const [renameError, setRenameError] = useState<unknown>();
+  const [deleteError, setDeleteError] = useState<unknown>();
+
+  const isSubmittingRef = useRef(false);
+
   const refresh = () => client.invalidateQueries({ queryKey: ["resumes"] });
 
   const handleDownload = async (resumeId: string, versionId: string, filename: string) => {
@@ -97,8 +103,10 @@ export function ResumeManager() {
   };
 
   const handleUploadSubmit = async (file: File, title: string, resumeId?: string) => {
+    if (isSubmittingRef.current || busy) return;
+    isSubmittingRef.current = true;
     setBusy(true);
-    setError(undefined);
+    setUploadError(undefined);
     try {
       const ext = "." + (file.name.split(".").pop() || "").toLowerCase();
       if (!ALLOWED_EXTENSIONS.includes(ext)) {
@@ -137,32 +145,39 @@ export function ResumeManager() {
       }
 
       setUploadModal({ isOpen: false });
-      refresh();
+      setUploadError(undefined);
+      await refresh();
     } catch (e) {
-      setError(e);
+      setUploadError(e);
     } finally {
       setBusy(false);
+      isSubmittingRef.current = false;
     }
   };
 
   const handleRenameSubmit = async (id: string, newTitle: string) => {
+    if (isSubmittingRef.current || busy) return;
+    isSubmittingRef.current = true;
     setBusy(true);
-    setError(undefined);
+    setRenameError(undefined);
     try {
-      await api(`/resumes/${id}`, "PATCH", { title: newTitle.trim() });
+      await api(`/resumes/${id}`, "PUT", { title: newTitle.trim() });
       setRenameModal({ isOpen: false });
-      refresh();
+      setRenameError(undefined);
+      await refresh();
     } catch (e) {
-      setError(e);
+      setRenameError(e);
     } finally {
       setBusy(false);
+      isSubmittingRef.current = false;
     }
   };
 
   const handleDeleteConfirm = async () => {
-    if (!deleteModal.resume) return;
+    if (!deleteModal.resume || isSubmittingRef.current || busy) return;
+    isSubmittingRef.current = true;
     setBusy(true);
-    setError(undefined);
+    setDeleteError(undefined);
     try {
       if (deleteModal.version) {
         // Delete specific version
@@ -175,11 +190,13 @@ export function ResumeManager() {
         await api(`/resumes/${deleteModal.resume.id}`, "DELETE");
       }
       setDeleteModal({ isOpen: false });
-      refresh();
+      setDeleteError(undefined);
+      await refresh();
     } catch (e) {
-      setError(e);
+      setDeleteError(e);
     } finally {
       setBusy(false);
+      isSubmittingRef.current = false;
     }
   };
 
@@ -315,7 +332,11 @@ export function ResumeManager() {
           resumeId={uploadModal.resumeId}
           resumeTitle={uploadModal.resumeTitle}
           busy={busy}
-          onClose={() => setUploadModal({ isOpen: false })}
+          error={uploadError}
+          onClose={() => {
+            setUploadModal({ isOpen: false });
+            setUploadError(undefined);
+          }}
           onSubmit={handleUploadSubmit}
         />
       )}
@@ -326,7 +347,11 @@ export function ResumeManager() {
           isOpen={renameModal.isOpen}
           resume={renameModal.resume}
           busy={busy}
-          onClose={() => setRenameModal({ isOpen: false })}
+          error={renameError}
+          onClose={() => {
+            setRenameModal({ isOpen: false });
+            setRenameError(undefined);
+          }}
           onSubmit={(newTitle) => handleRenameSubmit(renameModal.resume!.id, newTitle)}
         />
       )}
@@ -339,7 +364,10 @@ export function ResumeManager() {
               ? `Удалить версию v${deleteModal.version.versionNumber}?`
               : `Удалить резюме «${deleteModal.resume.title}»?`
           }
-          onClose={() => setDeleteModal({ isOpen: false })}
+          onClose={() => {
+            setDeleteModal({ isOpen: false });
+            setDeleteError(undefined);
+          }}
         >
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <p className="muted" style={{ margin: 0 }}>
@@ -347,6 +375,7 @@ export function ResumeManager() {
                 ? `Вы уверены, что хотите удалить файл ${deleteModal.version.filename}? Это действие необратимо.`
                 : "Будут удалены все загруженные версии этого резюме. Это действие нельзя отменить."}
             </p>
+            <ErrorBox error={deleteError} />
             <div className="actions">
               <button
                 type="button"
@@ -360,7 +389,10 @@ export function ResumeManager() {
               <button
                 type="button"
                 disabled={busy}
-                onClick={() => setDeleteModal({ isOpen: false })}
+                onClick={() => {
+                  setDeleteModal({ isOpen: false });
+                  setDeleteError(undefined);
+                }}
               >
                 Отмена
               </button>
@@ -377,6 +409,7 @@ function UploadResumeModal({
   resumeId,
   resumeTitle,
   busy,
+  error,
   onClose,
   onSubmit,
 }: {
@@ -384,6 +417,7 @@ function UploadResumeModal({
   resumeId?: string;
   resumeTitle?: string;
   busy: boolean;
+  error?: unknown;
   onClose: () => void;
   onSubmit: (file: File, title: string, resumeId?: string) => void;
 }) {
@@ -406,11 +440,14 @@ function UploadResumeModal({
           onSubmit(file, title, resumeId);
         }}
       >
+        <ErrorBox error={error} />
+
         {!resumeId && (
           <FieldInput label="Название резюме (необязательно, по умолчанию имя файла)">
             <input
               type="text"
               value={title}
+              disabled={busy}
               placeholder="Например: Go Backend Developer"
               onChange={(e) => setTitle(e.target.value)}
             />
@@ -454,12 +491,14 @@ function RenameResumeModal({
   isOpen,
   resume,
   busy,
+  error,
   onClose,
   onSubmit,
 }: {
   isOpen: boolean;
   resume: Resume;
   busy: boolean;
+  error?: unknown;
   onClose: () => void;
   onSubmit: (newTitle: string) => void;
 }) {
@@ -476,10 +515,12 @@ function RenameResumeModal({
           onSubmit(title);
         }}
       >
+        <ErrorBox error={error} />
         <FieldInput label="Новое название резюме">
           <input
             type="text"
             required
+            disabled={busy}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
           />
@@ -496,3 +537,4 @@ function RenameResumeModal({
     </Modal>
   );
 }
+

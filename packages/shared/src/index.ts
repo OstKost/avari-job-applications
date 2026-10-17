@@ -35,23 +35,8 @@ export type HistoryEvent = components["schemas"]["HistoryEvent"];
 export type Proposal = components["schemas"]["Proposal"];
 export type Detail = components["schemas"]["Detail"];
 
-export interface ResumeVersion {
-  id: string;
-  resumeId: string;
-  versionNumber: number;
-  filename: string;
-  format: string;
-  size: number;
-  createdAt: string;
-}
-
-export interface Resume {
-  id: string;
-  title: string;
-  createdAt: string;
-  updatedAt: string;
-  versions: ResumeVersion[];
-}
+export type ResumeVersion = components["schemas"]["ResumeVersion"];
+export type Resume = components["schemas"]["Resume"];
 
 export const stages: Record<string, string> = {
   saved: "Сохранена",

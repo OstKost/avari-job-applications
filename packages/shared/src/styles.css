@@ -1499,24 +1499,48 @@ code {
     flex-direction: row;
     justify-content: space-around;
     gap: 0;
+    width: 100%;
+  }
+  .sidebar .nav-section {
+    display: contents;
+  }
+  .sidebar .nav-heading {
+    display: none;
+  }
+  .sidebar .sidebar-meta-section {
+    display: none;
   }
   .sidebar nav a {
     position: relative;
     flex-direction: column;
-    gap: 4px;
-    font-size: 10px;
-    padding: 7px 12px;
-    min-height: 58px;
+    justify-content: center;
+    gap: 3px;
+    font-size: 9.5px;
+    padding: 6px 2px;
+    min-height: 56px;
+    min-width: 0;
+    flex: 1 1 0;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .sidebar nav a span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+    display: block;
   }
   .sidebar nav a svg {
-    width: 21px;
-    height: 21px;
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
   }
   .nav-count {
     position: absolute;
     top: 2px;
-    right: 8px;
-    min-width: 15px;
+    right: 4px;
+    min-width: 14px;
     margin: 0;
   }
   .main {

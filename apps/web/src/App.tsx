@@ -996,10 +996,13 @@ function Workspace({ user }: { user: User }) {
                 <Routes location={location}>
                   <Route path="/" element={<Dashboard />} />
                   <Route path="/calendar" element={<Calendar />} />
-                  <Route path="/applications" element={<Applications />} />
+                  <Route
+                    path="/applications"
+                    element={<Applications key={`apps:${user.id}`} />}
+                  />
                   <Route
                     path="/favorites"
-                    element={<Applications favoriteOnly />}
+                    element={<Applications key={`favs:${user.id}`} favoriteOnly />}
                   />
                   <Route
                     path="/applications/:id"
@@ -2384,7 +2387,14 @@ function Applications({
         <header>
           <div className="application-card-company">
             <CompanyAvatar name={a.company} logoUrl={a.companyLogo} />
-            <strong title={a.company}>{a.company}</strong>
+            <Link
+              to={"/applications/" + a.id}
+              className="company-link"
+              title={a.company}
+              style={{ color: "inherit", textDecoration: "none" }}
+            >
+              <strong title={a.company}>{a.company}</strong>
+            </Link>
           </div>
           <div className="card-header-actions" style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <button
@@ -2660,6 +2670,43 @@ function Applications({
             (listState.cards ? "card-view compact-rows" : "compact-rows")
           }
         >
+          {Boolean(listState.saveError) && (
+            <div style={{ marginBottom: 16 }}>
+              <ErrorBox error={listState.saveError} />
+            </div>
+          )}
+          {listState.conflictApp && (
+            <div
+              className="conflict"
+              style={{
+                marginBottom: 16,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 12,
+              }}
+            >
+              <div>
+                <strong>Конфликт изменений:</strong> Вакансия «
+                {listState.conflictApp.server.company}» была изменена на сервере.
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  type="button"
+                  className="primary"
+                  onClick={() => void listState.retryConflict()}
+                >
+                  Перезаписать моей версией
+                </button>
+                <button
+                  type="button"
+                  onClick={() => listState.setConflictApp(null)}
+                >
+                  Отмена
+                </button>
+              </div>
+            </div>
+          )}
           <div className="register-tabs-row">
             <div className="register-tabs" aria-label="Состояние откликов">
               {[["", "Все отклики"], ...Object.entries(states)].map(
@@ -3495,6 +3542,9 @@ function ApplicationDetail() {
   const [tagBusy, setTagBusy] = useState(false);
   const [tagError, setTagError] = useState<unknown>();
   const [detailSaving, setDetailSaving] = useState(false);
+  const detailSavingRef = useRef(false);
+  const [detailError, setDetailError] = useState<unknown>();
+  const [detailConflict, setDetailConflict] = useState<{ local: Application; server: Application } | null>(null);
   const [outcomeDetailOpen, setOutcomeDetailOpen] = useState(false);
   const [staleDetailModalOpen, setStaleDetailModalOpen] = useState(false);
 
@@ -3508,38 +3558,53 @@ function ApplicationDetail() {
   const a = d.application;
 
   const saveDetailApplication = async (updated: Application) => {
-    if (detailSaving) return;
+    if (detailSavingRef.current) return;
+    detailSavingRef.current = true;
     setDetailSaving(true);
+    setDetailError(undefined);
     try {
       await api<Application>("/applications/" + updated.id, "PUT", updated);
+      setDetailConflict(null);
       await refresh();
       await q.refetch();
     } catch (err) {
       if (err instanceof APIError && err.status === 409) {
         await refresh();
-        await q.refetch();
+        const res = await q.refetch();
+        if (res.data?.application) {
+          setDetailConflict({ local: updated, server: res.data.application });
+        }
+        setDetailError(new Error("Конфликт изменений: вакансия была обновлена на сервере."));
+      } else {
+        setDetailError(err);
       }
+      throw err;
     } finally {
+      detailSavingRef.current = false;
       setDetailSaving(false);
     }
   };
 
   const handleDetailStageChange = async (newStage: string) => {
-    if (a.stage === newStage || detailSaving) return;
-    await saveDetailApplication({ ...a, stage: newStage });
+    if (a.stage === newStage || detailSavingRef.current) return;
+    let appliedDate = a.appliedDate;
+    if (a.stage === "saved" && newStage !== "saved" && !appliedDate) {
+      appliedDate = dateToday(user.timezone);
+    }
+    await saveDetailApplication({ ...a, stage: newStage, appliedDate });
   };
 
   const handleDetailStateChange = async (newState: string) => {
-    if (a.state === newState || detailSaving) return;
+    if (a.state === newState || detailSavingRef.current) return;
     if (newState === "closed") {
       setOutcomeDetailOpen(true);
       return;
     }
-    await saveDetailApplication({ ...a, state: newState });
+    await saveDetailApplication({ ...a, state: newState, outcome: "" });
   };
 
   const handleDetailToggleFavorite = async () => {
-    if (detailSaving) return;
+    if (detailSavingRef.current) return;
     await saveDetailApplication({ ...a, favorite: !a.favorite });
   };
 
@@ -3647,6 +3712,48 @@ function ApplicationDetail() {
           </button>
         </div>
       </PageHeader>
+      {Boolean(detailError) && (
+        <div style={{ marginBottom: 16 }}>
+          <ErrorBox error={detailError} />
+        </div>
+      )}
+      {detailConflict && (
+        <div
+          className="conflict"
+          style={{
+            marginBottom: 16,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+          }}
+        >
+          <div>
+            <strong>Конфликт изменений:</strong> Вакансия была изменена на сервере.
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              type="button"
+              className="primary"
+              onClick={async () => {
+                const toSave = {
+                  ...detailConflict.local,
+                  version: detailConflict.server.version,
+                };
+                await saveDetailApplication(toSave);
+              }}
+            >
+              Перезаписать моей версией
+            </button>
+            <button
+              type="button"
+              onClick={() => setDetailConflict(null)}
+            >
+              Отмена
+            </button>
+          </div>
+        </div>
+      )}
       <div className="detail-meta-row">
         <div className="detail-badges">
           {(a.groups ?? []).map((group) => (
@@ -4058,8 +4165,8 @@ function ApplicationDetail() {
         application={a}
         onClose={() => setOutcomeDetailOpen(false)}
         onConfirm={async (outcome) => {
-          setOutcomeDetailOpen(false);
           await saveDetailApplication({ ...a, state: "closed", outcome });
+          setOutcomeDetailOpen(false);
         }}
       />
       <StaleActionModal
@@ -4068,23 +4175,24 @@ function ApplicationDetail() {
         timezone={user.timezone}
         onClose={() => setStaleDetailModalOpen(false)}
         onPause={async () => {
-          await saveDetailApplication({ ...a, state: "paused" });
+          await saveDetailApplication({ ...a, state: "paused", outcome: "" });
+          setStaleDetailModalOpen(false);
         }}
         onCloseOutcome={async (outcome) => {
           await saveDetailApplication({ ...a, state: "closed", outcome });
+          setStaleDetailModalOpen(false);
         }}
         onCreateTask={async (task) => {
-          try {
-            await api("/tasks", "POST", {
-              applicationId: a.id,
-              title: task.title,
-              date: task.date,
-              time: task.time,
-              state: "open",
-            });
-            await refresh();
-            await q.refetch();
-          } catch {}
+          await api("/tasks", "POST", {
+            applicationId: a.id,
+            title: task.title,
+            date: task.date,
+            time: task.time,
+            state: "open",
+          });
+          await refresh();
+          await q.refetch();
+          setStaleDetailModalOpen(false);
         }}
       />
     </>

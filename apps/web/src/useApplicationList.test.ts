@@ -316,9 +316,10 @@ describe("useApplicationList hook integration", () => {
     expect(hookResult.statistics).toBe(false);
   });
 
-  it("handles duplicate saves and 409 conflict gracefully", async () => {
+  it("handles duplicate saves and 409 conflict gracefully without swallowing errors", async () => {
+    const serverApp = { ...mockApps[0], version: 2, company: "Acme Updated" };
     const apiMock = vi.fn().mockRejectedValueOnce(
-      new APIError(409, "Conflict", mockApps[0]),
+      new APIError(409, "Conflict", serverApp),
     );
     const refreshMock = vi.fn();
 
@@ -330,6 +331,22 @@ describe("useApplicationList hook integration", () => {
 
     // 409 Conflict handled by refreshing cache without blind overwrite
     expect(refreshMock).toHaveBeenCalled();
+    expect(hookResult.conflictApp).toEqual({
+      local: expect.objectContaining({ stage: "interview" }),
+      server: serverApp,
+    });
+    expect(hookResult.saveError).toBeDefined();
+
+    // Now test explicit retryConflict
+    apiMock.mockResolvedValueOnce({ ...mockApps[0], version: 3, stage: "interview" });
+    await act(async () => {
+      await hookResult.retryConflict();
+    });
+    expect(apiMock).toHaveBeenCalledWith(
+      "/applications/" + mockApps[0].id,
+      "PUT",
+      expect.objectContaining({ version: 2, stage: "interview" }),
+    );
   });
 
   it("prompts outcome modal when changing state to closed", async () => {
@@ -365,18 +382,56 @@ describe("useApplicationList hook integration", () => {
     );
   });
 
-  it("toggles favorite successfully", async () => {
-    const apiMock = vi.fn().mockResolvedValue({});
+  it("retains outcomeModalApp when confirm fails so user can retry", async () => {
+    const apiMock = vi.fn().mockRejectedValueOnce(new Error("Network failed"));
     renderHook({ api: apiMock });
 
+    act(() => {
+      void hookResult.handleStateChange(mockApps[0], "closed");
+    });
+    expect(hookResult.outcomeModalApp?.id).toBe(mockApps[0].id);
+
     await act(async () => {
-      await hookResult.toggleFavorite(mockApps[1]); // mockApps[1].favorite is false
+      try {
+        await hookResult.handleConfirmOutcome("rejected");
+      } catch {}
+    });
+
+    // Retained modal!
+    expect(hookResult.outcomeModalApp?.id).toBe(mockApps[0].id);
+    expect(hookResult.saveError).toBeDefined();
+  });
+
+  it("populates appliedDate in user timezone when transitioning from saved to later stage", async () => {
+    const apiMock = vi.fn().mockResolvedValue({});
+    renderHook({ api: apiMock, user: { ...mockUser, timezone: "Europe/Moscow" } });
+
+    // mockApps[0].stage is "saved", appliedDate is ""
+    await act(async () => {
+      await hookResult.handleStageChange(mockApps[0], "applied");
     });
 
     expect(apiMock).toHaveBeenCalledWith(
-      "/applications/" + mockApps[1].id,
+      "/applications/" + mockApps[0].id,
       "PUT",
-      expect.objectContaining({ favorite: true }),
+      expect.objectContaining({
+        stage: "applied",
+        appliedDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+      }),
     );
+  });
+
+  it("does not overwrite saved page with 0 during initial async load with empty applications", () => {
+    saveStoredListPreferences("user-1", "applications", {
+      page: 2,
+      search: "",
+    });
+
+    // Initial render with empty applications array (simulating initial async fetch)
+    renderHook({ applications: [] });
+
+    // The saved preferences in localStorage should STILL have page 2, not 0!
+    const prefs = loadStoredListPreferences("user-1", "applications");
+    expect(prefs.page).toBe(2);
   });
 });
