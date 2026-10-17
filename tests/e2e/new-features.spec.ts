@@ -1,16 +1,26 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Page, type BrowserContext } from "@playwright/test";
 
 const dedicatedUser = {
   email: "features@example.com",
   password: "browser-test-password",
 };
 
+let dedicatedCookies: Awaited<ReturnType<BrowserContext["cookies"]>> | undefined;
 const loginDedicated = async (page: Page) => {
+  // These scenarios test features, not repeated authentication. Reuse the real
+  // UI-created session so the expanded suite respects the production login limit.
+  if (dedicatedCookies) {
+    await page.context().addCookies(dedicatedCookies);
+    await page.goto("/");
+    await expect(page.getByRole("heading", { name: "Главная", exact: true })).toBeVisible();
+    return;
+  }
   await page.goto("/");
   await page.getByLabel("Email", { exact: true }).fill(dedicatedUser.email);
   await page.getByLabel("Пароль", { exact: true }).fill(dedicatedUser.password);
   await page.getByRole("button", { name: "Войти", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Главная", exact: true })).toBeVisible();
+  dedicatedCookies = await page.context().cookies();
 };
 
 const getCSRFToken = async (page: Page): Promise<string> => {

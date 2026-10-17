@@ -546,16 +546,9 @@ export function BadgeDropdown({
     if (!open) return;
     updateCoords();
 
-    // After portal mounts and coords apply, update once more for exact dimensions & focus
+    // Measure again after the positioned portal has mounted.
     const frameId = requestAnimationFrame(() => {
       updateCoords();
-      const buttons = menuRef.current?.querySelectorAll<HTMLButtonElement>(
-        '[role="menuitemradio"]',
-      );
-      const selected = Array.from(buttons ?? []).find(
-        (b) => b.dataset.value === value,
-      );
-      (selected ?? buttons?.[0])?.focus();
     });
 
     const onPointerDown = (e: PointerEvent) => {
@@ -581,6 +574,20 @@ export function BadgeDropdown({
       window.removeEventListener("resize", onScrollOrResize);
     };
   }, [open, value]);
+
+  // Positioning first renders without a portal. Focus only after that portal
+  // actually commits, rather than racing its mount in an animation frame.
+  const positioned = coords !== null;
+  useEffect(() => {
+    if (!open || disabled || !positioned) return;
+    const buttons = menuRef.current?.querySelectorAll<HTMLButtonElement>(
+      '[role="menuitemradio"]',
+    );
+    const selected = Array.from(buttons ?? []).find(
+      (button) => button.dataset.value === value,
+    );
+    (selected ?? buttons?.[0])?.focus();
+  }, [open, disabled, positioned, value]);
 
   return (
     <>
