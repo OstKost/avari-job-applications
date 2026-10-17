@@ -2691,20 +2691,22 @@ function Applications({
                 {listState.conflictApp.server.company}» была изменена на сервере.
               </div>
               <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  type="button"
-                  className="primary"
-                  onClick={() => {
-                    void listState.retryConflict().catch(() => {});
-                  }}
-                >
-                  Повторить изменение
-                </button>
+                {listState.conflictApp.patch && (
+                  <button
+                    type="button"
+                    className="primary"
+                    onClick={() => {
+                      void listState.retryConflict().catch(() => {});
+                    }}
+                  >
+                    Повторить изменение
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => listState.setConflictApp(null)}
                 >
-                  Отмена
+                  {listState.conflictApp.patch ? "Отмена" : "Закрыть"}
                 </button>
               </div>
             </div>
@@ -3661,11 +3663,12 @@ function ApplicationDetail() {
     setTagBusy(true);
     setTagError(undefined);
     try {
-      await api<Application>("/applications/" + a.id, "PUT", { ...a, tags });
+      await saveDetailApplication(
+        { ...a, tags },
+        { type: "tags", tags },
+      );
       setNewTag("");
       setTagDropdownOpen(false);
-      await refresh();
-      await q.refetch();
     } catch (error) {
       setTagError(error);
     } finally {
@@ -3781,59 +3784,61 @@ function ApplicationDetail() {
             <strong>Конфликт изменений:</strong> Вакансия была изменена на сервере.
           </div>
           <div style={{ display: "flex", gap: 8 }}>
-            <button
-              type="button"
-              className="primary"
-              onClick={async () => {
-                const { server: serverApp, patch } = detailConflict;
-                let patchFields: Partial<Application> = {};
+            {detailConflict.patch && (
+              <button
+                type="button"
+                className="primary"
+                onClick={async () => {
+                  const { server: serverApp, patch } = detailConflict;
+                  if (!patch) return;
+                  let patchFields: Partial<Application> = {};
 
-                if (patch?.type === "stage" && patch.stage !== undefined) {
-                  const appliedDate =
-                    (serverApp.stage === "saved" || !serverApp.appliedDate) && patch.stage !== "saved"
-                      ? (serverApp.appliedDate || dateToday(user.timezone))
-                      : serverApp.appliedDate;
-                  patchFields = {
-                    stage: patch.stage,
-                    appliedDate,
-                  };
-                } else if (patch?.type === "state" && patch.state !== undefined) {
-                  patchFields = {
-                    state: patch.state,
-                    outcome: patch.outcome ?? (patch.state === "closed" ? detailConflict.local.outcome : ""),
-                  };
-                } else if (patch?.type === "favorite" && patch.favorite !== undefined) {
-                  patchFields = {
-                    favorite: patch.favorite,
-                  };
-                } else {
-                  patchFields = {
-                    stage: detailConflict.local.stage,
-                    state: detailConflict.local.state,
-                    outcome: detailConflict.local.outcome,
-                    favorite: detailConflict.local.favorite,
-                  };
-                }
+                  if (patch.type === "stage" && patch.stage !== undefined) {
+                    const appliedDate =
+                      (serverApp.stage === "saved" || !serverApp.appliedDate) && patch.stage !== "saved"
+                        ? (serverApp.appliedDate || dateToday(user.timezone))
+                        : serverApp.appliedDate;
+                    patchFields = {
+                      stage: patch.stage,
+                      appliedDate,
+                    };
+                  } else if (patch.type === "state" && patch.state !== undefined) {
+                    patchFields = {
+                      state: patch.state,
+                      outcome: patch.outcome ?? (patch.state === "closed" ? detailConflict.local.outcome : ""),
+                    };
+                  } else if (patch.type === "favorite" && patch.favorite !== undefined) {
+                    patchFields = {
+                      favorite: patch.favorite,
+                    };
+                  } else if (patch.type === "tags" && patch.tags !== undefined) {
+                    patchFields = {
+                      tags: patch.tags,
+                    };
+                  } else {
+                    return;
+                  }
 
-                const toSave: Application = {
-                  ...serverApp,
-                  ...patchFields,
-                  version: serverApp.version,
-                };
-                try {
-                  await saveDetailApplication(toSave, patch);
-                } catch {
-                  /* handled in saveDetailApplication */
-                }
-              }}
-            >
-              Повторить изменение
-            </button>
+                  const toSave: Application = {
+                    ...serverApp,
+                    ...patchFields,
+                    version: serverApp.version,
+                  };
+                  try {
+                    await saveDetailApplication(toSave, patch);
+                  } catch {
+                    /* handled in saveDetailApplication */
+                  }
+                }}
+              >
+                Повторить изменение
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setDetailConflict(null)}
             >
-              Отмена
+              {detailConflict.patch ? "Отмена" : "Закрыть"}
             </button>
           </div>
         </div>

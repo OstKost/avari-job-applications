@@ -684,11 +684,11 @@ export function useApplicationList({
     conflictApp,
     setConflictApp,
     retryConflict: async () => {
-      if (!conflictApp) return;
+      if (!conflictApp || !conflictApp.patch) return;
       const { server: serverApp, patch } = conflictApp;
       let patchFields: Partial<Application> = {};
 
-      if (patch?.type === "stage" && patch.stage !== undefined) {
+      if (patch.type === "stage" && patch.stage !== undefined) {
         // Sparse stage update: preserve concurrent server changes to favorite, state, outcome, contact, salary, etc.
         // appliedDate auto-fill is derived: preserve latest nonempty server appliedDate; fill only if current still empty
         const appliedDate =
@@ -699,25 +699,20 @@ export function useApplicationList({
           stage: patch.stage,
           appliedDate,
         };
-      } else if (patch?.type === "state" && patch.state !== undefined) {
+      } else if (patch.type === "state" && patch.state !== undefined) {
         // Sparse state update: preserve concurrent company, contact, salary, favorite, etc.
         patchFields = {
           state: patch.state,
           outcome: patch.outcome ?? (patch.state === "closed" ? conflictApp.local.outcome : ""),
         };
-      } else if (patch?.type === "favorite" && patch.favorite !== undefined) {
+      } else if (patch.type === "favorite" && patch.favorite !== undefined) {
         // Sparse favorite update
         patchFields = {
           favorite: patch.favorite,
         };
       } else {
-        // Fallback if no explicit quick patch tracked: take minimal fields from local if known, or version
-        patchFields = {
-          stage: conflictApp.local.stage,
-          state: conflictApp.local.state,
-          outcome: conflictApp.local.outcome,
-          favorite: conflictApp.local.favorite,
-        };
+        // Untracked patch intent: do not blindly overwrite, require refresh
+        return;
       }
 
       const toSave: Application = {

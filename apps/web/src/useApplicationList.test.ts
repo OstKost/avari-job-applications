@@ -441,9 +441,17 @@ describe("useApplicationList hook integration", () => {
   });
 
   it("sparse retry preserves concurrent server recruiter, company, salary, tags, notes, favorite, state and appliedDate", async () => {
-    // Original app has empty recruiter, initial salary, tags ['react'], appliedDate '2026-10-10'
-    const originalApp = { ...mockApps[0], stage: "response", appliedDate: "2026-10-10", version: 1 };
-    // Server changes: recruiter changed to "Elena", company to "Acme Corp", salary updated, tag "typescript" added, custom field updated
+    // Original app has favorite=false, state="active", empty recruiter, initial salary, tags ['react'], appliedDate '2026-10-10'
+    const originalApp = {
+      ...mockApps[0],
+      stage: "response",
+      state: "active",
+      favorite: false,
+      outcome: "",
+      appliedDate: "2026-10-10",
+      version: 1,
+    };
+    // Server changes: favorite=true, state="paused", outcome="declined", recruiter="Elena", company="Acme Corp", salary updated, tag added
     const serverApp: Application = {
       ...originalApp,
       version: 2,
@@ -452,8 +460,9 @@ describe("useApplicationList hook integration", () => {
       salary: { min: 400000, max: 600000, currency: "USD", period: "month", tax: "net" },
       tags: ["react", "typescript"],
       custom: { "f-priority": "Средний" },
-      favorite: false,
-      state: "active",
+      favorite: true,
+      state: "paused",
+      outcome: "declined",
       appliedDate: "2026-10-12", // Server updated appliedDate concurrently
     };
 
@@ -487,7 +496,10 @@ describe("useApplicationList hook integration", () => {
         salary: { min: 400000, max: 600000, currency: "USD", period: "month", tax: "net" },
         tags: ["react", "typescript"],
         custom: { "f-priority": "Средний" },
-        appliedDate: "2026-10-12", // Kept server's appliedDate
+        favorite: true, // Preserved server's favorite=true!
+        state: "paused", // Preserved server's state="paused"!
+        outcome: "declined", // Preserved server's outcome="declined"!
+        appliedDate: "2026-10-12", // Kept server's latest appliedDate!
       }),
     );
   });
@@ -644,5 +656,29 @@ describe("useApplicationList hook integration", () => {
     // conflictApp updated to second server version
     expect(hookResult.conflictApp?.server.version).toBe(3);
     expect(hookResult.saveError).toBeDefined();
+  });
+
+  it("does not perform retry and leaves server untouched when conflictApp has no sparse patch intent", async () => {
+    const originalApp = { ...mockApps[0], version: 1 };
+    const serverApp: Application = { ...originalApp, version: 2, company: "Acme Untouched" };
+
+    const apiMock = vi.fn();
+    renderHook({ api: apiMock, applications: [originalApp] });
+
+    // Simulate an untracked/general edit conflict where patch is undefined
+    act(() => {
+      hookResult.setConflictApp({
+        local: { ...originalApp, company: "Acme Stale Local" },
+        server: serverApp,
+        patch: undefined,
+      });
+    });
+
+    await act(async () => {
+      await hookResult.retryConflict();
+    });
+
+    // api should NOT have been called with stale local overwrite!
+    expect(apiMock).not.toHaveBeenCalled();
   });
 });
