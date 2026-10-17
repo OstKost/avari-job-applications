@@ -2208,3 +2208,239 @@ code {
 :root[data-theme="light"] .tag-color-15 {
   color: #526f86;
 }
+
+/* Badge dropdown trigger and portal */
+.badge-dropdown-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 6px;
+  line-height: inherit;
+  font: inherit;
+  min-height: unset;
+  transition: opacity 0.15s ease, transform 0.1s ease;
+  vertical-align: middle;
+}
+.badge-dropdown-trigger:hover:not(:disabled) {
+  opacity: 0.85;
+  background: transparent;
+  border-color: transparent;
+}
+.badge-dropdown-trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.badge-dropdown-trigger:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.badge-dropdown-menu-portal {
+  box-sizing: border-box;
+}
+
+/* Stale application indicator */
+.stale-warning-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #f59e0b;
+  background: color-mix(in srgb, #f59e0b 12%, transparent);
+  border: 1px solid color-mix(in srgb, #f59e0b 28%, transparent);
+  border-radius: 7px;
+  padding: 0;
+  width: 28px;
+  height: 28px;
+  min-height: unset;
+  cursor: pointer;
+  transition: background-color 0.15s, transform 0.1s, border-color 0.15s;
+}
+.stale-warning-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, #f59e0b 22%, transparent);
+  border-color: color-mix(in srgb, #f59e0b 50%, transparent);
+}
+.stale-warning-btn-header {
+  width: auto;
+  min-height: 32px;
+  height: 32px;
+  padding: 4px 10px;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 8px;
+}
+
+/* Resume manager styles */
+.resume-manager-grid {
+  display: grid;
+  gap: 20px;
+}
+.resume-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.resume-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.resume-card-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+  font-size: 16px;
+}
+.resume-versions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+.resume-version-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--panel-2);
+  border-radius: 8px;
+  font-size: 13px;
+}
+.resume-version-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.resume-version-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+div.application-card {
+  cursor: pointer;
+  text-decoration: none;
+}
+div.application-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+div.application-card a:hover {
+  text-decoration: underline;
+}
+
+.detail-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.favorite-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+  padding: 4px 8px;
+  min-height: 32px;
+  color: var(--muted);
+  transition: color 0.15s, border-color 0.15s, background-color 0.15s;
+}
+.favorite-toggle-btn.is-favorite {
+  color: #e879a0;
+  border-color: color-mix(in srgb, #e879a0 40%, var(--line));
+  background: color-mix(in srgb, #e879a0 10%, transparent);
+}
+.favorite-toggle-btn:hover:not(:disabled) {
+  border-color: #e879a0;
+}
+.favorite-star-btn {
+  background: transparent;
+  border: 0;
+  padding: 2px 4px;
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--muted);
+  border-radius: 4px;
+  min-height: unset;
+  vertical-align: middle;
+}
+.favorite-star-btn.is-favorite {
+  color: #e879a0;
+}
+.favorite-star-btn:hover {
+  color: #e879a0;
+  background: transparent;
+}
+.card-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.application-card-link-title {
+  color: var(--text);
+  text-decoration: none;
+}
+.application-card-link-title:hover {
+  text-decoration: underline;
+  color: var(--accent);
+}
+.row-action-btn.favorite-action-btn {
+  color: var(--muted);
+  border-color: transparent;
+}
+.row-action-btn.favorite-action-btn.is-favorite {
+  color: #e879a0;
+}
+.row-action-btn.favorite-action-btn:hover {
+  color: #e879a0;
+  border-color: color-mix(in srgb, #e879a0 30%, transparent);
+}
+
+.application-register .application-card {
+  cursor: pointer;
+}
+.application-card-company-link {
+  color: inherit;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.application-card-company-link:hover strong {
+  text-decoration: underline;
+  color: var(--accent);
+}
+.application-card-footer-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 11px;
+}
+.application-card-footer-link:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+
+
+
+

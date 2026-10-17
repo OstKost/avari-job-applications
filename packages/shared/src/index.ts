@@ -19,7 +19,12 @@ export type Salary = components["schemas"]["Salary"];
 export type Application = Omit<
   components["schemas"]["Application"],
   "groups" | "tags"
-> & { groups?: string[]; tags?: string[] };
+> & {
+  groups?: string[];
+  tags?: string[];
+  lastActivityAt?: string;
+  stale?: boolean;
+};
 export type Task = components["schemas"]["Task"];
 export type CalendarSubscription =
   components["schemas"]["CalendarSubscription"];
@@ -29,6 +34,25 @@ export type Field = components["schemas"]["Field"];
 export type HistoryEvent = components["schemas"]["HistoryEvent"];
 export type Proposal = components["schemas"]["Proposal"];
 export type Detail = components["schemas"]["Detail"];
+
+export interface ResumeVersion {
+  id: string;
+  resumeId: string;
+  versionNumber: number;
+  filename: string;
+  format: string;
+  size: number;
+  createdAt: string;
+}
+
+export interface Resume {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  versions: ResumeVersion[];
+}
+
 export const stages: Record<string, string> = {
   saved: "Сохранена",
   applied: "Отклик",
@@ -185,6 +209,46 @@ export function dateToday(timezone?: string) {
     day: "2-digit",
   }).format(new Date());
 }
+
+/**
+ * Returns the next weekday date (YYYY-MM-DD) in user's timezone.
+ * "next weekday (account timezone, weekends only)"
+ * If today is Friday, Saturday, or Sunday, advances to next Monday.
+ * If today is Monday-Thursday, advances to tomorrow.
+ */
+export function nextWeekday(timezone?: string, fromDate = new Date()): string {
+  // Format current date in target timezone to get Y, M, D
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    weekday: "short",
+  });
+  // Calculate day-by-day
+  // Let's create a date and advance it day by day until it's Mon-Fri
+  // To avoid DST jumping bugs, advance UTC milliseconds from an aligned noon
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+  }).formatToParts(fromDate);
+  const y = Number(parts.find((p) => p.type === "year")?.value);
+  const m = Number(parts.find((p) => p.type === "month")?.value);
+  const d = Number(parts.find((p) => p.type === "day")?.value);
+  // Start from next calendar day
+  const current = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+  current.setUTCDate(current.getUTCDate() + 1);
+  while (current.getUTCDay() === 0 || current.getUTCDay() === 6) {
+    current.setUTCDate(current.getUTCDate() + 1);
+  }
+  const outY = current.getUTCFullYear();
+  const outM = String(current.getUTCMonth() + 1).padStart(2, "0");
+  const outD = String(current.getUTCDate()).padStart(2, "0");
+  return `${outY}-${outM}-${outD}`;
+}
+
 export function dateLabel(
   value: string,
   options: Intl.DateTimeFormatOptions = { day: "numeric", month: "short" },
@@ -382,4 +446,15 @@ export async function gravatarUrl(
   } catch {
     return "";
   }
+}
+
+export function isApplicationStale(a: Application): boolean {
+  if (a.state !== "active") return false;
+  if (typeof a.stale === "boolean") return a.stale;
+  const activity = a.lastActivityAt || a.appliedDate || a.savedDate || a.createdAt;
+  if (!activity) return false;
+  const timestamp = new Date(activity).getTime();
+  if (isNaN(timestamp)) return false;
+  const diffHours = (Date.now() - timestamp) / (1000 * 60 * 60);
+  return diffHours >= 240;
 }

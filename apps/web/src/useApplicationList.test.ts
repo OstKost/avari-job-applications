@@ -1,0 +1,382 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { act, createElement } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import {
+  useApplicationList,
+  loadStoredListPreferences,
+  saveStoredListPreferences,
+  getListStorageKey,
+} from "./useApplicationList";
+import type { Application, Field, Task, User } from "@avari/shared";
+import { isApplicationStale, nextWeekday, APIError } from "@avari/shared";
+
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+const mockUser: User = {
+  id: "user-123",
+  email: "test@example.com",
+  status: "active",
+  timezone: "Europe/Moscow",
+  createdAt: "2026-10-01T00:00:00Z",
+};
+
+const mockFields: Field[] = [
+  {
+    id: "f-priority",
+    name: "Приоритет",
+    role: "priority",
+    type: "select",
+    options: ["Высокий", "Средний", "Низкий"],
+  },
+];
+
+const mockApps: Application[] = [
+  {
+    id: "app-1",
+    version: 1,
+    company: "Acme",
+    position: "Frontend Lead",
+    url: "https://hh.ru/vacancy/123",
+    hhId: "123",
+    savedDate: "2026-10-10",
+    appliedDate: "2026-10-10",
+    stage: "response",
+    state: "active",
+    salary: { min: 300000, max: 450000, currency: "RUB", period: "month", tax: "net" },
+    location: "Москва",
+    workFormat: "remote",
+    recruiter: "",
+    favorite: true,
+    groups: ["IT"],
+    tags: ["react"],
+    custom: { "f-priority": "Высокий" },
+    externalStatus: "",
+    outcome: "",
+    createdAt: "2026-10-10T10:00:00Z",
+    updatedAt: "2026-10-10T10:00:00Z",
+    lastActivityAt: "2026-10-10T10:00:00Z",
+    stale: false,
+  },
+  {
+    id: "app-2",
+    version: 1,
+    company: "Beta Tech",
+    position: "Senior Engineer",
+    url: "",
+    hhId: "",
+    savedDate: "2026-10-01",
+    appliedDate: "",
+    stage: "interview",
+    state: "active",
+    salary: { min: null, max: null, currency: "RUB", period: "month", tax: "net" },
+    location: "Санкт-Петербург",
+    workFormat: "hybrid",
+    recruiter: "",
+    favorite: false,
+    groups: [],
+    tags: [],
+    custom: {},
+    externalStatus: "",
+    outcome: "",
+    createdAt: "2026-10-01T10:00:00Z",
+    updatedAt: "2026-10-01T10:00:00Z",
+    lastActivityAt: "2026-10-01T10:00:00Z",
+    stale: true,
+  },
+  {
+    id: "app-3",
+    version: 1,
+    company: "Gamma Inc",
+    position: "Fullstack Dev",
+    url: "",
+    hhId: "",
+    savedDate: "2026-10-05",
+    appliedDate: "2026-10-06",
+    stage: "final",
+    state: "closed",
+    salary: { min: null, max: null, currency: "RUB", period: "month", tax: "net" },
+    location: "",
+    workFormat: "",
+    recruiter: "",
+    favorite: true,
+    groups: [],
+    tags: [],
+    custom: {},
+    externalStatus: "",
+    outcome: "offer",
+    createdAt: "2026-10-05T10:00:00Z",
+    updatedAt: "2026-10-06T10:00:00Z",
+    lastActivityAt: "2026-10-06T10:00:00Z",
+    stale: false,
+  },
+];
+
+const mockTasks: Task[] = [
+  {
+    id: "task-1",
+    applicationId: "app-1",
+    title: "Интервью с тимлидом",
+    date: "2026-10-20",
+    time: "15:00",
+    state: "open",
+    kind: "interview",
+    version: 1,
+    createdAt: "2026-10-10T10:00:00Z",
+    updatedAt: "2026-10-10T10:00:00Z",
+  },
+];
+
+describe("storage persistence & helpers", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("stores and loads preferences isolated per account and per page", () => {
+    const keyApp = getListStorageKey("user-1", "applications");
+    const keyFav = getListStorageKey("user-1", "favorites");
+
+    saveStoredListPreferences("user-1", "applications", {
+      search: "react",
+      page: 2,
+      cards: true,
+      statistics: true,
+    });
+    saveStoredListPreferences("user-1", "favorites", {
+      search: "lead",
+      page: 0,
+      cards: false,
+      statistics: false,
+    });
+
+    const loadedApp = loadStoredListPreferences("user-1", "applications");
+    const loadedFav = loadStoredListPreferences("user-1", "favorites");
+
+    expect(loadedApp.search).toBe("react");
+    expect(loadedApp.page).toBe(2);
+    expect(loadedApp.cards).toBe(true);
+
+    expect(loadedFav.search).toBe("lead");
+    expect(loadedFav.page).toBe(0);
+    expect(loadedFav.cards).toBe(false);
+  });
+
+  it("falls back to legacy avari-table key when primary storage is missing", () => {
+    localStorage.setItem(
+      "avari-table:legacy-user",
+      JSON.stringify({ group: "stage", cards: true, statistics: false }),
+    );
+    const loaded = loadStoredListPreferences("legacy-user", "applications");
+    expect(loaded.grouping).toBe("stage");
+    expect(loaded.cards).toBe(true);
+    expect(loaded.statistics).toBe(false);
+  });
+
+  it("handles corrupted storage gracefully", () => {
+    localStorage.setItem("avari-filters:applications:bad-user", "not-a-{json}");
+    const loaded = loadStoredListPreferences("bad-user", "applications");
+    expect(loaded).toEqual({});
+  });
+});
+
+describe("isApplicationStale & nextWeekday", () => {
+  it("detects stale active applications correctly", () => {
+    // Explicit stale flag
+    expect(isApplicationStale(mockApps[1])).toBe(true);
+    expect(isApplicationStale(mockApps[0])).toBe(false);
+
+    // Closed applications are never stale
+    expect(isApplicationStale(mockApps[2])).toBe(false);
+
+    // Calculated from timestamp > 240 hours (10 days)
+    const elevenDaysAgo = new Date(Date.now() - 11 * 24 * 60 * 60 * 1000).toISOString();
+    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+
+    const staleApp: Application = {
+      ...mockApps[0],
+      stale: undefined,
+      lastActivityAt: elevenDaysAgo,
+    };
+    expect(isApplicationStale(staleApp)).toBe(true);
+
+    const freshApp: Application = {
+      ...mockApps[0],
+      stale: undefined,
+      lastActivityAt: threeDaysAgo,
+    };
+    expect(isApplicationStale(freshApp)).toBe(false);
+  });
+
+  it("calculates next weekday in account timezone", () => {
+    // Friday -> next weekday is Monday
+    const friday = new Date("2026-10-16T12:00:00Z");
+    const nwFriday = nextWeekday("UTC", friday);
+    expect(nwFriday).toBe("2026-10-19"); // Monday
+
+    // Saturday -> next weekday is Monday
+    const saturday = new Date("2026-10-17T12:00:00Z");
+    const nwSat = nextWeekday("UTC", saturday);
+    expect(nwSat).toBe("2026-10-19"); // Monday
+
+    // Monday -> next weekday is Tuesday
+    const monday = new Date("2026-10-19T12:00:00Z");
+    const nwMon = nextWeekday("UTC", monday);
+    expect(nwMon).toBe("2026-10-20"); // Tuesday
+  });
+});
+
+describe("useApplicationList hook integration", () => {
+  let root: Root;
+  let container: HTMLDivElement;
+  let hookResult: ReturnType<typeof useApplicationList>;
+
+  beforeEach(() => {
+    localStorage.clear();
+    container = document.createElement("div");
+    root = createRoot(container);
+  });
+
+  function renderHook(options: Partial<Parameters<typeof useApplicationList>[0]> = {}) {
+    function TestComponent() {
+      hookResult = useApplicationList({
+        user: mockUser,
+        applications: mockApps,
+        tasks: mockTasks,
+        fields: mockFields,
+        favoriteOnly: false,
+        api: vi.fn().mockResolvedValue({}),
+        refresh: vi.fn(),
+        ...options,
+      });
+      return createElement("div", null, "rendered");
+    }
+    act(() => {
+      root.render(createElement(TestComponent));
+    });
+  }
+
+  it("filters baseList by favoriteOnly", () => {
+    renderHook({ favoriteOnly: true });
+    expect(hookResult.baseList.length).toBe(2);
+    expect(hookResult.baseList.every((a) => a.favorite)).toBe(true);
+  });
+
+  it("restores page and collapsed on initial mount without resetting to 0", () => {
+    saveStoredListPreferences(mockUser.id, "applications", {
+      page: 0,
+      collapsed: ["stage-1"],
+      cards: true,
+      statistics: true,
+    });
+
+    renderHook();
+    expect(hookResult.cards).toBe(true);
+    expect(hookResult.collapsed.has("stage-1")).toBe(true);
+  });
+
+  it("clamps page when stored page exceeds pageCount", () => {
+    saveStoredListPreferences(mockUser.id, "applications", {
+      page: 999,
+    });
+    renderHook();
+    expect(hookResult.currentPage).toBe(0); // Only 3 items, so 1 page (index 0)
+  });
+
+  it("resets page to 0 on subsequent user filter changes", () => {
+    renderHook();
+    act(() => {
+      hookResult.setPage(1);
+    });
+    expect(hookResult.page).toBe(1);
+
+    act(() => {
+      hookResult.setSearch("Acme");
+    });
+    expect(hookResult.page).toBe(0);
+  });
+
+  it("resetFilters resets search and filters but preserves cards, statistics, and grouping", () => {
+    renderHook();
+    act(() => {
+      hookResult.setSearch("Acme");
+      hookResult.setStage("response");
+      hookResult.setGrouping("stage");
+      hookResult.setCards(true);
+      hookResult.setStatistics(false);
+    });
+
+    act(() => {
+      hookResult.resetFilters();
+    });
+
+    expect(hookResult.search).toBe("");
+    expect(hookResult.stage).toBe("");
+    // Preserved!
+    expect(hookResult.grouping).toBe("stage");
+    expect(hookResult.cards).toBe(true);
+    expect(hookResult.statistics).toBe(false);
+  });
+
+  it("handles duplicate saves and 409 conflict gracefully", async () => {
+    const apiMock = vi.fn().mockRejectedValueOnce(
+      new APIError(409, "Conflict", mockApps[0]),
+    );
+    const refreshMock = vi.fn();
+
+    renderHook({ api: apiMock, refresh: refreshMock });
+
+    await act(async () => {
+      await hookResult.handleStageChange(mockApps[0], "interview");
+    });
+
+    // 409 Conflict handled by refreshing cache without blind overwrite
+    expect(refreshMock).toHaveBeenCalled();
+  });
+
+  it("prompts outcome modal when changing state to closed", async () => {
+    const apiMock = vi.fn();
+    renderHook({ api: apiMock });
+
+    act(() => {
+      void hookResult.handleStateChange(mockApps[0], "closed");
+    });
+
+    // Did not send PUT yet because outcome is required
+    expect(apiMock).not.toHaveBeenCalled();
+    expect(hookResult.outcomeModalApp?.id).toBe(mockApps[0].id);
+
+    // Cancel is no-op
+    act(() => {
+      hookResult.handleCancelOutcome();
+    });
+    expect(hookResult.outcomeModalApp).toBeNull();
+    expect(apiMock).not.toHaveBeenCalled();
+
+    // Confirming outcome sends save
+    act(() => {
+      void hookResult.handleStateChange(mockApps[0], "closed");
+    });
+    await act(async () => {
+      await hookResult.handleConfirmOutcome("rejected");
+    });
+    expect(apiMock).toHaveBeenCalledWith(
+      "/applications/" + mockApps[0].id,
+      "PUT",
+      expect.objectContaining({ state: "closed", outcome: "rejected" }),
+    );
+  });
+
+  it("toggles favorite successfully", async () => {
+    const apiMock = vi.fn().mockResolvedValue({});
+    renderHook({ api: apiMock });
+
+    await act(async () => {
+      await hookResult.toggleFavorite(mockApps[1]); // mockApps[1].favorite is false
+    });
+
+    expect(apiMock).toHaveBeenCalledWith(
+      "/applications/" + mockApps[1].id,
+      "PUT",
+      expect.objectContaining({ favorite: true }),
+    );
+  });
+});

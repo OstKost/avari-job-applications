@@ -11,6 +11,8 @@ import {
   type FormEvent,
   type KeyboardEvent,
 } from "react";
+import { createPortal } from "react-dom";
+
 import {
   Moon,
   Sun,
@@ -37,6 +39,7 @@ import {
   fieldLabels,
   displayValue,
   dateToday,
+  nextWeekday,
   dateLabel,
   sortTasks,
   companyColorIndex,
@@ -177,6 +180,452 @@ export function Badge({
     </span>
   );
 }
+
+export function OutcomeModal({
+  isOpen,
+  application,
+  onClose,
+  onConfirm,
+}: {
+  isOpen: boolean;
+  application?: Application | null;
+  onClose: () => void;
+  onConfirm: (outcome: string) => void;
+}) {
+  const [outcome, setOutcome] = useState("");
+  if (!isOpen) return null;
+  return (
+    <Modal
+      title={
+        application
+          ? `Результат закрытия: ${application.company}`
+          : "Результат закрытия вакансии"
+      }
+      onClose={onClose}
+    >
+      <form
+        className="form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!outcome) return;
+          onConfirm(outcome);
+        }}
+      >
+        <p className="muted">
+          При переходе в статус «Закрыт» необходимо указать результат закрытия.
+        </p>
+        <FieldInput label="Результат">
+          <Select
+            value={outcome}
+            onChange={setOutcome}
+            items={outcomes}
+            empty="Выберите результат"
+          />
+        </FieldInput>
+        <div className="actions">
+          <button type="submit" className="primary" disabled={!outcome}>
+            Закрыть вакансию
+          </button>
+          <button type="button" onClick={onClose}>
+            Отмена
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+export function StaleActionModal({
+  isOpen,
+  application,
+  timezone,
+  onClose,
+  onPause,
+  onCloseOutcome,
+  onCreateTask,
+}: {
+  isOpen: boolean;
+  application: Application | null;
+  timezone?: string;
+  onClose: () => void;
+  onPause: () => void;
+  onCloseOutcome: (outcome: string) => void;
+  onCreateTask: (task: { title: string; date: string; time: string }) => void;
+}) {
+  const [tab, setTab] = useState<"task" | "close">("task");
+  const [taskTitle, setTaskTitle] = useState("Связаться по вакансии");
+  const [taskDate, setTaskDate] = useState(() => nextWeekday(timezone));
+  const [taskTime, setTaskTime] = useState("");
+  const [outcome, setOutcome] = useState("");
+
+  useEffect(() => {
+    if (isOpen) {
+      setTab("task");
+      setTaskTitle("Связаться по вакансии");
+      setTaskDate(nextWeekday(timezone));
+      setTaskTime("");
+      setOutcome("");
+    }
+  }, [isOpen, timezone]);
+
+  if (!isOpen || !application) return null;
+
+  return (
+    <Modal title={`Действие по вакансии: ${application.company}`} onClose={onClose}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <p className="muted" style={{ margin: 0 }}>
+          По этой вакансии нет активности более 10 дней (240 часов). Выберите следующее действие:
+        </p>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            type="button"
+            className={tab === "task" ? "primary" : ""}
+            onClick={() => setTab("task")}
+          >
+            Запланировать задачу
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              onPause();
+              onClose();
+            }}
+          >
+            Приостановить
+          </button>
+          <button
+            type="button"
+            className={tab === "close" ? "primary" : ""}
+            onClick={() => setTab("close")}
+          >
+            Закрыть вакансию
+          </button>
+        </div>
+
+        {tab === "task" && (
+          <form
+            className="form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!taskTitle.trim() || !taskDate) return;
+              onCreateTask({
+                title: taskTitle.trim(),
+                date: taskDate,
+                time: taskTime,
+              });
+              onClose();
+            }}
+          >
+            <FieldInput label="Название задачи">
+              <input
+                type="text"
+                required
+                value={taskTitle}
+                onChange={(e) => setTaskTitle(e.target.value)}
+              />
+            </FieldInput>
+            <div className="form-grid">
+              <FieldInput label="Дата">
+                <input
+                  type="date"
+                  required
+                  value={taskDate}
+                  onChange={(e) => setTaskDate(e.target.value)}
+                />
+              </FieldInput>
+              <FieldInput label="Время (необязательно)">
+                <input
+                  type="time"
+                  value={taskTime}
+                  onChange={(e) => setTaskTime(e.target.value)}
+                />
+              </FieldInput>
+            </div>
+            <div className="actions">
+              <button type="submit" className="primary" disabled={!taskTitle.trim() || !taskDate}>
+                Создать задачу
+              </button>
+              <button type="button" onClick={onClose}>
+                Отмена
+              </button>
+            </div>
+          </form>
+        )}
+
+        {tab === "close" && (
+          <form
+            className="form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!outcome) return;
+              onCloseOutcome(outcome);
+              onClose();
+            }}
+          >
+            <FieldInput label="Результат закрытия">
+              <Select
+                value={outcome}
+                onChange={setOutcome}
+                items={outcomes}
+                empty="Выберите результат"
+              />
+            </FieldInput>
+            <div className="actions">
+              <button type="submit" className="primary" disabled={!outcome}>
+                Подтвердить закрытие
+              </button>
+              <button type="button" onClick={onClose}>
+                Отмена
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+
+export function BadgeDropdown({
+  value,
+  kind = "stage",
+  onChange,
+  disabled = false,
+  "aria-label": ariaLabel,
+}: {
+  value: string;
+  kind?: "stage" | "state";
+  onChange: (nextValue: string) => void;
+  disabled?: boolean;
+  "aria-label"?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const menuId = useId();
+  const items = kind === "state" ? states : stages;
+  const options = Object.entries(items);
+
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(
+    null,
+  );
+
+  const updateCoords = () => {
+    if (!triggerRef.current) return;
+    const rect = triggerRef.current.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const menuHeight = kind === "stage" ? 360 : 160;
+    const top =
+      spaceBelow < menuHeight && rect.top > menuHeight
+        ? Math.max(8, rect.top - menuHeight - 4)
+        : Math.min(window.innerHeight - menuHeight - 8, rect.bottom + 4);
+    const left = Math.max(
+      8,
+      Math.min(window.innerWidth - 250, rect.left),
+    );
+    setCoords({ top, left });
+  };
+
+  const close = () => {
+    setOpen(false);
+    triggerRef.current?.focus();
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    updateCoords();
+
+    const onPointerDown = (e: PointerEvent) => {
+      const target = e.target as Node;
+      if (
+        triggerRef.current?.contains(target) ||
+        menuRef.current?.contains(target)
+      ) {
+        return;
+      }
+      setOpen(false);
+    };
+
+    const onScrollOrResize = () => updateCoords();
+    document.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("scroll", onScrollOrResize, true);
+    window.addEventListener("resize", onScrollOrResize);
+
+    const buttons = menuRef.current?.querySelectorAll<HTMLButtonElement>(
+      '[role="menuitemradio"]',
+    );
+    const selected = Array.from(buttons ?? []).find(
+      (b) => b.dataset.value === value,
+    );
+    (selected ?? buttons?.[0])?.focus();
+
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("scroll", onScrollOrResize, true);
+      window.removeEventListener("resize", onScrollOrResize);
+    };
+  }, [open, value]);
+
+  return (
+    <>
+      <button
+        type="button"
+        ref={triggerRef}
+        className="badge-dropdown-trigger"
+        disabled={disabled}
+        aria-label={ariaLabel ?? (kind === "state" ? "Состояние" : "Этап")}
+        aria-haspopup="menu"
+        aria-expanded={open && !disabled}
+        aria-controls={open ? menuId : undefined}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (!disabled) {
+            setOpen((prev) => !prev);
+          }
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!disabled) setOpen(true);
+          }
+        }}
+      >
+        <Badge value={value} kind={kind} />
+      </button>
+
+      {open &&
+        !disabled &&
+        coords &&
+        createPortal(
+          <div
+            id={menuId}
+            ref={menuRef}
+            role="menu"
+            aria-label={ariaLabel ?? (kind === "state" ? "Состояние" : "Этап")}
+            className={`status-select-menu badge-dropdown-menu-portal${kind === "stage" ? " status-workflow-menu" : ""}`}
+            style={{
+              position: "fixed",
+              top: `${coords.top}px`,
+              left: `${coords.left}px`,
+              minWidth: kind === "stage" ? 260 : 180,
+              zIndex: 99999,
+            }}
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                event.stopPropagation();
+                close();
+              }
+              const buttons = Array.from(
+                event.currentTarget.querySelectorAll<HTMLButtonElement>(
+                  '[role="menuitemradio"]',
+                ),
+              );
+              const index = buttons.indexOf(
+                document.activeElement as HTMLButtonElement,
+              );
+              let next: number | undefined;
+              if (event.key === "ArrowDown")
+                next = (index + 1) % buttons.length;
+              if (event.key === "ArrowUp")
+                next = (index - 1 + buttons.length) % buttons.length;
+              if (event.key === "Home") next = 0;
+              if (event.key === "End") next = buttons.length - 1;
+              if (next !== undefined) {
+                event.preventDefault();
+                buttons[next]?.focus();
+              }
+            }}
+          >
+            {kind === "stage" ? (
+              <div className="status-workflow-flow">
+                <div className="status-workflow-header">
+                  <span>Пайплайн этапов</span>
+                  <small>Нажмите для выбора</small>
+                </div>
+                <ol className="status-workflow-list">
+                  {options.map(([k, label], idx) => {
+                    const isCurrent = value === k;
+                    const stepNum = idx + 1;
+                    return (
+                      <li key={k} className="status-workflow-item">
+                        {idx > 0 && (
+                          <div
+                            className={`status-workflow-connector${
+                              Object.keys(stages).indexOf(value) >= idx
+                                ? " is-passed"
+                                : ""
+                            }`}
+                            aria-hidden="true"
+                          >
+                            <span className="status-workflow-line" />
+                            <ArrowRight
+                              size={14}
+                              className="status-workflow-arrow"
+                            />
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          role="menuitemradio"
+                          aria-checked={isCurrent}
+                          data-value={k}
+                          className={`status-workflow-node${isCurrent ? " is-active" : ""}`}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            onChange(k);
+                            close();
+                          }}
+                        >
+                          <div className="status-workflow-node-start">
+                            <span className="status-workflow-num">
+                              {stepNum}
+                            </span>
+                            <Badge value={k} kind="stage" />
+                          </div>
+                          {isCurrent && (
+                            <span className="status-workflow-current-pill">
+                              <Check size={14} /> Текущий
+                            </span>
+                          )}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ol>
+              </div>
+            ) : (
+              options.map(([k, label]) => (
+                <button
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={value === k}
+                  data-value={k}
+                  key={k}
+                  className="status-select-option"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onChange(k);
+                    close();
+                  }}
+                >
+                  <Badge value={k} kind="state" />
+                  {value === k && <Check size={16} />}
+                </button>
+              ))
+            )}
+          </div>,
+          document.body,
+        )}
+    </>
+  );
+}
+
 export function Modal({
   title,
   onClose,
@@ -1353,7 +1802,10 @@ export function ProposalCard({
             <span>
               {p.kind === "create"
                 ? "—"
-                : displayValue(key, p.current[key as keyof Application])}
+                : displayValue(
+                    key,
+                    (p.current as Record<string, unknown>)[key],
+                  )}
             </span>
             <ArrowRight size={15} />
             <strong>

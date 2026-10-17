@@ -70,6 +70,9 @@ import {
   ShieldCheck,
   Compass,
   RotateCcw,
+  Star,
+  ClockAlert,
+  FileText,
 } from "lucide-react";
 import {
   createAPI,
@@ -101,6 +104,7 @@ import {
   pluralApplications,
   exportApplicationsToCSV,
   downloadCSV,
+  isApplicationStale,
 } from "@avari/shared";
 import {
   ThemeButton,
@@ -108,6 +112,9 @@ import {
   ErrorBox,
   Empty,
   Badge,
+  BadgeDropdown,
+  OutcomeModal,
+  StaleActionModal,
   Modal,
   ApplicationForm,
   TaskForm,
@@ -125,6 +132,8 @@ import { PageTransition } from "./PageTransition";
 
 import { TransferPanel } from "./TransferPanel";
 import { LocalSetup, LocalAutostart } from "./LocalSetup";
+import { ResumeManager } from "./ResumeManager";
+import { useApplicationList } from "./useApplicationList";
 import type { LocalStatus } from "@avari/shared";
 
 const api = createAPI();
@@ -161,6 +170,10 @@ function PageTracking() {
       title = "Календарь — Avari.Jobs";
     } else if (pathname === "/applications") {
       title = "Отклики — Avari.Jobs";
+    } else if (pathname === "/favorites") {
+      title = "Избранные вакансии — Avari.Jobs";
+    } else if (pathname === "/resumes") {
+      title = "Резюме — Avari.Jobs";
     } else if (pathname.startsWith("/applications/")) {
       title = "Детали отклика — Avari.Jobs";
     } else if (pathname === "/proposals") {
@@ -836,12 +849,22 @@ function Workspace({ user }: { user: User }) {
                     label: "Отклики",
                     icon: BriefcaseBusiness,
                   },
+                  {
+                    path: "/favorites",
+                    label: "Избранные вакансии",
+                    icon: Star,
+                  },
                   { path: "/calendar", label: "Календарь", icon: CalendarDays },
                 ],
               },
               {
                 title: "Управление",
                 links: [
+                  {
+                    path: "/resumes",
+                    label: "Резюме",
+                    icon: FileText,
+                  },
                   {
                     path: "/proposals",
                     label: "Предложения",
@@ -975,9 +998,14 @@ function Workspace({ user }: { user: User }) {
                   <Route path="/calendar" element={<Calendar />} />
                   <Route path="/applications" element={<Applications />} />
                   <Route
+                    path="/favorites"
+                    element={<Applications favoriteOnly />}
+                  />
+                  <Route
                     path="/applications/:id"
                     element={<ApplicationDetail />}
                   />
+                  <Route path="/resumes" element={<ResumeManager />} />
                   <Route path="/proposals" element={<Proposals />} />
                   <Route path="/settings" element={<SettingsPage />} />
                   <Route
@@ -2076,46 +2104,24 @@ function SpotlightFilterDropdown({
   );
 }
 
-function Applications() {
-  const { user, data, editApplication } = useApp();
-  const [vacancyGroup, setVacancyGroup] = useState("");
-  const vacancyGroups = Array.from(
-    new Set(data.applications.flatMap((a) => a.groups ?? [])),
-  ).sort((a, b) => a.localeCompare(b, "ru"));
-  const [vacancyTag, setVacancyTag] = useState("");
-  const vacancyTags = Array.from(
-    new Set(data.applications.flatMap((a) => a.tags ?? [])),
-  ).sort((a, b) => a.localeCompare(b, "ru"));
-  const [search, setSearch] = useState("");
-  const [stage, setStage] = useState("");
-  const [state, setState] = useState("");
-  const [priority, setPriority] = useState("");
-  const [hasTask, setHasTask] = useState(false);
+function Applications({
+  favoriteOnly = false,
+}: {
+  favoriteOnly?: boolean;
+}) {
+  const { user, data, refresh, editApplication } = useApp();
+  const listState = useApplicationList({
+    user,
+    applications: data.applications,
+    tasks: data.tasks,
+    fields: data.fields,
+    favoriteOnly,
+    api,
+    refresh,
+  });
+
   const [filterModalOpen, setFilterModalOpen] = useState(false);
   const [showModalFilters, setShowModalFilters] = useState(false);
-  const preferencesKey = "avari-table:" + user.id;
-  const [preferences, setPreferences] = useState<{
-    group: string;
-    cards: boolean;
-    statistics: boolean;
-  }>(() => {
-    try {
-      const stored = JSON.parse(localStorage.getItem(preferencesKey) ?? "null");
-      return {
-        group: ["stage", "state", "group", "priority"].includes(stored?.group)
-          ? stored.group
-          : "",
-        cards: stored?.cards === true,
-        statistics: stored?.statistics !== false,
-      };
-    } catch {
-      return { group: "", cards: false, statistics: true };
-    }
-  });
-  const [selectedGroup, setSelectedGroup] = useState("");
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const [order, setOrder] = useState("recent");
-  const [page, setPage] = useState(0);
   const [isExporting, setIsExporting] = useState(false);
   const exportBtnRef = useRef<HTMLButtonElement>(null);
   const [exportFlyStyle, setExportFlyStyle] = useState<CSSProperties | null>(
@@ -2123,6 +2129,7 @@ function Applications() {
   );
   const [groupDropdownOpen, setGroupDropdownOpen] = useState(false);
   const groupDropdownRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (!groupDropdownOpen) return;
@@ -2150,27 +2157,6 @@ function Applications() {
   }, [groupDropdownOpen]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(preferencesKey, JSON.stringify(preferences));
-    } catch {
-      /* View preferences are optional. */
-    }
-  }, [preferencesKey, preferences]);
-  useEffect(() => {
-    setPage(0);
-    setCollapsed(new Set());
-    setSelectedGroup("");
-  }, [
-    search,
-    stage,
-    state,
-    priority,
-    hasTask,
-    order,
-    preferences.group,
-    vacancyGroup,
-  ]);
-  useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
         const target = e.target as HTMLElement | null;
@@ -2180,7 +2166,7 @@ function Applications() {
             target.tagName === "TEXTAREA" ||
             target.isContentEditable)
         ) {
-          // If already in input outside our modal, let standard behavior work unless wanted
+          // If already in input outside modal, let standard behavior work
         }
         e.preventDefault();
         setShowModalFilters(false);
@@ -2190,7 +2176,6 @@ function Applications() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
-  const pf = data.fields.find((f) => f.role === "priority");
 
   const groupOptions: {
     value: string;
@@ -2201,130 +2186,17 @@ function Applications() {
     { value: "stage", label: "По этапу", icon: Target },
     { value: "state", label: "По состоянию", icon: Clock3 },
     { value: "group", label: "По группам", icon: FolderKanban },
-    ...(pf
+    ...(listState.pf
       ? [{ value: "priority", label: "По приоритету", icon: Sparkles }]
       : []),
   ];
 
   const currentGroupOption =
-    groupOptions.find((opt) => opt.value === preferences.group) ??
+    groupOptions.find((opt) => opt.value === listState.grouping) ??
     groupOptions[0];
 
-  const next = (id: string) =>
-    sortTasks(
-      data.tasks.filter((t) => t.applicationId === id && t.state === "open"),
-    )[0];
-  const baseList = data.applications
-    .filter(
-      (a) =>
-        (a.company + " " + a.position)
-          .toLocaleLowerCase("ru")
-          .includes(search.toLocaleLowerCase("ru")) &&
-        (!vacancyGroup ||
-          (vacancyGroup === "__ungrouped"
-            ? !a.groups?.length
-            : a.groups?.includes(vacancyGroup))) &&
-        (!vacancyTag || a.tags?.includes(vacancyTag)) &&
-        (!stage || a.stage === stage) &&
-        (!state || a.state === state) &&
-        (!priority || (pf && a.custom[pf.id] === priority)) &&
-        (!hasTask || !!next(a.id)),
-    )
-    .sort((a, b) =>
-      order === "company"
-        ? a.company.localeCompare(b.company, "ru")
-        : order === "task"
-          ? (next(a.id)?.date ?? "9999").localeCompare(
-              next(b.id)?.date ?? "9999",
-            )
-          : b.savedDate.localeCompare(a.savedDate) ||
-            b.createdAt.localeCompare(a.createdAt),
-    );
-  const groupKey = (a: Application) =>
-    preferences.group === "group"
-      ? (a.groups?.[0] ?? "Без группы")
-      : preferences.group === "priority"
-        ? String(pf ? (a.custom[pf.id] ?? "Без приоритета") : "Без приоритета")
-        : preferences.group === "state"
-          ? a.state
-          : a.stage;
-  const groupCounts = new Map<string, number>();
-  if (preferences.group)
-    for (const application of baseList) {
-      const key = groupKey(application);
-      groupCounts.set(key, (groupCounts.get(key) ?? 0) + 1);
-    }
-  const list = selectedGroup
-    ? baseList.filter((a) => groupKey(a) === selectedGroup)
-    : baseList;
-  const pageCount = Math.max(1, Math.ceil(list.length / 20));
-  const currentPage = Math.min(page, pageCount - 1);
-  const visible = list.slice(currentPage * 20, currentPage * 20 + 20);
-  const grouped = preferences.group
-    ? [
-        ...visible.reduce((groups, a) => {
-          const key = groupKey(a);
-          groups.set(key, [...(groups.get(key) ?? []), a]);
-          return groups;
-        }, new Map<string, Application[]>()),
-      ].sort(([a], [b]) =>
-        preferences.group === "stage"
-          ? Object.keys(stages).indexOf(a) - Object.keys(stages).indexOf(b)
-          : preferences.group === "group"
-            ? a === "Без группы"
-              ? 1
-              : b === "Без группы"
-                ? -1
-                : a.localeCompare(b, "ru")
-            : a.localeCompare(b, "ru"),
-      )
-    : [["", visible] as [string, Application[]]];
-  const groupLabel = (key: string) =>
-    preferences.group === "stage"
-      ? stages[key]
-      : preferences.group === "state"
-        ? states[key]
-        : key;
-  const toggle = (key: string) =>
-    setCollapsed((previous) => {
-      const updated = new Set(previous);
-      updated.has(key) ? updated.delete(key) : updated.add(key);
-      return updated;
-    });
-  const reset = () => {
-    setVacancyGroup("");
-    setVacancyTag("");
-    setSearch("");
-    setStage("");
-    setState("");
-    setPriority("");
-    setHasTask(false);
-    setSelectedGroup("");
-  };
-  const filterCount =
-    (vacancyGroup ? 1 : 0) +
-    (vacancyTag ? 1 : 0) +
-    (stage ? 1 : 0) +
-    (priority ? 1 : 0) +
-    (hasTask ? 1 : 0) +
-    (search ? 1 : 0);
-  const activeFilters = !!(
-    vacancyGroup ||
-    vacancyTag ||
-    search ||
-    stage ||
-    state ||
-    priority ||
-    hasTask ||
-    selectedGroup
-  );
-  const active = list.filter((a) => a.state === "active").length;
-  const advanced = list.filter((a) =>
-    ["hr", "interview", "final", "offer"].includes(a.stage),
-  ).length;
-  const rate = list.length ? Math.round((advanced / list.length) * 100) : 0;
   const renderRow = (a: Application) => {
-    const task = next(a.id);
+    const task = listState.next(a.id);
     const site = a.url ? jobSite(a.url) : undefined;
     const siteLabel =
       site === "hh"
@@ -2347,12 +2219,24 @@ function Applications() {
         className="application-data-row"
         style={
           {
-            "--row-delay": `${Math.round(100 * (1 - Math.exp(-visible.findIndex((item) => item.id === a.id) / 3)))}ms`,
+            "--row-delay": `${Math.round(100 * (1 - Math.exp(-listState.visible.findIndex((item) => item.id === a.id) / 3)))}ms`,
           } as CSSProperties
         }
       >
         <td>
           <div className="company-cell company-grid">
+            <button
+              type="button"
+              className={`favorite-star-btn ${a.favorite ? "active" : ""}`}
+              aria-label={a.favorite ? "Удалить из избранного" : "Добавить в избранное"}
+              title={a.favorite ? "Удалить из избранного" : "Добавить в избранное"}
+              onClick={(e) => {
+                e.stopPropagation();
+                void listState.toggleFavorite(a);
+              }}
+            >
+              <Star size={14} fill={a.favorite ? "currentColor" : "none"} />
+            </button>
             <CompanyAvatar name={a.company} logoUrl={a.companyLogo} />
             <Link
               className="company-link"
@@ -2360,15 +2244,6 @@ function Applications() {
               to={"/applications/" + a.id}
             >
               {a.company}
-              {a.favorite && (
-                <span
-                  title="В избранном"
-                  aria-label="В избранном"
-                  style={{ color: "#e879a0", marginLeft: 6 }}
-                >
-                  ♥
-                </span>
-              )}
             </Link>
             <div className="position-sub" title={a.position}>
               {a.position}
@@ -2400,7 +2275,12 @@ function Applications() {
           </div>
         </td>
         <td>
-          <Badge value={a.stage} />
+          <BadgeDropdown
+            value={a.stage}
+            kind="stage"
+            disabled={listState.savingIds.has(a.id)}
+            onChange={(val) => listState.handleStageChange(a, val)}
+          />
         </td>
         <td className="date-cell">
           {dateLabel(a.appliedDate || a.savedDate)}
@@ -2419,10 +2299,27 @@ function Applications() {
           )}
         </td>
         <td>
-          <Badge value={a.state} kind="state" />
+          <BadgeDropdown
+            value={a.state}
+            kind="state"
+            disabled={listState.savingIds.has(a.id)}
+            onChange={(val) => listState.handleStateChange(a, val)}
+          />
         </td>
         <td>
           <div className="row-actions">
+            {isApplicationStale(a) && (
+              <RowActionHint label="Внимание: не было активности более 10 дней">
+                <button
+                  type="button"
+                  className="row-action-btn stale-warning-btn"
+                  aria-label="Внимание: не было активности более 10 дней"
+                  onClick={() => listState.setStaleModalApp(a)}
+                >
+                  <ClockAlert size={14} />
+                </button>
+              </RowActionHint>
+            )}
             <RowActionHint label="Открыть карточку отклика">
               <Link
                 className="row-action-btn row-action-detail"
@@ -2450,34 +2347,87 @@ function Applications() {
       </tr>
     );
   };
+
   const renderCard = (a: Application) => {
-    const task = next(a.id);
+    const task = listState.next(a.id);
     return (
-      <Link
+      <div
         className="application-card"
         key={a.id}
         style={
           {
-            "--row-delay": `${Math.round(100 * (1 - Math.exp(-visible.findIndex((item) => item.id === a.id) / 3)))}ms`,
+            "--row-delay": `${Math.round(100 * (1 - Math.exp(-listState.visible.findIndex((item) => item.id === a.id) / 3)))}ms`,
+            cursor: "pointer",
           } as CSSProperties
         }
-        to={"/applications/" + a.id}
+        tabIndex={0}
+        role="article"
+        onClick={(e) => {
+          const target = e.target as HTMLElement | null;
+          if (
+            target?.closest(
+              'button, a, input, select, [role="button"], [role="listbox"], [role="option"]',
+            )
+          ) {
+            return;
+          }
+          navigate("/applications/" + a.id);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            const target = e.target as HTMLElement | null;
+            if (target?.closest("button, a, input, select")) return;
+            navigate("/applications/" + a.id);
+          }
+        }}
       >
         <header>
           <div className="application-card-company">
             <CompanyAvatar name={a.company} logoUrl={a.companyLogo} />
             <strong title={a.company}>{a.company}</strong>
           </div>
-          <Badge value={a.stage} />
+          <div className="card-header-actions" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <button
+              type="button"
+              className={`favorite-star-btn ${a.favorite ? "active" : ""}`}
+              aria-label={a.favorite ? "Удалить из избранного" : "Добавить в избранное"}
+              title={a.favorite ? "Удалить из избранного" : "Добавить в избранное"}
+              onClick={(e) => {
+                e.stopPropagation();
+                void listState.toggleFavorite(a);
+              }}
+            >
+              <Star size={14} fill={a.favorite ? "currentColor" : "none"} />
+            </button>
+            {isApplicationStale(a) && (
+              <button
+                type="button"
+                className="row-action-btn stale-warning-btn"
+                aria-label="Внимание: не было активности более 10 дней"
+                title="Внимание: не было активности более 10 дней"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  listState.setStaleModalApp(a);
+                }}
+              >
+                <ClockAlert size={14} />
+              </button>
+            )}
+            <BadgeDropdown
+              value={a.stage}
+              kind="stage"
+              disabled={listState.savingIds.has(a.id)}
+              onChange={(val) => listState.handleStageChange(a, val)}
+            />
+          </div>
         </header>
-        <p className="application-card-position">
-          {a.favorite && (
-            <span title="В избранном" aria-label="В избранном">
-              ♥{" "}
-            </span>
-          )}
-          {a.position}
-        </p>
+        <Link
+          to={"/applications/" + a.id}
+          className="application-card-position-link"
+          style={{ color: "inherit", textDecoration: "none" }}
+        >
+          <p className="application-card-position">{a.position}</p>
+        </Link>
         <div className="application-card-salary">
           {salaryLabel(a) || "Зарплата не указана"}
         </div>
@@ -2514,49 +2464,59 @@ function Applications() {
           )}
         </div>
         <footer>
-          <Badge value={a.state} kind="state" />
+          <BadgeDropdown
+            value={a.state}
+            kind="state"
+            disabled={listState.savingIds.has(a.id)}
+            onChange={(val) => listState.handleStateChange(a, val)}
+          />
           <span>
             {dateLabel(a.appliedDate || a.savedDate)} ·{" "}
             {a.appliedDate ? "Отклик" : "Сохранена"}
           </span>
-          <ArrowUpRight size={15} />
+          <Link
+            to={"/applications/" + a.id}
+            className="row-action-btn row-action-detail"
+            aria-label={"Открыть: " + a.company}
+            style={{ marginLeft: 6 }}
+          >
+            <ArrowUpRight size={15} />
+          </Link>
         </footer>
-      </Link>
+      </div>
     );
   };
+
   return (
     <>
       <PageHeader
-        title="Отклики"
-        subtitle={`${data.applications.length} вакансий · Все возможности в одном месте`}
+        title={favoriteOnly ? "Избранные вакансии" : "Отклики"}
+        subtitle={
+          favoriteOnly
+            ? `${listState.baseList.length} сохранённых вакансий в избранном`
+            : `${data.applications.length} вакансий · Все возможности в одном месте`
+        }
       >
         <div className="table-view-buttons">
           <button
-            className={preferences.cards ? "active icon-button" : "icon-button"}
+            className={listState.cards ? "active icon-button" : "icon-button"}
             aria-label="Карточки откликов"
-            aria-pressed={preferences.cards}
+            aria-pressed={listState.cards}
             data-tooltip={
-              preferences.cards ? "Показать таблицу" : "Показать карточки"
+              listState.cards ? "Показать таблицу" : "Показать карточки"
             }
-            onClick={() =>
-              setPreferences({ ...preferences, cards: !preferences.cards })
-            }
+            onClick={() => listState.setCards(!listState.cards)}
           >
             <LayoutGrid size={17} />
           </button>
           <button
             className={
-              preferences.statistics ? "active icon-button" : "icon-button"
+              listState.statistics ? "active icon-button" : "icon-button"
             }
             aria-label="Статистика справа"
-            aria-pressed={preferences.statistics}
+            aria-pressed={listState.statistics}
             data-tooltip="Статистика справа"
-            onClick={() =>
-              setPreferences({
-                ...preferences,
-                statistics: !preferences.statistics,
-              })
-            }
+            onClick={() => listState.setStatistics(!listState.statistics)}
           >
             <PanelRight size={17} />
           </button>
@@ -2564,7 +2524,7 @@ function Applications() {
             ref={exportBtnRef}
             className={`icon-button ${isExporting ? "exporting" : ""}`}
             aria-label="Экспорт в CSV"
-            data-tooltip={`Экспорт в CSV (${list.length})`}
+            data-tooltip={`Экспорт в CSV (${listState.list.length})`}
             onClick={() => {
               if (isExporting) return;
               if (exportBtnRef.current) {
@@ -2580,13 +2540,13 @@ function Applications() {
                 }, 850);
               }
               const csv = exportApplicationsToCSV(
-                list,
+                listState.list,
                 data.fields,
                 data.tasks,
               );
               downloadCSV(csv, `avari-applications-${dateToday()}.csv`);
             }}
-            disabled={list.length === 0}
+            disabled={listState.list.length === 0}
           >
             <Download size={17} />
           </button>
@@ -2602,7 +2562,17 @@ function Applications() {
         )}
         <button
           className="primary water-interaction"
-          onClick={() => editApplication()}
+          onClick={() =>
+            editApplication(
+              favoriteOnly
+                ? {
+                    ...emptyApplication(),
+                    favorite: true,
+                    savedDate: dateToday(user.timezone),
+                  }
+                : undefined,
+            )
+          }
         >
           <Plus size={17} />
           Добавить
@@ -2638,7 +2608,7 @@ function Applications() {
             >
               <div className="group-dropdown-list">
                 {groupOptions.map((opt) => {
-                  const isSelected = preferences.group === opt.value;
+                  const isSelected = listState.grouping === opt.value;
                   const Icon = opt.icon;
                   return (
                     <button
@@ -2648,7 +2618,7 @@ function Applications() {
                       aria-selected={isSelected}
                       className={`group-dropdown-item ${isSelected ? "selected" : ""}`}
                       onClick={() => {
-                        setPreferences({ ...preferences, group: opt.value });
+                        listState.setGrouping(opt.value);
                         setGroupDropdownOpen(false);
                       }}
                     >
@@ -2665,32 +2635,29 @@ function Applications() {
           )}
         </div>
         <GroupChipsBar
-          selectedGroup={selectedGroup}
+          selectedGroup={listState.selectedGroup}
           onSelectGroup={(key) => {
-            setSelectedGroup(key);
-            setPage(0);
-            if (key) {
-              setCollapsed(new Set());
-            }
+            listState.setSelectedGroup(key);
+            listState.setPage(0);
           }}
-          baseCount={baseList.length}
-          groups={[...groupCounts].map(([key, count]) => ({
+          baseCount={listState.baseList.length}
+          groups={[...listState.groupCounts].map(([key, count]) => ({
             key,
             count,
-            label: groupLabel(key),
+            label: listState.groupLabel(key),
           }))}
         />
       </div>
       <div
         className={
           "applications-layout " +
-          (preferences.statistics ? "with-statistics" : "")
+          (listState.statistics ? "with-statistics" : "")
         }
       >
         <section
           className={
             "application-register panel " +
-            (preferences.cards ? "card-view compact-rows" : "compact-rows")
+            (listState.cards ? "card-view compact-rows" : "compact-rows")
           }
         >
           <div className="register-tabs-row">
@@ -2699,14 +2666,15 @@ function Applications() {
                 ([key, label]) => (
                   <button
                     key={key}
-                    className={state === key ? "active" : ""}
-                    onClick={() => setState(key)}
+                    className={listState.state === key ? "active" : ""}
+                    onClick={() => listState.setState(key)}
                   >
                     {label}
                     <span className="count-chip">
                       {
-                        data.applications.filter((a) => !key || a.state === key)
-                          .length
+                        listState.baseList.filter(
+                          (a) => !key || a.state === key,
+                        ).length
                       }
                     </span>
                   </button>
@@ -2714,15 +2682,15 @@ function Applications() {
               )}
             </div>
             <div className="register-toolbar-actions">
-              {activeFilters && (
+              {listState.activeFilters && (
                 <div className="register-filter-status">
                   <span className="register-filter-count">
-                    Найдено: <strong>{list.length}</strong>
+                    Найдено: <strong>{listState.list.length}</strong>
                   </span>
                   <button
                     type="button"
                     className="text-button register-filter-reset"
-                    onClick={reset}
+                    onClick={listState.resetFilters}
                     title="Сбросить все фильтры"
                   >
                     <X size={13} />
@@ -2733,7 +2701,8 @@ function Applications() {
               <button
                 type="button"
                 className={
-                  "register-filter-trigger" + (activeFilters ? " active" : "")
+                  "register-filter-trigger" +
+                  (listState.activeFilters ? " active" : "")
                 }
                 onClick={() => {
                   setShowModalFilters(false);
@@ -2744,10 +2713,14 @@ function Applications() {
               >
                 <Search size={15} />
                 <span className="trigger-label">
-                  {search ? `«${search}»` : "Поиск и фильтры"}
+                  {listState.search
+                    ? `«${listState.search}»`
+                    : "Поиск и фильтры"}
                 </span>
-                {filterCount > 0 && (
-                  <span className="filter-badge-chip">{filterCount}</span>
+                {listState.filterCount > 0 && (
+                  <span className="filter-badge-chip">
+                    {listState.filterCount}
+                  </span>
                 )}
                 <span className="shortcut-hint">
                   <kbd>
@@ -2782,8 +2755,8 @@ function Applications() {
                     className="spotlight-input"
                     aria-label="Поиск по компании и позиции"
                     placeholder="Поиск по компании или позиции…"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
+                    value={listState.search}
+                    onChange={(e) => listState.setSearch(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === "Tab") {
                         e.preventDefault();
@@ -2796,11 +2769,11 @@ function Applications() {
                       }
                     }}
                   />
-                  {search && (
+                  {listState.search && (
                     <button
                       type="button"
                       className="icon-button spotlight-clear"
-                      onClick={() => setSearch("")}
+                      onClick={() => listState.setSearch("")}
                       aria-label="Очистить поисковый запрос"
                       title="Очистить"
                     >
@@ -2812,7 +2785,7 @@ function Applications() {
                     className={
                       "spotlight-toggle-filters" +
                       (showModalFilters ? " active" : "") +
-                      (filterCount > 0 ? " has-filters" : "")
+                      (listState.filterCount > 0 ? " has-filters" : "")
                     }
                     onClick={() => setShowModalFilters((prev) => !prev)}
                     title={
@@ -2825,8 +2798,10 @@ function Applications() {
                   >
                     <SlidersHorizontal size={15} />
                     <span className="toggle-label">Фильтры</span>
-                    {filterCount > 0 && (
-                      <span className="filter-badge-chip">{filterCount}</span>
+                    {listState.filterCount > 0 && (
+                      <span className="filter-badge-chip">
+                        {listState.filterCount}
+                      </span>
                     )}
                     <kbd className="key-hint">Tab</kbd>
                   </button>
@@ -2848,13 +2823,13 @@ function Applications() {
                         <label>Группа вакансий</label>
                         <SpotlightFilterDropdown
                           ariaLabel="Фильтр по группе вакансий"
-                          value={vacancyGroup}
-                          onChange={setVacancyGroup}
+                          value={listState.vacancyGroup}
+                          onChange={listState.setVacancyGroup}
                           emptyLabel="Все группы"
                           icon={FolderKanban}
                           options={[
                             { value: "__ungrouped", label: "Без группы" },
-                            ...vacancyGroups.map((g) => ({
+                            ...listState.vacancyGroups.map((g) => ({
                               value: g,
                               label: g,
                             })),
@@ -2865,11 +2840,11 @@ function Applications() {
                         <label>Тег</label>
                         <SpotlightFilterDropdown
                           ariaLabel="Фильтр по тегу"
-                          value={vacancyTag}
-                          onChange={setVacancyTag}
+                          value={listState.vacancyTag}
+                          onChange={listState.setVacancyTag}
                           emptyLabel="Все теги"
                           icon={Tag}
-                          options={vacancyTags.map((t) => ({
+                          options={listState.vacancyTags.map((t) => ({
                             value: t,
                             label: t,
                           }))}
@@ -2879,22 +2854,22 @@ function Applications() {
                         <label htmlFor="filter-stage-select">Этап отбора</label>
                         <Select
                           id="filter-stage-select"
-                          value={stage}
-                          onChange={setStage}
+                          value={listState.stage}
+                          onChange={listState.setStage}
                           items={stages}
                           empty="Все этапы"
                         />
                       </div>
-                      {pf && (
+                      {listState.pf && (
                         <div className="spotlight-field">
                           <label>Приоритет</label>
                           <SpotlightFilterDropdown
                             ariaLabel="Фильтр по приоритету"
-                            value={priority}
-                            onChange={setPriority}
+                            value={listState.priority}
+                            onChange={listState.setPriority}
                             emptyLabel="Любой приоритет"
                             icon={Sparkles}
-                            options={pf.options.map((p) => ({
+                            options={listState.pf.options.map((p) => ({
                               value: p,
                               label: p,
                             }))}
@@ -2905,8 +2880,8 @@ function Applications() {
                         <label>Сортировка</label>
                         <SpotlightFilterDropdown
                           ariaLabel="Сортировка вакансий"
-                          value={order}
-                          onChange={(val) => setOrder(val || "recent")}
+                          value={listState.order}
+                          onChange={(val) => listState.setOrder(val || "recent")}
                           emptyLabel="Сначала новые"
                           icon={ArrowUpDown}
                           options={[
@@ -2922,8 +2897,8 @@ function Applications() {
                           <input
                             id="filter-has-task"
                             type="checkbox"
-                            checked={hasTask}
-                            onChange={(e) => setHasTask(e.target.checked)}
+                            checked={listState.hasTask}
+                            onChange={(e) => listState.setHasTask(e.target.checked)}
                           />
                           <span
                             className="spotlight-checkbox-mark"
@@ -2938,80 +2913,80 @@ function Applications() {
                   </div>
                 </FilterPresence>
 
-                <FilterPresence show={filterCount > 0} block>
+                <FilterPresence show={listState.filterCount > 0} block>
                   <div className="spotlight-active-tags">
                     <span className="spotlight-tags-label">
                       Активные фильтры:
                     </span>
-                    <FilterPresence show={Boolean(search)}>
+                    <FilterPresence show={Boolean(listState.search)}>
                       <span className="filter-summary-tag">
-                        Поиск: «{search}»
+                        Поиск: «{listState.search}»
                         <button
                           type="button"
                           aria-label="Очистить поиск"
-                          onClick={() => setSearch("")}
+                          onClick={() => listState.setSearch("")}
                         >
                           <X size={11} />
                         </button>
                       </span>
                     </FilterPresence>
-                    <FilterPresence show={Boolean(vacancyGroup)}>
+                    <FilterPresence show={Boolean(listState.vacancyGroup)}>
                       <span className="filter-summary-tag">
-                        {vacancyGroup === "__ungrouped"
+                        {listState.vacancyGroup === "__ungrouped"
                           ? "Без группы"
-                          : vacancyGroup}
+                          : listState.vacancyGroup}
                         <button
                           type="button"
                           aria-label="Сбросить группу"
-                          onClick={() => setVacancyGroup("")}
+                          onClick={() => listState.setVacancyGroup("")}
                         >
                           <X size={11} />
                         </button>
                       </span>
                     </FilterPresence>
-                    <FilterPresence show={Boolean(vacancyTag)}>
+                    <FilterPresence show={Boolean(listState.vacancyTag)}>
                       <span className="filter-summary-tag">
-                        Тег: {vacancyTag}
+                        Тег: {listState.vacancyTag}
                         <button
                           type="button"
                           aria-label="Сбросить тег"
-                          onClick={() => setVacancyTag("")}
+                          onClick={() => listState.setVacancyTag("")}
                         >
                           <X size={11} />
                         </button>
                       </span>
                     </FilterPresence>
-                    <FilterPresence show={Boolean(stage)}>
+                    <FilterPresence show={Boolean(listState.stage)}>
                       <span className="filter-summary-tag">
-                        Этап: {stages[stage] || stage}
+                        Этап: {stages[listState.stage] || listState.stage}
                         <button
                           type="button"
                           aria-label="Сбросить этап"
-                          onClick={() => setStage("")}
+                          onClick={() => listState.setStage("")}
                         >
                           <X size={11} />
                         </button>
                       </span>
                     </FilterPresence>
-                    <FilterPresence show={Boolean(priority)}>
+                    <FilterPresence show={Boolean(listState.priority)}>
                       <span className="filter-summary-tag">
-                        Приоритет: {priority}
+                        Приоритет: {listState.priority}
                         <button
                           type="button"
                           aria-label="Сбросить приоритет"
-                          onClick={() => setPriority("")}
+                          onClick={() => listState.setPriority("")}
                         >
                           <X size={11} />
                         </button>
                       </span>
                     </FilterPresence>
-                    <FilterPresence show={Boolean(hasTask)}>
+                    <FilterPresence show={Boolean(listState.hasTask)}>
                       <span className="filter-summary-tag">
                         С задачами
                         <button
                           type="button"
                           aria-label="Сбросить фильтр задач"
-                          onClick={() => setHasTask(false)}
+                          onClick={() => listState.setHasTask(false)}
                         >
                           <X size={11} />
                         </button>
@@ -3023,7 +2998,7 @@ function Applications() {
                 <div className="spotlight-footer">
                   <div className="spotlight-hints">
                     <span>
-                      Найдено вакансий: <strong>{list.length}</strong>
+                      Найдено вакансий: <strong>{listState.list.length}</strong>
                     </span>
                     <span className="spotlight-sep">·</span>
                     <span className="hint-keys">
@@ -3037,11 +3012,11 @@ function Applications() {
                     </span>
                   </div>
                   <div className="spotlight-actions">
-                    {activeFilters && (
+                    {listState.activeFilters && (
                       <button
                         type="button"
                         className="text-button"
-                        onClick={reset}
+                        onClick={listState.resetFilters}
                       >
                         <X size={13} />
                         Сбросить всё
@@ -3059,16 +3034,26 @@ function Applications() {
               </FilterModalMotion>
             </dialog>
           )}
-          {!data.applications.length ? (
+          {!listState.baseList.length ? (
             <Empty
               title={
-                data.applications.length
-                  ? "Ничего не найдено"
-                  : "Первый шаг — сохранить вакансию"
+                favoriteOnly
+                  ? "Нет избранных вакансий"
+                  : data.applications.length
+                    ? "Ничего не найдено"
+                    : "Первый шаг — сохранить вакансию"
               }
               action={
-                data.applications.length ? (
-                  <button onClick={reset}>Сбросить фильтры</button>
+                favoriteOnly ? (
+                  <Link
+                    to="/applications"
+                    className="button primary water-interaction"
+                    style={{ textDecoration: "none" }}
+                  >
+                    Перейти ко всем откликам
+                  </Link>
+                ) : data.applications.length ? (
+                  <button onClick={listState.resetFilters}>Сбросить фильтры</button>
                 ) : (
                   <button
                     className="primary water-interaction"
@@ -3079,11 +3064,13 @@ function Applications() {
                 )
               }
             >
-              {data.applications.length
-                ? "Попробуйте изменить поиск или фильтры."
-                : "Добавьте её вручную или воспользуйтесь расширением для " +
-                  jobSitesLabel +
-                  "."}
+              {favoriteOnly
+                ? "Добавляйте важные вакансии в избранное с помощью звёздочки, чтобы быстро к ним возвращаться."
+                : data.applications.length
+                  ? "Попробуйте изменить поиск или фильтры."
+                  : "Добавьте её вручную или воспользуйтесь расширением для " +
+                    jobSitesLabel +
+                    "."}
             </Empty>
           ) : (
             <>
@@ -3110,28 +3097,30 @@ function Applications() {
                     </tr>
                   </thead>
                   <TableRowsMotion
-                    key={String(preferences.cards)}
+                    key={String(listState.cards)}
                     transitionKey={JSON.stringify([
-                      currentPage,
-                      state,
-                      stage,
-                      priority,
-                      order,
-                      selectedGroup,
-                      search,
-                      hasTask,
-                      vacancyGroup,
-                      vacancyTag,
-                      preferences.group,
+                      listState.currentPage,
+                      listState.state,
+                      listState.stage,
+                      listState.priority,
+                      listState.order,
+                      listState.selectedGroup,
+                      listState.search,
+                      listState.hasTask,
+                      listState.vacancyGroup,
+                      listState.vacancyTag,
+                      listState.grouping,
                     ])}
                   >
-                    {!list.length && (
+                    {!listState.list.length && (
                       <tr>
                         <td colSpan={6}>
                           <Empty
                             title="Ничего не найдено"
                             action={
-                              <button onClick={reset}>Сбросить фильтры</button>
+                              <button onClick={listState.resetFilters}>
+                                Сбросить фильтры
+                              </button>
                             }
                           >
                             Попробуйте изменить поиск или фильтры.
@@ -3139,22 +3128,22 @@ function Applications() {
                         </td>
                       </tr>
                     )}
-                    {grouped.map(([key, apps]) => {
-                      const isCollapsed = collapsed.has(key);
+                    {listState.grouped.map(([key, apps]) => {
+                      const isCollapsed = listState.collapsed.has(key);
                       return (
                         <Fragment key={key}>
-                          {preferences.group && (
+                          {listState.grouping && (
                             <tr className="group-row">
                               <td colSpan={6}>
                                 <button
                                   aria-expanded={!isCollapsed}
-                                  onClick={() => toggle(key)}
+                                  onClick={() => listState.toggleCollapsed(key)}
                                 >
                                   <ChevronDown
                                     size={15}
                                     className={isCollapsed ? "collapsed" : ""}
                                   />
-                                  {groupLabel(key)}
+                                  {listState.groupLabel(key)}
                                   <span className="count-chip">
                                     {apps.length}
                                   </span>
@@ -3162,7 +3151,7 @@ function Applications() {
                               </td>
                             </tr>
                           )}
-                          {preferences.group ? (
+                          {listState.grouping ? (
                             <tr className="group-collapsible-row">
                               <td colSpan={6}>
                                 <div
@@ -3198,48 +3187,52 @@ function Applications() {
               </div>
               <TableRowsMotion
                 cards
-                key={String(preferences.cards)}
+                key={String(listState.cards)}
                 transitionKey={JSON.stringify([
-                  currentPage,
-                  state,
-                  stage,
-                  priority,
-                  order,
-                  selectedGroup,
-                  search,
-                  hasTask,
-                  vacancyGroup,
-                  vacancyTag,
-                  preferences.group,
+                  listState.currentPage,
+                  listState.state,
+                  listState.stage,
+                  listState.priority,
+                  listState.order,
+                  listState.selectedGroup,
+                  listState.search,
+                  listState.hasTask,
+                  listState.vacancyGroup,
+                  listState.vacancyTag,
+                  listState.grouping,
                 ])}
               >
-                {!list.length && (
+                {!listState.list.length && (
                   <Empty
                     title="Ничего не найдено"
-                    action={<button onClick={reset}>Сбросить фильтры</button>}
+                    action={
+                      <button onClick={listState.resetFilters}>
+                        Сбросить фильтры
+                      </button>
+                    }
                   >
                     Попробуйте изменить поиск или фильтры.
                   </Empty>
                 )}
-                {grouped.map(([key, apps]) => {
-                  const isCollapsed = collapsed.has(key);
+                {listState.grouped.map(([key, apps]) => {
+                  const isCollapsed = listState.collapsed.has(key);
                   return (
                     <Fragment key={key}>
-                      {preferences.group && (
+                      {listState.grouping && (
                         <button
                           className="mobile-group"
                           aria-expanded={!isCollapsed}
-                          onClick={() => toggle(key)}
+                          onClick={() => listState.toggleCollapsed(key)}
                         >
                           <ChevronDown
                             size={15}
                             className={isCollapsed ? "collapsed" : ""}
                           />
-                          {groupLabel(key)}
+                          {listState.groupLabel(key)}
                           <span className="count-chip">{apps.length}</span>
                         </button>
                       )}
-                      {preferences.group ? (
+                      {listState.grouping ? (
                         <div
                           className={
                             "mobile-group-collapsible" +
@@ -3259,25 +3252,31 @@ function Applications() {
               </TableRowsMotion>
               <div className="table-pagination">
                 <small>
-                  {currentPage * 20 + 1}–
-                  {Math.min(list.length, currentPage * 20 + 20)} из{" "}
-                  {list.length}
+                  {listState.currentPage * 20 + 1}–
+                  {Math.min(
+                    listState.list.length,
+                    listState.currentPage * 20 + 20,
+                  )}{" "}
+                  из {listState.list.length}
                 </small>
                 <div>
                   <button
                     className="icon-button"
                     aria-label="Предыдущая страница"
-                    disabled={currentPage === 0}
-                    onClick={() => setPage(currentPage - 1)}
+                    disabled={listState.currentPage === 0}
+                    onClick={() => listState.setPage(listState.currentPage - 1)}
                   >
                     <ChevronLeft size={16} />
                   </button>
-                  {Array.from({ length: pageCount }, (_, index) => index)
+                  {Array.from(
+                    { length: listState.pageCount },
+                    (_, index) => index,
+                  )
                     .filter(
                       (index) =>
                         index === 0 ||
-                        index === pageCount - 1 ||
-                        Math.abs(index - currentPage) <= 1,
+                        index === listState.pageCount - 1 ||
+                        Math.abs(index - listState.currentPage) <= 1,
                     )
                     .map((index, offset, pages) => (
                       <Fragment key={index}>
@@ -3291,28 +3290,28 @@ function Applications() {
                         )}
                         <button
                           className={
-                            index === currentPage
+                            index === listState.currentPage
                               ? "page-number active"
                               : "page-number"
                           }
                           aria-label={"Страница " + (index + 1)}
                           aria-current={
-                            index === currentPage ? "page" : undefined
+                            index === listState.currentPage ? "page" : undefined
                           }
-                          onClick={() => setPage(index)}
+                          onClick={() => listState.setPage(index)}
                         >
                           {index + 1}
                         </button>
                       </Fragment>
                     ))}
                   <span className="sr-only" role="status">
-                    {currentPage + 1} / {pageCount}
+                    {listState.currentPage + 1} / {listState.pageCount}
                   </span>
                   <button
                     className="icon-button"
                     aria-label="Следующая страница"
-                    disabled={currentPage + 1 === pageCount}
-                    onClick={() => setPage(currentPage + 1)}
+                    disabled={listState.currentPage + 1 === listState.pageCount}
+                    onClick={() => listState.setPage(listState.currentPage + 1)}
                   >
                     <ChevronRight size={16} />
                   </button>
@@ -3324,38 +3323,42 @@ function Applications() {
         <div
           className={
             "application-statistics-wrapper" +
-            (preferences.statistics ? " is-open" : "")
+            (listState.statistics ? " is-open" : "")
           }
-          aria-hidden={!preferences.statistics}
+          aria-hidden={!listState.statistics}
         >
           <aside className="application-statistics">
             <section className="panel">
               <span className="eyebrow">Текущая выборка</span>
               <h2>Статистика</h2>
               <div className="summary-total">
-                <strong>{list.length}</strong>
+                <strong>{listState.list.length}</strong>
                 <span>
                   вакансий
                   <br />
-                  <small>{active} активных</small>
+                  <small>{listState.active} активных</small>
                 </span>
               </div>
-              <StageBreakdown applications={list} />
+              <StageBreakdown applications={listState.list} />
             </section>
             <section className="panel response-panel">
               <h3>Продвижение по этапам</h3>
               <div
                 className="progress-ring"
-                style={{ "--progress": `${rate * 3.6}deg` } as CSSProperties}
+                style={
+                  {
+                    "--progress": `${listState.rate * 3.6}deg`,
+                  } as CSSProperties
+                }
               >
                 <div>
-                  <strong>{rate}%</strong>
+                  <strong>{listState.rate}%</strong>
                   <small>дошли до HR и дальше</small>
                 </div>
               </div>
               <p>
-                {advanced} из {list.length} вакансий на этапах HR, интервью,
-                финала или оффера.
+                {listState.advanced} из {listState.list.length} вакансий на этапах
+                HR, интервью, финала или оффера.
               </p>
             </section>
             <section className="panel">
@@ -3366,8 +3369,9 @@ function Applications() {
               <p className="muted">
                 Без открытых задач:{" "}
                 {pluralApplications(
-                  list.filter((a) => a.state === "active" && !next(a.id))
-                    .length,
+                  listState.list.filter(
+                    (a) => a.state === "active" && !listState.next(a.id),
+                  ).length,
                   "активный",
                 )}
                 .
@@ -3375,8 +3379,8 @@ function Applications() {
               <button
                 className="text-button"
                 onClick={() => {
-                  setHasTask(true);
-                  setState("active");
+                  listState.setHasTask(true);
+                  listState.setState("active");
                 }}
               >
                 Посмотреть запланированные <ArrowUpRight size={14} />
@@ -3385,6 +3389,21 @@ function Applications() {
           </aside>
         </div>
       </div>
+      <OutcomeModal
+        isOpen={!!listState.outcomeModalApp}
+        application={listState.outcomeModalApp}
+        onClose={listState.handleCancelOutcome}
+        onConfirm={listState.handleConfirmOutcome}
+      />
+      <StaleActionModal
+        isOpen={!!listState.staleModalApp}
+        application={listState.staleModalApp}
+        timezone={user.timezone}
+        onClose={() => listState.setStaleModalApp(null)}
+        onPause={listState.handleStalePause}
+        onCloseOutcome={listState.handleStaleCloseOutcome}
+        onCreateTask={listState.handleStaleCreateTask}
+      />
     </>
   );
 }
@@ -3451,7 +3470,7 @@ function TagEditorScroll({ children }: { children: ReactNode }) {
 
 function ApplicationDetail() {
   const { id } = useParams();
-  const { data, refresh, editTask, addNote } = useApp();
+  const { user, data, refresh, editTask, addNote } = useApp();
   const [editing, setEditing] = useState(false);
   const [historyExpanded, setHistoryExpanded] = useState(false);
   const [newTag, setNewTag] = useState("");
@@ -3475,6 +3494,10 @@ function ApplicationDetail() {
   }, [tagDropdownOpen]);
   const [tagBusy, setTagBusy] = useState(false);
   const [tagError, setTagError] = useState<unknown>();
+  const [detailSaving, setDetailSaving] = useState(false);
+  const [outcomeDetailOpen, setOutcomeDetailOpen] = useState(false);
+  const [staleDetailModalOpen, setStaleDetailModalOpen] = useState(false);
+
   const q = useQuery({
     queryKey: ["detail", id],
     queryFn: () => api<Detail>("/applications/" + id),
@@ -3483,6 +3506,43 @@ function ApplicationDetail() {
   if (q.error) return <ErrorBox error={q.error} retry={() => q.refetch()} />;
   const d = q.data!;
   const a = d.application;
+
+  const saveDetailApplication = async (updated: Application) => {
+    if (detailSaving) return;
+    setDetailSaving(true);
+    try {
+      await api<Application>("/applications/" + updated.id, "PUT", updated);
+      await refresh();
+      await q.refetch();
+    } catch (err) {
+      if (err instanceof APIError && err.status === 409) {
+        await refresh();
+        await q.refetch();
+      }
+    } finally {
+      setDetailSaving(false);
+    }
+  };
+
+  const handleDetailStageChange = async (newStage: string) => {
+    if (a.stage === newStage || detailSaving) return;
+    await saveDetailApplication({ ...a, stage: newStage });
+  };
+
+  const handleDetailStateChange = async (newState: string) => {
+    if (a.state === newState || detailSaving) return;
+    if (newState === "closed") {
+      setOutcomeDetailOpen(true);
+      return;
+    }
+    await saveDetailApplication({ ...a, state: newState });
+  };
+
+  const handleDetailToggleFavorite = async () => {
+    if (detailSaving) return;
+    await saveDetailApplication({ ...a, favorite: !a.favorite });
+  };
+
   const saveTags = async (tags: string[]) => {
     setTagBusy(true);
     setTagError(undefined);
@@ -3561,7 +3621,32 @@ function ApplicationDetail() {
             className="page-header-avatar"
           />
         }
-      />
+      >
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {isApplicationStale(a) && (
+            <button
+              type="button"
+              className="stale-warning-btn-header"
+              aria-label="Внимание: не было активности более 10 дней"
+              title="Внимание: не было активности более 10 дней"
+              onClick={() => setStaleDetailModalOpen(true)}
+            >
+              <ClockAlert size={16} />
+              <span>Требует внимания (&gt;10 дней)</span>
+            </button>
+          )}
+          <button
+            type="button"
+            className={`favorite-toggle-btn ${a.favorite ? "active" : ""}`}
+            aria-label={a.favorite ? "Удалить из избранного" : "Добавить в избранное"}
+            title={a.favorite ? "Удалить из избранного" : "Добавить в избранное"}
+            onClick={handleDetailToggleFavorite}
+          >
+            <Star size={15} fill={a.favorite ? "currentColor" : "none"} />
+            <span>{a.favorite ? "В избранном" : "В избранное"}</span>
+          </button>
+        </div>
+      </PageHeader>
       <div className="detail-meta-row">
         <div className="detail-badges">
           {(a.groups ?? []).map((group) => (
@@ -3569,8 +3654,18 @@ function ApplicationDetail() {
               {group}
             </span>
           ))}
-          <Badge value={a.stage} />
-          <Badge value={a.state} kind="state" />
+          <BadgeDropdown
+            value={a.stage}
+            kind="stage"
+            disabled={detailSaving}
+            onChange={handleDetailStageChange}
+          />
+          <BadgeDropdown
+            value={a.state}
+            kind="state"
+            disabled={detailSaving}
+            onChange={handleDetailStateChange}
+          />
           {a.url && (
             <a
               className="detail-vacancy-link"
@@ -3958,6 +4053,40 @@ function ApplicationDetail() {
           </section>
         </div>
       </div>
+      <OutcomeModal
+        isOpen={outcomeDetailOpen}
+        application={a}
+        onClose={() => setOutcomeDetailOpen(false)}
+        onConfirm={async (outcome) => {
+          setOutcomeDetailOpen(false);
+          await saveDetailApplication({ ...a, state: "closed", outcome });
+        }}
+      />
+      <StaleActionModal
+        isOpen={staleDetailModalOpen}
+        application={a}
+        timezone={user.timezone}
+        onClose={() => setStaleDetailModalOpen(false)}
+        onPause={async () => {
+          await saveDetailApplication({ ...a, state: "paused" });
+        }}
+        onCloseOutcome={async (outcome) => {
+          await saveDetailApplication({ ...a, state: "closed", outcome });
+        }}
+        onCreateTask={async (task) => {
+          try {
+            await api("/tasks", "POST", {
+              applicationId: a.id,
+              title: task.title,
+              date: task.date,
+              time: task.time,
+              state: "open",
+            });
+            await refresh();
+            await q.refetch();
+          } catch {}
+        }}
+      />
     </>
   );
 }

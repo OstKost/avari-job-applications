@@ -113,3 +113,47 @@ describe("colored status select", () => {
     expect(container.querySelector('[role="menu"]')).toBeNull();
   });
 });
+
+describe("BadgeDropdown", () => {
+  it("renders resting badge without permanent arrow and opens on click", async () => {
+    const { BadgeDropdown } = await import("./ui");
+    const div = document.createElement("div");
+    document.body.append(div);
+    const testRoot = createRoot(div);
+    const onChange = vi.fn();
+
+    act(() => {
+      testRoot.render(
+        createElement(BadgeDropdown, {
+          value: "applied",
+          kind: "stage",
+          onChange,
+        }),
+      );
+    });
+
+    const trigger = div.querySelector<HTMLButtonElement>("button.badge-dropdown-trigger")!;
+    expect(trigger).not.toBeNull();
+    // Rest visuals: contains badge with class badge-applied
+    expect(trigger.querySelector(".badge-applied")).not.toBeNull();
+    // No permanent arrow svg inside trigger
+    expect(trigger.querySelector("svg")).toBeNull();
+
+    act(() => trigger.click());
+    // Portal menu opened in document.body
+    const menu = document.querySelector(".badge-dropdown-menu-portal");
+    expect(menu).not.toBeNull();
+
+    // Select next stage
+    const hrBtn = Array.from(menu!.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')).find(
+      (b) => b.dataset.value === "hr",
+    );
+    expect(hrBtn).not.toBeNull();
+    act(() => hrBtn!.click());
+    expect(onChange).toHaveBeenCalledWith("hr");
+
+    act(() => testRoot.unmount());
+    div.remove();
+  });
+});
+
