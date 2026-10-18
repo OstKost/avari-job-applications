@@ -1,0 +1,64 @@
+# Vector configuration for Avari.Jobs -> Better Stack (Logtail)
+# Formatted according to https://betterstack.com/docs/logs/vector.md
+
+sources:
+  docker_logs:
+    type: docker_logs
+    exclude_containers:
+      - vector
+
+transforms:
+  better_stack_transform:
+    type: remap
+    inputs:
+      - docker_logs
+    source: |
+      .service = .container_name
+      .dt = del(.timestamp)
+
+      # Parse slog structured JSON output from stdout
+      parsed, err = parse_json(.message)
+      if err == null {
+        if exists(parsed.time) {
+          .dt = parsed.time
+        }
+        .level = parsed.level ?? "info"
+        .message = parsed.msg ?? .message
+
+        # HTTP access attributes
+        if exists(parsed.method) || exists(parsed.path) {
+          .http = {
+            "method": parsed.method,
+            "path": parsed.path,
+            "status": parsed.status,
+            "duration_ms": parsed.duration_ms,
+            "remote_addr": parsed.remote_addr,
+            "bytes": parsed.bytes
+          }
+          del(parsed.method)
+          del(parsed.path)
+          del(parsed.status)
+          del(parsed.duration_ms)
+          del(parsed.remote_addr)
+          del(parsed.bytes)
+        }
+
+        del(parsed.time)
+        del(parsed.level)
+        del(parsed.msg)
+        .extra = parsed
+      }
+
+sinks:
+  better_stack:
+    type: http
+    method: post
+    inputs:
+      - better_stack_transform
+    uri: "https://${INGESTING_HOST:-s2800631.us-west-2a.betterstackdata.com}/"
+    encoding:
+      codec: json
+    compression: gzip
+    auth:
+      strategy: bearer
+      token: "${SOURCE_TOKEN:-3heNieTssVcsmPcEG8rd3ZWt}"

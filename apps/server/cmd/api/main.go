@@ -29,7 +29,17 @@ func main() {
 	personal := flag.Bool("personal", false, "Run a single-owner local instance")
 	launcher := flag.Bool("launcher", false, "Accept shutdown through the native launcher's stdin")
 	flag.Parse()
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+	var logLevel slog.Level
+	if levelStr := os.Getenv("AVARI_LOG_LEVEL"); levelStr != "" {
+		if err := logLevel.UnmarshalText([]byte(levelStr)); err != nil {
+			logLevel = slog.LevelInfo
+		}
+	} else {
+		logLevel = slog.LevelInfo
+	}
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: logLevel,
+	})))
 	addr := env("AVARI_ADDR", "127.0.0.1:47831")
 	origin := env("AVARI_ORIGIN", "http://localhost:47831")
 	if *personal {

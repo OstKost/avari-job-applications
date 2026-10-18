@@ -9,11 +9,17 @@ services:
       AVARI_ADDR: 0.0.0.0:8080
       AVARI_ORIGIN: ${AVARI_ORIGIN:-http://localhost:47831}
       AVARI_TRUST_PROXY: ${AVARI_TRUST_PROXY:-false}
+      AVARI_LOG_LEVEL: ${AVARI_LOG_LEVEL:-info}
     volumes:
       - avari-data:/data
     ports:
       - "127.0.0.1:47831:8080"
     stop_grace_period: 15s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
   admin:
     image: avari:local
     profiles: [admin]

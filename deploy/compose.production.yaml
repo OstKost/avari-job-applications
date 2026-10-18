@@ -9,11 +9,17 @@ services:
       AVARI_ADDR: 0.0.0.0:8080
       AVARI_ORIGIN: https://jobs.avari.dev
       AVARI_TRUST_PROXY: "true"
+      AVARI_LOG_LEVEL: ${AVARI_LOG_LEVEL:-info}
     volumes:
       - avari-data:/data
     ports:
       - 127.0.0.1:18081:8080
     stop_grace_period: 15s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
   admin:
     image: ${AVARI_IMAGE:?Set AVARI_IMAGE to a pinned GHCR digest}
     profiles: [admin]
@@ -25,6 +31,20 @@ services:
       - avari-data:/data
     stdin_open: true
     tty: true
+  vector:
+    image: timberio/vector:0.43.0-alpine
+    restart: unless-stopped
+    environment:
+      INGESTING_HOST: ${INGESTING_HOST:-s2800631.us-west-2a.betterstackdata.com}
+      SOURCE_TOKEN: ${SOURCE_TOKEN:-3heNieTssVcsmPcEG8rd3ZWt}
+    volumes:
+      - ./vector/vector.yaml:/etc/vector/vector.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    deploy:
+      resources:
+        limits:
+          memory: 64M
 volumes:
   avari-data:
     name: avari-jobs-data

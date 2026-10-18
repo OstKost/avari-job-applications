@@ -150,8 +150,58 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 			limit = 25 * 1024 * 1024 // 20 MiB file + multipart overhead
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, limit)
-		next.ServeHTTP(w, r)
+
+		start := time.Now()
+		rec := &responseRecorder{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(rec, r)
+		duration := time.Since(start)
+
+		if r.URL.Path == "/healthz" || r.URL.Path == "/readyz" {
+			slog.Debug("http request",
+				"method", r.Method,
+				"path", r.URL.Path,
+				"status", rec.status,
+				"duration_ms", duration.Milliseconds(),
+				"remote_addr", r.RemoteAddr,
+			)
+			return
+		}
+
+		attrs := []any{
+			"method", r.Method,
+			"path", r.URL.Path,
+			"status", rec.status,
+			"duration_ms", duration.Milliseconds(),
+			"remote_addr", r.RemoteAddr,
+			"bytes", rec.bytes,
+		}
+
+		switch {
+		case rec.status >= 500:
+			slog.Error("http request", attrs...)
+		case rec.status >= 400:
+			slog.Warn("http request", attrs...)
+		default:
+			slog.Info("http request", attrs...)
+		}
 	})
+}
+
+type responseRecorder struct {
+	http.ResponseWriter
+	status int
+	bytes  int64
+}
+
+func (r *responseRecorder) WriteHeader(status int) {
+	r.status = status
+	r.ResponseWriter.WriteHeader(status)
+}
+
+func (r *responseRecorder) Write(b []byte) (int, error) {
+	n, err := r.ResponseWriter.Write(b)
+	r.bytes += int64(n)
+	return n, err
 }
 func oneSafe(method string) bool { return method == "GET" || method == "HEAD" || method == "OPTIONS" }
 func (s *Server) auth(next http.Handler) http.Handler {
