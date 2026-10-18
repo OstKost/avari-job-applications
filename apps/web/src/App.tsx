@@ -4714,17 +4714,18 @@ function ExtensionDownloadPanel() {
         <Loading />
       ) : url ? (
         <div className="extension-download-content">
-          <FieldInput
-            label="Индивидуальная ссылка на ZIP-архив"
-            hint="Ссылка привязана к вашей учётной записи. Не публикуйте её в открытом доступе."
-          >
-            <div className="extension-download-input-row">
+          <div className="extension-download-input-row">
+            <FieldInput
+              label="Индивидуальная ссылка на ZIP-архив"
+              hint="Ссылка привязана к вашей учётной записи. Не публикуйте её в открытом доступе."
+            >
               <input
                 readOnly
                 value={url}
                 className="extension-download-input"
                 onFocus={(e) => e.currentTarget.select()}
               />
+            </FieldInput>
               <button
                 type="button"
                 className="button extension-copy-btn"
@@ -4735,8 +4736,7 @@ function ExtensionDownloadPanel() {
                 {copied ? <Check size={14} /> : <Copy size={14} />}
                 <span>{copied ? "Скопировано" : "Скопировать ссылку"}</span>
               </button>
-            </div>
-          </FieldInput>
+          </div>
           <div className="actions extension-download-actions">
             <a className="button primary" href={url} download>
               <Download size={15} /> Скачать ZIP расширения

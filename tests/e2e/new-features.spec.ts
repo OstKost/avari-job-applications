@@ -364,7 +364,7 @@ test.describe("Approved Features E2E Acceptance", () => {
     await expect(uploadModal).toBeVisible();
 
     await uploadModal.getByLabel(/Название резюме/).fill(uniqueResumeTitle);
-    await uploadModal.getByLabel(/Файл резюме/).setInputFiles({
+    await uploadModal.getByLabel("Выбрать файл резюме").setInputFiles({
       name: "resume.txt",
       mimeType: "text/plain",
       buffer: Buffer.from(initialContent),
@@ -396,7 +396,7 @@ test.describe("Approved Features E2E Acceptance", () => {
     const addV2Modal = page.getByRole("dialog");
     await expect(addV2Modal).toBeVisible();
     const v2Content = "Second version updated content bytes 12345";
-    await addV2Modal.getByLabel(/Файл резюме/).setInputFiles({
+    await addV2Modal.getByLabel("Выбрать файл резюме").setInputFiles({
       name: "resume_v2.txt",
       mimeType: "text/plain",
       buffer: Buffer.from(v2Content),
@@ -447,35 +447,35 @@ test.describe("Approved Features E2E Acceptance", () => {
     await expect(uploadModal).toBeVisible();
 
     // 1. Unsupported extension (.exe)
-    await uploadModal.getByLabel(/Файл резюме/).setInputFiles({
+    await uploadModal.getByLabel("Выбрать файл резюме").setInputFiles({
       name: "exploit.exe",
       mimeType: "application/x-msdownload",
       buffer: Buffer.from("MZ binary not allowed"),
     });
-    await uploadModal.getByRole("button", { name: "Загрузить" }).click();
+    await expect(uploadModal.getByRole("button", { name: "Загрузить", exact: true })).toBeDisabled();
 
-    // Validation must remain inside the upload dialog with the selected file intact
+    // Invalid selections are rejected before submission and errors stay in the dialog.
     await expect(uploadModal).toBeVisible();
     await expect(
       uploadModal.getByRole("alert"),
     ).toContainText(/формат/i);
-    expect(await uploadModal.locator("input[type=file]").evaluate((node: HTMLInputElement) => node.files?.[0]?.name)).toBe("exploit.exe");
+    await expect(uploadModal.locator(".resume-upload-file")).toHaveCount(0);
 
     // 2. Oversize file (> 20 MiB)
     const largeBuffer = Buffer.alloc(21 * 1024 * 1024, 0x61);
-    await uploadModal.getByLabel(/Файл резюме/).setInputFiles({
+    await uploadModal.getByLabel("Выбрать файл резюме").setInputFiles({
       name: "oversize.txt",
       mimeType: "text/plain",
       buffer: largeBuffer,
     });
-    await uploadModal.getByRole("button", { name: "Загрузить" }).click();
+    await expect(uploadModal.getByRole("button", { name: "Загрузить", exact: true })).toBeDisabled();
 
     // Modal must still remain open with error message
     await expect(uploadModal).toBeVisible();
     await expect(
       uploadModal.getByRole("alert"),
     ).toContainText(/20 МБ/i);
-    expect(await uploadModal.locator("input[type=file]").evaluate((node: HTMLInputElement) => node.files?.[0]?.name)).toBe("oversize.txt");
+    await expect(uploadModal.locator(".resume-upload-file")).toHaveCount(0);
   });
 
   test("9. Responsive mobile at 390px: Settings, favorites, resumes reachable without horizontal overflow", async ({
