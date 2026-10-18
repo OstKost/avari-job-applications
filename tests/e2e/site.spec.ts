@@ -502,6 +502,16 @@ test("workspace design: dashboard, grouped table, cards, pagination and monthly 
     path: "test-results/design-dashboard-dark.png",
     fullPage: true,
   });
+  await page
+    .getByRole("button", { name: "Включить светлую тему", exact: true })
+    .click();
+  await page.screenshot({
+    path: "test-results/design-dashboard-light.png",
+    fullPage: true,
+  });
+  await page
+    .getByRole("button", { name: "Включить тёмную тему", exact: true })
+    .click();
   await page.getByRole("link", { name: "Отклики", exact: true }).click();
   await page.getByRole("button", { name: "Группировка", exact: true }).click();
   await page.getByRole("option", { name: "По этапу", exact: true }).click();

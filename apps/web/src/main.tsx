@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import App from "./App";
 import "@avari/shared/styles.css";
 import "./web.css";
+import "./accents.css";
 const client = new QueryClient({
   defaultOptions: {
     queries: {

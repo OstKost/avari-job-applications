@@ -1,0 +1,53 @@
+.release-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-inline-start: 7px;
+  border-radius: 50%;
+  background: var(--accent, #38bdf8);
+}
+.update-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 18px;
+  margin: 0 0 16px;
+  border: 1px solid var(--border, #64748b);
+  border-radius: 12px;
+}
+.update-panel {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border, #64748b);
+  scroll-margin-top: 24px;
+}
+.update-panel progress {
+  width: min(100%, 360px);
+}
+.update-panel details {
+  margin-top: 16px;
+}
+.update-panel summary {
+  cursor: pointer;
+}
+.release-history {
+  max-width: 900px;
+}
+.release-entry {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border, #64748b);
+}
+.release-entry h2 small {
+  font-size: 0.7em;
+  font-weight: normal;
+  opacity: 0.7;
+  white-space: nowrap;
+}
+.release-entry h3 {
+  margin-top: 16px;
+}
+.release-entry li {
+  margin-block: 8px;
+}

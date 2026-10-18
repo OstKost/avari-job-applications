@@ -9,6 +9,7 @@ import {
   Plus,
   LoaderCircle,
   FileCheck,
+  X,
 } from "lucide-react";
 import {
   createAPI,
@@ -424,6 +425,32 @@ function UploadResumeModal({
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState(resumeTitle ?? "");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const dragDepth = useRef(0);
+  const [dragging, setDragging] = useState(false);
+  const [selectionError, setSelectionError] = useState<unknown>();
+
+  const selectFiles = (files: FileList | null) => {
+    if (busy || !files?.length) return;
+    setSelectionError(undefined);
+    const selected = files[0];
+    const ext = "." + (selected.name.split(".").pop() || "").toLowerCase();
+    if (files.length !== 1) {
+      setSelectionError(new Error("Выберите один файл резюме."));
+      return;
+    }
+    if (!ALLOWED_EXTENSIONS.includes(ext)) {
+      setSelectionError(new Error("Неподдерживаемый формат. Выберите PDF, MD, TXT, DOCX, DOC, ODT или RTF."));
+      return;
+    }
+    if (selected.size > MAX_FILE_SIZE) {
+      setSelectionError(new Error("Файл превышает лимит 20 МБ."));
+      return;
+    }
+    setFile(selected);
+    if (!resumeId && (!title || title === file?.name.replace(/\.[^/.]+$/, ""))) {
+      setTitle(selected.name.replace(/\.[^/.]+$/, ""));
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -440,7 +467,7 @@ function UploadResumeModal({
           onSubmit(file, title, resumeId);
         }}
       >
-        <ErrorBox error={error} />
+        <ErrorBox error={selectionError || error} />
 
         {!resumeId && (
           <FieldInput label="Название резюме (необязательно, по умолчанию имя файла)">
@@ -454,25 +481,77 @@ function UploadResumeModal({
           </FieldInput>
         )}
 
-        <FieldInput label="Файл резюме (PDF, MD, TXT, DOCX, DOC, ODT, RTF до 20 МБ)">
+        <div className="resume-upload">
           <input
+            className="resume-upload-input"
             type="file"
             ref={fileInputRef}
-            required
-            accept=".pdf,.md,.txt,.docx,.doc,.odt,.rtf"
+            aria-label="Выбрать файл резюме"
+            accept={ALLOWED_EXTENSIONS.join(",")}
             disabled={busy}
+            tabIndex={-1}
             onChange={(e) => {
-              const selected = e.target.files?.[0];
-              if (selected) {
-                setFile(selected);
-                if (!resumeId && !title) {
-                  const nameWithoutExt = selected.name.replace(/\.[^/.]+$/, "");
-                  setTitle(nameWithoutExt);
-                }
-              }
+              selectFiles(e.target.files);
+              e.target.value = "";
             }}
           />
-        </FieldInput>
+          <button
+            type="button"
+            className={`resume-dropzone${dragging ? " is-dragging" : ""}${file ? " has-file" : ""}`}
+            disabled={busy}
+            onClick={() => fileInputRef.current?.click()}
+            onDragEnter={(e) => {
+              e.preventDefault();
+              if (busy || !e.dataTransfer.types.includes("Files")) return;
+              dragDepth.current += 1;
+              setDragging(true);
+            }}
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = busy ? "none" : "copy";
+            }}
+            onDragLeave={(e) => {
+              e.preventDefault();
+              dragDepth.current = Math.max(0, dragDepth.current - 1);
+              if (!dragDepth.current) setDragging(false);
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              dragDepth.current = 0;
+              setDragging(false);
+              selectFiles(e.dataTransfer.files);
+            }}
+          >
+            <span className="resume-dropzone-icon" aria-hidden="true">
+              {busy ? <LoaderCircle size={28} className="resume-upload-spinner" /> : file ? <FileCheck size={28} /> : <Upload size={28} />}
+            </span>
+            <strong>{busy ? "Загружаем резюме…" : dragging ? "Отпустите файл здесь" : file ? "Файл готов к загрузке" : "Перетащите резюме сюда"}</strong>
+            <span className="muted">{file ? "Перетащите другой файл или нажмите, чтобы заменить" : "или нажмите, чтобы выбрать файл на устройстве"}</span>
+            <span className="resume-dropzone-formats">PDF, MD, TXT, DOCX, DOC, ODT, RTF до 20 МБ</span>
+          </button>
+          {file && (
+            <div className="resume-upload-file" role="status">
+              <FileText size={22} aria-hidden="true" />
+              <div>
+                <strong title={file.name}>{file.name}</strong>
+                <span className="muted">{formatBytes(file.size)} · {file.name.split(".").pop()?.toUpperCase()}</span>
+              </div>
+              <button
+                type="button"
+                className="icon-button text-button"
+                aria-label="Убрать выбранный файл"
+                disabled={busy}
+                onClick={() => {
+                  setFile(null);
+                  setSelectionError(undefined);
+                  if (!resumeId && title === file.name.replace(/\.[^/.]+$/, "")) setTitle("");
+                }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+          )}
+        </div>
 
         <div className="actions">
           <button type="submit" className="primary" disabled={busy || !file}>

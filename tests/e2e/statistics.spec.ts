@@ -25,14 +25,12 @@ test("statistics: real actions, ranges, charts, themes and mobile", async ({
   await expect(
     page.getByText("Добавьте первую вакансию", { exact: false }),
   ).toHaveCount(2);
-  await page.getByLabel("Период активности").selectOption("90");
   const activity = page.getByRole("region", {
     name: "Активность",
     exact: true,
   });
   await expect(activity.locator(".statistics-tiles button")).toHaveCount(90);
-  await page.getByLabel("Период активности").selectOption("30");
-  await expect(activity.locator(".statistics-tiles button")).toHaveCount(30);
+  await expect(activity.getByRole("combobox")).toHaveCount(0);
 
   // Write through the real authenticated API; a subsequent page load verifies aggregation.
   const fixture = await page.evaluate(async () => {
@@ -88,15 +86,8 @@ test("statistics: real actions, ranges, charts, themes and mobile", async ({
     exact: true,
   });
   await expect(daily.locator(".statistics-column")).toHaveCount(30);
-  await page.getByLabel("Период откликов").selectOption("7");
-  await expect(daily.locator(".statistics-column")).toHaveCount(7);
-  await page.getByLabel("Период откликов").selectOption("90");
-  await expect(daily.locator(".statistics-column")).toHaveCount(90);
-  await page.getByLabel("Период откликов").selectOption("custom");
-  await page.getByLabel("С даты", { exact: true }).fill(fixture.today);
-  await page.getByLabel("По дату", { exact: true }).fill(fixture.today);
-  await expect(daily.locator(".statistics-column")).toHaveCount(1);
-  await daily.locator(".statistics-column button").focus();
+  await expect(page.getByLabel("Период откликов")).toHaveCount(0);
+  await daily.locator(".statistics-column button").last().focus();
   await expect(page.getByRole("tooltip")).toContainText("HR: 1");
 
   const state = page.getByRole("region", {

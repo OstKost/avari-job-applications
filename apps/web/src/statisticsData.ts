@@ -1,17 +1,17 @@
 import { stages, states, type Application } from "@avari/shared";
 
 export const stageColors: Record<string, string> = {
-  saved: "#6b8995",
-  applied: "#1b7fdc",
-  hr: "#0db8d3",
-  interview: "#0db8d3",
-  final: "#9d79df",
-  offer: "#7ed9be",
+  saved: "var(--chart-saved)",
+  applied: "var(--chart-applied)",
+  hr: "var(--chart-hr)",
+  interview: "var(--chart-interview)",
+  final: "var(--chart-final)",
+  offer: "var(--chart-offer)",
 };
 export const stateColors: Record<string, string> = {
-  active: "#34d399",
-  paused: "#fbbf24",
-  closed: "#f87171",
+  active: "var(--chart-active)",
+  paused: "var(--chart-paused)",
+  closed: "var(--chart-closed)",
 };
 
 // Date-only arithmetic intentionally uses UTC: account dates are already resolved.

@@ -102,4 +102,33 @@ describe("ResumeManager", () => {
     expect(container.textContent).toContain("Загрузка нового резюме");
     expect(container.textContent).toContain("PDF, MD, TXT, DOCX, DOC, ODT, RTF до 20 МБ");
   });
+  it("accepts dropped files and rejects invalid replacements", () => {
+    queryClient.setQueryData(["resumes"], []);
+    act(() => {
+      root.render(createElement(QueryClientProvider, { client: queryClient }, createElement(ResumeManager)));
+    });
+    act(() => {
+      Array.from(container.querySelectorAll("button")).find((b) => b.textContent?.includes("Загрузить новое резюме"))?.click();
+    });
+    const dropzone = container.querySelector(".resume-dropzone")!;
+    const drop = (files: File[]) => {
+      const event = new Event("drop", { bubbles: true, cancelable: true });
+      Object.defineProperty(event, "dataTransfer", { value: { files } });
+      act(() => { dropzone.dispatchEvent(event); });
+      expect(event.defaultPrevented).toBe(true);
+    };
+    drop([new File(["resume"], "Frontend.pdf")]);
+    expect(container.querySelector(".resume-upload-file")?.textContent).toContain("Frontend.pdf");
+    expect(container.querySelector<HTMLInputElement>('input[type="text"]')?.value).toBe("Frontend");
+    expect(container.querySelector<HTMLButtonElement>('button[type="submit"]')?.disabled).toBe(false);
+    drop([new File(["bad"], "resume.exe")]);
+    expect(container.textContent).toContain("Неподдерживаемый формат");
+    expect(container.querySelector(".resume-upload-file")?.textContent).toContain("Frontend.pdf");
+    drop([new File(["a"], "a.pdf"), new File(["b"], "b.pdf")]);
+    expect(container.textContent).toContain("Выберите один файл");
+    act(() => { container.querySelector<HTMLButtonElement>('[aria-label="Убрать выбранный файл"]')?.click(); });
+    expect(container.querySelector(".resume-upload-file")).toBeNull();
+    expect(container.querySelector<HTMLButtonElement>('button[type="submit"]')?.disabled).toBe(true);
+  });
+
 });

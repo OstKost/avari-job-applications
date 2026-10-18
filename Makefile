@@ -12,6 +12,7 @@ build-ext:
 test:
 	npm run typecheck
 	npm test
+	npm run test:releases
 	go test -race ./apps/server/...
 	go vet ./apps/server/...
 e2e: build

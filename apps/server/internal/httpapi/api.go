@@ -47,6 +47,13 @@ func (s *Server) api(w http.ResponseWriter, r *http.Request) {
 		}
 		report, e := s.Store.ImportJournal(user, b, p == "journal/import")
 		respond(report, e)
+	case (p == "local/update" && method == "GET") || (method == "POST" && (p == "local/update/check" || p == "local/update/download" || p == "local/update/install" || p == "local/update/snooze")):
+		if who.Session.Kind != "web" {
+			fail(w, core.Fail(403, "Обновление доступно только в браузере"))
+			return
+		}
+		s.localUpdate(w, r, strings.TrimPrefix(strings.TrimPrefix(p, "local/update"), "/"))
+
 	case p == "local/settings" && (method == "GET" || method == "PUT"):
 		if who.Session.Kind != "web" {
 			fail(w, core.Fail(403, "Настройки лаунчера доступны в браузере"))

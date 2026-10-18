@@ -156,7 +156,8 @@ select,
 textarea {
   -webkit-tap-highlight-color: transparent;
 }
-button {
+button,
+.button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -168,32 +169,42 @@ button {
   background: var(--panel);
   color: var(--text);
   cursor: pointer;
+  box-sizing: border-box;
+  text-decoration: none;
   transition:
     background 0.15s,
     border-color 0.15s;
 }
-button:hover:not(:disabled) {
+button:hover:not(:disabled),
+.button:hover:not(:disabled) {
   background: var(--panel-2);
   border-color: var(--muted);
+  text-decoration: none;
 }
-button:disabled {
+button:disabled,
+.button:disabled {
   opacity: 0.5;
   cursor: default;
 }
-button.primary {
+button.primary,
+.button.primary {
   background: var(--accent-strong);
   border-color: var(--accent-strong);
   color: #fff;
 }
-button.primary:hover:not(:disabled) {
+button.primary:hover:not(:disabled),
+.button.primary:hover:not(:disabled) {
   background: var(--primary-hover, var(--accent-strong));
   border-color: var(--primary-hover, var(--accent-strong));
   filter: brightness(1.08);
+  text-decoration: none;
 }
-:root[data-theme="light"] button.primary:hover:not(:disabled) {
+:root[data-theme="light"] button.primary:hover:not(:disabled),
+:root[data-theme="light"] .button.primary:hover:not(:disabled) {
   filter: none;
 }
-:root[data-theme="light"] button:not(.primary):hover:not(:disabled) {
+:root[data-theme="light"] button:not(.primary):hover:not(:disabled),
+:root[data-theme="light"] .button:not(.primary):hover:not(:disabled) {
   border-color: color-mix(in srgb, var(--accent) 35%, var(--line));
 }
 :root[data-theme="light"] input:focus,
@@ -204,12 +215,14 @@ button.primary:hover:not(:disabled) {
 :root[data-theme="light"] .modal::backdrop {
   background: #20374d40;
 }
-button.text-button {
+button.text-button,
+.button.text-button {
   border-color: transparent;
   background: transparent;
   color: var(--muted);
 }
-button.icon-button {
+button.icon-button,
+.button.icon-button {
   padding: 9px;
   min-width: 42px;
 }

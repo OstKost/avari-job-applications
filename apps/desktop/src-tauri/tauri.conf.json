@@ -11,7 +11,7 @@
     "windows": [
       {
         "label": "launcher",
-        "title": "Avari.Jobs — локальный сервис",
+        "title": "Avari.Jobs \u2014 \u043b\u043e\u043a\u0430\u043b\u044c\u043d\u044b\u0439 \u0441\u0435\u0440\u0432\u0438\u0441",
         "width": 640,
         "height": 520,
         "visible": false
@@ -24,17 +24,37 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "externalBin": ["binaries/avari-server"],
-    "icon": ["icons/icon.png", "icons/icon.ico", "icons/icon.icns"],
+    "externalBin": [
+      "binaries/avari-server"
+    ],
+    "icon": [
+      "icons/icon.png",
+      "icons/icon.ico",
+      "icons/icon.icns"
+    ],
     "windows": {
       "nsis": {
         "installMode": "currentUser",
         "displayLanguageSelector": false,
-        "languages": ["Russian", "English"]
+        "languages": [
+          "Russian",
+          "English"
+        ]
       }
     },
     "macOS": {
       "minimumSystemVersion": "13.0"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEU2ODM3MzhFRjM3M0REOUUKUldTZTNYUHpqbk9ENW9kL1JJaWZPQUVVMWVzM0toaHVEZjh5S2Zva08zbnpZWXZkTTdQaHgwMEEK",
+      "endpoints": [
+        "https://github.com/OstKost/avari-job-applications/releases/latest/download/desktop-update.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
     }
   }
 }

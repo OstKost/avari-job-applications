@@ -382,7 +382,7 @@ func (s *Server) static(w http.ResponseWriter, r *http.Request) {
 		}
 		name = "index.html"
 	}
-	if name == "index.html" || name == "release.json" || name == "privacy.html" {
+	if name == "index.html" || name == "release.json" || name == "release-notes.json" || name == "privacy.html" {
 		w.Header().Set("Cache-Control", "no-cache")
 	}
 	raw, e := fs.ReadFile(s.Assets, name)

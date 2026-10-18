@@ -189,7 +189,7 @@
   color: var(--muted);
 }
 .statistics-column {
-  flex: 1 0 28px;
+  flex: 1 0 12px;
   min-width: 0;
   display: grid;
   justify-items: center;
@@ -219,6 +219,7 @@
 .statistics-pie-layout {
   display: flex;
   align-items: center;
+  justify-content: center;
   flex-wrap: wrap;
   gap: 24px;
 }
@@ -230,19 +231,21 @@
 .statistics-pie-legend {
   display: grid;
   gap: 12px;
-  flex: 1 0 190px;
+  flex: 0 1 260px;
+  max-width: 100%;
 }
 .statistics-pie-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) 24px 36px;
   align-items: center;
   gap: 8px;
   font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
-.statistics-pie-row > span:first-of-type {
-  flex: 1;
+.statistics-pie-row > strong {
+  text-align: right;
 }
 .statistics-pie-row > span:last-child {
-  min-width: 44px;
   text-align: right;
 }
 .statistics-sector {
@@ -294,4 +297,151 @@
 }
 .statistics-page .panel + .panel {
   margin-top: 0;
+}
+
+.statistics-overview {
+  display: grid;
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  gap: 24px;
+  align-items: stretch;
+}
+.statistics-overview .statistics-section-header {
+  gap: 14px;
+}
+.statistics-overview .statistics-control select {
+  min-width: 112px;
+}
+.statistics-overview .statistics-section-header p {
+  font-size: 12px;
+}
+.statistics-activity,
+.statistics-daily {
+  display: flex;
+  flex-direction: column;
+}
+.activity-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 24px 0;
+}
+.activity-summary > div + div {
+  border-left: 1px solid var(--line);
+  padding-left: 12px;
+}
+.activity-summary dt {
+  color: var(--muted);
+  font-size: 11px;
+}
+.activity-summary dd {
+  margin: 7px 0 0;
+  font-size: 26px;
+  line-height: 1.1;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.activity-summary > div:first-child dd {
+  color: var(--tone);
+}
+.activity-summary small {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 400;
+}
+.activity-calendar {
+  --activity-cell: 19px;
+  --activity-gap: 4px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--panel-2) 45%, transparent);
+}
+.activity-calendar-caption {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.activity-calendar .statistics-scroll {
+  padding: 16px 0 0;
+}
+.activity-calendar .statistics-heatmap {
+  margin: 0 auto;
+  gap: 10px;
+}
+.activity-calendar .statistics-weekdays {
+  grid-template-rows: repeat(7, var(--activity-cell));
+  gap: var(--activity-gap);
+  padding-top: 20px;
+  font-size: 10px;
+}
+.activity-calendar .statistics-tiles {
+  grid-template-rows: repeat(7, var(--activity-cell));
+  grid-auto-columns: var(--activity-cell);
+  gap: var(--activity-gap);
+}
+.activity-calendar .statistics-tile {
+  width: var(--activity-cell);
+  height: var(--activity-cell);
+  border-radius: 5px;
+}
+.activity-week-labels {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: var(--activity-cell);
+  gap: var(--activity-gap);
+  height: 20px;
+  color: var(--muted);
+  font-size: 9px;
+}
+.statistics-activity .statistics-intensity {
+  gap: 8px 12px;
+  font-size: 10px;
+}
+.statistics-daily > .statistics-plot {
+  margin-top: auto;
+}
+.statistics-column svg {
+  display: block;
+  width: 100%;
+  max-width: 24px;
+  margin: auto;
+}
+@media (max-width: 1100px) {
+  .statistics-overview {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 600px) {
+  .statistics-overview {
+    gap: 18px;
+  }
+  .activity-calendar {
+    padding: 12px;
+  }
+  .activity-summary {
+    gap: 8px;
+  }
+  .activity-summary > div + div {
+    padding-left: 8px;
+  }
+  .activity-summary dd {
+    font-size: 24px;
+  }
+}
+
+.statistics-plot {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 6px;
+}
+.statistics-plot .statistics-y-axis {
+  position: static;
+  margin-top: 32px;
+}
+.statistics-plot .statistics-columns {
+  padding-left: 0;
+  gap: 4px;
 }

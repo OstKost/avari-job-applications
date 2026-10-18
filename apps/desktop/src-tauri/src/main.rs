@@ -1,4 +1,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+mod updates;
 
 use serde::{Deserialize, Serialize};
 use std::{
@@ -305,10 +306,36 @@ fn bridge(app: &tauri::AppHandle) -> Result<(), String> {
                 .find(|h| h.field.equiv("X-Avari-Launcher-Token"))
                 .map(|h| h.value.as_str())
                 .unwrap_or("");
-            if !bool::from(supplied.as_bytes().ct_eq(state.bridge_token.as_bytes()))
-                || request.url() != "/settings"
-            {
+            if !bool::from(supplied.as_bytes().ct_eq(state.bridge_token.as_bytes())) {
                 let _ = request.respond(tiny_http::Response::empty(403));
+                continue;
+            }
+            if request.url().starts_with("/update") {
+                let result = match (request.method(), request.url()) {
+                    (tiny_http::Method::Get, "/update") => Ok(()),
+                    (tiny_http::Method::Post, path) if path.starts_with("/update/") => {
+                        updates::action(&handle, &path[8..])
+                    }
+                    _ => Err((405, "Метод недоступен")),
+                };
+                let (code, body) = match result {
+                    Ok(()) => (200, updates::status(&handle)),
+                    Err((code, message)) => {
+                        (code, serde_json::json!({"error":message}).to_string())
+                    }
+                };
+                let _ = request.respond(
+                    tiny_http::Response::from_string(body)
+                        .with_status_code(code)
+                        .with_header(
+                            tiny_http::Header::from_bytes("Content-Type", "application/json")
+                                .unwrap(),
+                        ),
+                );
+                continue;
+            }
+            if request.url() != "/settings" {
+                let _ = request.respond(tiny_http::Response::empty(404));
                 continue;
             }
             let manager = handle.autolaunch();
@@ -437,6 +464,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             _ => {}
         })
         .build(app)?;
+    updates::setup(app.handle());
     bridge(app.handle()).map_err(std::io::Error::other)?;
     if config_error.is_empty() {
         restart(
@@ -486,6 +514,7 @@ fn main() {
             }
         }))
         .plugin(autostart_plugin())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             launcher_status,
             launcher_retry,

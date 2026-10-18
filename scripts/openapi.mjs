@@ -276,6 +276,37 @@ schemas.ImportReport = object({
   fieldConflicts: array(ref("FieldConflict")),
 });
 schemas.LocalSettings = object({ autostart: { type: "boolean" } });
+schemas.ReleaseNote = object({
+  version: s,
+  date,
+  summary: s,
+  features: array(s),
+  improvements: array(s),
+  fixes: array(s),
+});
+schemas.UpdateStatus = object({
+  currentVersion: s,
+  availableVersion: s,
+  stage: enumeration(
+    "idle",
+    "checking",
+    "available",
+    "downloading",
+    "ready",
+    "installing",
+    "error",
+  ),
+  canInstall: { type: "boolean" },
+  downloaded: integer,
+  total: { type: ["integer", "null"] },
+  checkedAt: integer,
+  snoozedUntil: integer,
+  notes: array(ref("ReleaseNote")),
+  error: s,
+  releaseUrl: s,
+});
+schemas.EmptyRequest = object({});
+
 schemas.LocalStatus = object(
   {
     personal: { type: "boolean" },
@@ -441,6 +472,20 @@ operation(
   "LocalSettings",
   "LocalSettings",
 );
+operation(
+  "/local/update",
+  "get",
+  "Read desktop update status (personal web session only)",
+  "UpdateStatus",
+);
+for (const action of ["check", "download", "install", "snooze"])
+  operation(
+    `/local/update/${action}`,
+    "post",
+    "Control native desktop update (personal web session only)",
+    "UpdateStatus",
+    "EmptyRequest",
+  );
 operation("/auth/logout", "post", "Revoke current session", "Success");
 operation(
   "/auth/password",
@@ -594,8 +639,21 @@ downloadOperation.responses["200"].headers = { ETag: { schema: s } };
 downloadOperation.responses["304"] = {
   description: "Archive has not changed (If-None-Match)",
 };
-operation("/resumes", "get", "List own logical resumes with versions", array(ref("Resume")));
-operation("/resumes", "post", "Upload a new logical resume with version 1", "Resume", undefined, false, "201");
+operation(
+  "/resumes",
+  "get",
+  "List own logical resumes with versions",
+  array(ref("Resume")),
+);
+operation(
+  "/resumes",
+  "post",
+  "Upload a new logical resume with version 1",
+  "Resume",
+  undefined,
+  false,
+  "201",
+);
 paths["/resumes"].post.requestBody = {
   required: true,
   content: {
@@ -611,9 +669,28 @@ paths["/resumes"].post.requestBody = {
     },
   },
 };
-operation("/resumes/{id}", "put", "Rename a logical resume", "Resume", "ResumeUpdate");
-operation("/resumes/{id}", "delete", "Delete a logical resume and all its versions", "Success");
-operation("/resumes/{id}/versions", "post", "Upload a new version to an existing resume", "ResumeVersion", undefined, false, "201");
+operation(
+  "/resumes/{id}",
+  "put",
+  "Rename a logical resume",
+  "Resume",
+  "ResumeUpdate",
+);
+operation(
+  "/resumes/{id}",
+  "delete",
+  "Delete a logical resume and all its versions",
+  "Success",
+);
+operation(
+  "/resumes/{id}/versions",
+  "post",
+  "Upload a new version to an existing resume",
+  "ResumeVersion",
+  undefined,
+  false,
+  "201",
+);
 paths["/resumes/{id}/versions"].post.requestBody = {
   required: true,
   content: {
@@ -644,7 +721,7 @@ paths["/resumes/{id}/versions/{versionId}"].delete = {
     },
   ],
   responses: {
-    "200": {
+    200: {
       description: "Success",
       content: { "application/json": { schema: ref("Success") } },
     },
@@ -668,10 +745,12 @@ paths["/resumes/{id}/versions/{versionId}/download"].get = {
     { name: "versionId", in: "path", required: true, schema: s },
   ],
   responses: {
-    "200": {
+    200: {
       description: "File download",
       content: {
-        "application/octet-stream": { schema: { type: "string", format: "binary" } },
+        "application/octet-stream": {
+          schema: { type: "string", format: "binary" },
+        },
       },
     },
     ...[400, 401, 403, 404, 500]

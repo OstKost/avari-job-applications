@@ -1,3 +1,4 @@
+import { UpdatePanel } from "./Updates";
 import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
@@ -67,6 +68,7 @@ export function LocalAutostart({ launcher }: { launcher: boolean }) {
         Автозапуск можно отключить здесь в любой момент. Данные хранятся на этом
         компьютере.
       </p>
+      <UpdatePanel />
     </section>
   );
 }

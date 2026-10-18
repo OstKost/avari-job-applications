@@ -31,13 +31,14 @@ jobs:
           node-version: 26
           cache: npm
       - run: npm ci
+      - run: node scripts/release-notes.mjs
       - run: python3 -m unittest discover -s tests/deploy -v
       - run: npm run generate:api
       - run: git diff --exit-code docs/openapi.json packages/shared/src/generated-api.ts
       - run: make build test
       - run: npx playwright install --with-deps chromium
       - run: AVARI_E2E=1 go test ./apps/server/internal/httpapi -run '^TestBrowser$' -count=1 -timeout 10m
-      - run: docker build --build-arg "AVARI_VERSION=${AVARI_VERSION:-1.0.0}" -t avari:ci .
+      - run: docker build --build-arg "AVARI_VERSION=${AVARI_VERSION:-}" -t avari:ci .
       - run: make release
       - uses: actions/upload-artifact@v4
         with:
@@ -80,11 +81,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          AVARI_VERSION="${GITHUB_REF_NAME#v}" node scripts/release-notes.mjs
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release download "$GITHUB_REF_NAME" --dir dist --clobber
             (cd dist && sha256sum -c SHA256SUMS)
           else
-            gh release create "$GITHUB_REF_NAME" dist/*.zip dist/*.tar.gz dist/SHA256SUMS --verify-tag --title "$GITHUB_REF_NAME" --generate-notes
+            gh release create "$GITHUB_REF_NAME" dist/*.zip dist/*.tar.gz dist/SHA256SUMS --verify-tag --title "$GITHUB_REF_NAME" --notes-file dist/release-notes.md
           fi
       - name: Read existing image metadata
         id: existing

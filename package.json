@@ -1,7 +1,7 @@
 {
   "name": "avari",
   "private": true,
-  "version": "1.3.0",
+  "version": "1.6.0",
   "workspaces": [
     "apps/web",
     "apps/extension",
@@ -21,7 +21,8 @@
     "desktop:prepare": "npm run build && node scripts/desktop.mjs",
     "desktop:dev": "npm run desktop:prepare && cd apps/desktop && tauri dev",
     "desktop:build": "npm run desktop:prepare && cd apps/desktop && tauri build --config src-tauri/binaries/release-config.json",
-    "test:pages": "playwright test --config playwright.pages.config.ts"
+    "test:pages": "playwright test --config playwright.pages.config.ts",
+    "test:releases": "node --test scripts/releases.test.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.0",

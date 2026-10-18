@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, writeFile, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 const root = fileURLToPath(new URL("../", import.meta.url));
@@ -17,7 +17,10 @@ if (!targets[rust])
   throw new Error(
     "Desktop v1 supports Windows x64 and macOS Intel/Apple Silicon",
   );
-const version = process.env.AVARI_VERSION || "1.3.0";
+const { version: packageVersion } = JSON.parse(
+  await readFile(path.join(root, "package.json"), "utf8"),
+);
+const version = process.env.AVARI_VERSION || packageVersion;
 if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version))
   throw new Error("Invalid AVARI_VERSION");
 const [GOOS, GOARCH] = targets[rust];
@@ -42,10 +45,13 @@ execFileSync(
   },
 );
 const config = { version };
+if (process.env.TAURI_SIGNING_PRIVATE_KEY)
+  config.bundle = { createUpdaterArtifacts: true };
 if (process.env.AVARI_WINDOWS_CERT_THUMBPRINT) {
   if (!/^[0-9a-f]{40}$/i.test(process.env.AVARI_WINDOWS_CERT_THUMBPRINT))
     throw new Error("Invalid signing thumbprint");
   config.bundle = {
+    ...config.bundle,
     windows: {
       certificateThumbprint: process.env.AVARI_WINDOWS_CERT_THUMBPRINT,
       digestAlgorithm: "sha256",

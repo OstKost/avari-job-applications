@@ -23,7 +23,6 @@ import {
   distribution,
   shiftDay,
   stageColors,
-  validDay,
 } from "./statisticsData";
 import "./statistics.css";
 
@@ -129,7 +128,7 @@ function Hint({
 }
 
 function Activity({ user, today }: { user: User; today: string }) {
-  const [period, setPeriod] = useState(30);
+  const period = 90;
   const from = shiftDay(today, 1 - period);
   const query = useQuery({
     queryKey: ["statistics-activity", user.id, user.timezone, from, today],
@@ -144,28 +143,23 @@ function Activity({ user, today }: { user: User; today: string }) {
   }, [from, days.length]);
   const offset = (new Date(`${from}T00:00:00Z`).getUTCDay() + 6) % 7;
   const total = days.reduce((sum, day) => sum + day.count, 0);
+  const activeDays = days.filter((day) => day.count > 0).length;
+  const average = activeDays ? total / activeDays : 0;
+  const weeks = Math.ceil((offset + days.length) / 7);
   return (
     <section
-      className="panel statistics-panel"
+      className="panel statistics-panel statistics-activity"
+      data-tone="mint"
       aria-labelledby="activity-heading"
     >
       <div className="statistics-section-header">
         <div>
           <h2 id="activity-heading">Активность</h2>
           <p className="muted">
-            Добавления и изменения вакансий, заметок и связанных задач
+            Добавления и изменения вакансий, заметок и связанных задач за
+            последние 90 дней
           </p>
         </div>
-        <label className="statistics-control">
-          Период активности
-          <select
-            value={period}
-            onChange={(e) => setPeriod(Number(e.target.value))}
-          >
-            <option value={30}>30 дней</option>
-            <option value={90}>90 дней</option>
-          </select>
-        </label>
       </div>
       {query.isPending ? (
         <Loading />
@@ -173,37 +167,79 @@ function Activity({ user, today }: { user: User; today: string }) {
         <ErrorBox error={query.error} retry={() => query.refetch()} />
       ) : (
         <>
-          <p>
-            <strong>{total}</strong>{" "}
-            {noun(total, "действие", "действия", "действий")} за период ·{" "}
-            {shortDate(from)} — {shortDate(today)}
-          </p>
-          <div
-            ref={scroll}
-            className="statistics-scroll"
-            tabIndex={0}
-            aria-label="Календарь активности"
-          >
-            <div className="statistics-heatmap">
-              <div className="statistics-weekdays" aria-hidden="true">
-                {["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].map((day) => (
-                  <span key={day}>{day}</span>
-                ))}
-              </div>
-              <div className="statistics-tiles">
-                {Array.from({ length: offset }, (_, i) => (
-                  <span key={`empty-${i}`} />
-                ))}
-                {days.map((day) => (
-                  <Hint
-                    key={day.date}
-                    label={`${fullDate(day.date)}: ${day.count} ${noun(day.count, "действие", "действия", "действий")}`}
-                  >
-                    <span
-                      className={`statistics-tile level-${activityLevel(day.count)}`}
-                    />
-                  </Hint>
-                ))}
+          <dl className="activity-summary">
+            <div>
+              <dt>Действий</dt>
+              <dd>{total}</dd>
+            </div>
+            <div>
+              <dt>Активных дней</dt>
+              <dd>
+                {activeDays}
+                <small> / {period}</small>
+              </dd>
+            </div>
+            <div>
+              <dt>За активный день</dt>
+              <dd>
+                {average.toLocaleString("ru-RU", {
+                  minimumFractionDigits: 1,
+                  maximumFractionDigits: 1,
+                })}
+              </dd>
+            </div>
+          </dl>
+          <div className="activity-calendar">
+            <div className="activity-calendar-caption">
+              <span>
+                {shortDate(from)} — {shortDate(today)}
+              </span>
+              <span>
+                {Math.round((activeDays / period) * 100)}% дней с активностью
+              </span>
+            </div>
+            <div
+              ref={scroll}
+              className="statistics-scroll"
+              tabIndex={0}
+              aria-label="Календарь активности"
+            >
+              <div className="statistics-heatmap">
+                <div className="statistics-weekdays" aria-hidden="true">
+                  {["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].map((day) => (
+                    <span key={day}>{day}</span>
+                  ))}
+                </div>
+                <div className="activity-weeks">
+                  <div className="activity-week-labels" aria-hidden="true">
+                    {Array.from({ length: weeks }, (_, index) => (
+                      <span key={index}>
+                        {index % 2 === 0
+                          ? shortDate(
+                              index === 0
+                                ? from
+                                : shiftDay(from, index * 7 - offset),
+                            )
+                          : ""}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="statistics-tiles">
+                    {Array.from({ length: offset }, (_, i) => (
+                      <span key={`empty-${i}`} />
+                    ))}
+                    {days.map((day) => (
+                      <Hint
+                        key={day.date}
+                        label={`${fullDate(day.date)}: ${day.count} ${noun(day.count, "действие", "действия", "действий")}`}
+                      >
+                        <span
+                          className={`statistics-tile level-${activityLevel(day.count)}`}
+                        />
+                      </Hint>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -235,19 +271,10 @@ function DailyChart({
   applications: Application[];
   today: string;
 }) {
-  const [period, setPeriod] = useState("30");
-  const [customFrom, setCustomFrom] = useState(shiftDay(today, -29));
-  const [customTo, setCustomTo] = useState(today);
-  const from =
-    period === "custom" ? customFrom : shiftDay(today, 1 - Number(period));
-  const to = period === "custom" ? customTo : today;
-  const error =
-    !validDay(from) || !validDay(to)
-      ? "Укажите обе даты."
-      : from > to
-        ? "Начальная дата должна быть не позже конечной."
-        : "";
-  const days = error ? [] : dailyApplications(applications, from, to);
+  const period = 30;
+  const from = shiftDay(today, 1 - period);
+  const to = today;
+  const days = dailyApplications(applications, from, to);
   const max =
     Math.ceil(days.reduce((max, day) => Math.max(max, day.total), 1) / 2) * 2;
   const scroll = useRef<HTMLDivElement>(null);
@@ -257,126 +284,100 @@ function DailyChart({
   const total = days.reduce((sum, day) => sum + day.total, 0);
   const chartHeight = 200;
   return (
-    <section className="panel statistics-panel" aria-labelledby="daily-heading">
+    <section
+      className="panel statistics-panel statistics-daily"
+      data-tone="blue"
+      aria-labelledby="daily-heading"
+    >
       <div className="statistics-section-header">
         <div>
           <h2 id="daily-heading">Отклики по дням</h2>
-          <p className="muted">Отклики по дате отправки и текущему этапу</p>
-        </div>
-        <label className="statistics-control">
-          Период откликов
-          <select value={period} onChange={(e) => setPeriod(e.target.value)}>
-            <option value="7">7 дней</option>
-            <option value="30">30 дней</option>
-            <option value="90">90 дней</option>
-            <option value="custom">Свой диапазон</option>
-          </select>
-        </label>
-      </div>
-      {period === "custom" && (
-        <div className="statistics-range">
-          <label>
-            С даты
-            <input
-              type="date"
-              value={customFrom}
-              onChange={(e) => setCustomFrom(e.target.value)}
-            />
-          </label>
-          <label>
-            По дату
-            <input
-              type="date"
-              value={customTo}
-              onChange={(e) => setCustomTo(e.target.value)}
-            />
-          </label>
-        </div>
-      )}
-      {error ? (
-        <p role="alert">{error}</p>
-      ) : (
-        <>
-          <p>
-            <strong>{total}</strong>{" "}
-            {noun(total, "отклик", "отклика", "откликов")} · {shortDate(from)} —{" "}
-            {shortDate(to)}
+          <p className="muted">
+            Отклики по дате отправки и текущему этапу за последние 30 дней
           </p>
-          <div
-            ref={scroll}
-            className="statistics-scroll"
-            tabIndex={0}
-            aria-label="График откликов по дням"
-          >
+        </div>
+      </div>
+      <p>
+        <strong>{total}</strong>{" "}
+        {noun(total, "отклик", "отклика", "откликов")} · {shortDate(from)} —{" "}
+        {shortDate(to)}
+      </p>
+          <div className="statistics-plot">
+            <div className="statistics-y-axis" aria-hidden="true">
+              <span>{max}</span>
+              <span>{max > 1 ? Math.floor(max / 2) : ""}</span>
+              <span>0</span>
+            </div>
             <div
-              className="statistics-columns"
-              style={{ minWidth: Math.max(400, days.length * 34) }}
+              ref={scroll}
+              className="statistics-scroll"
+              tabIndex={0}
+              aria-label="График откликов по дням"
             >
-              <div className="statistics-y-axis" aria-hidden="true">
-                <span>{max}</span>
-                <span>{max > 1 ? Math.floor(max / 2) : ""}</span>
-                <span>0</span>
-              </div>
-              {days.map((day, index) => {
-                const label = `${fullDate(day.date)}: ${day.total} ${noun(day.total, "отклик", "отклика", "откликов")}. ${Object.entries(
-                  stages,
-                )
-                  .map(([key, name]) => `${name}: ${day.counts[key]}`)
-                  .join("; ")}`;
-                let y = chartHeight;
-                return (
-                  <div className="statistics-column" key={day.date}>
-                    <Hint label={label}>
-                      <svg
-                        viewBox={`0 0 24 ${chartHeight}`}
-                        width="24"
-                        height={chartHeight}
-                        aria-hidden="true"
-                      >
-                        {Object.keys(stages).map((key) => {
-                          const height = (day.counts[key] / max) * chartHeight;
-                          y -= height;
-                          return height > 0 ? (
-                            <rect
-                              key={key}
-                              x="2"
-                              y={y}
-                              width="20"
-                              height={height}
-                              fill={stageColors[key]}
-                              stroke="var(--panel)"
-                              strokeWidth="0.6"
+              <div
+                className="statistics-columns"
+                style={{ minWidth: Math.max(300, days.length * 18 + 40) }}
+              >
+                {days.map((day, index) => {
+                  const label = `${fullDate(day.date)}: ${day.total} ${noun(day.total, "отклик", "отклика", "откликов")}. ${Object.entries(
+                    stages,
+                  )
+                    .map(([key, name]) => `${name}: ${day.counts[key]}`)
+                    .join("; ")}`;
+                  let y = chartHeight;
+                  return (
+                    <div className="statistics-column" key={day.date}>
+                      <Hint label={label}>
+                        <svg
+                          viewBox={`0 0 24 ${chartHeight}`}
+                          width="24"
+                          height={chartHeight}
+                          preserveAspectRatio="none"
+                          aria-hidden="true"
+                        >
+                          {Object.keys(stages).map((key) => {
+                            const height =
+                              (day.counts[key] / max) * chartHeight;
+                            y -= height;
+                            return height > 0 ? (
+                              <rect
+                                key={key}
+                                x="2"
+                                y={y}
+                                width="20"
+                                height={height}
+                                fill={stageColors[key]}
+                                stroke="var(--panel)"
+                                strokeWidth="0.6"
+                              />
+                            ) : null;
+                          })}
+                          {day.total === 0 && (
+                            <line
+                              x1="2"
+                              x2="22"
+                              y1="199"
+                              y2="199"
+                              stroke="var(--muted)"
                             />
-                          ) : null;
-                        })}
-                        {day.total === 0 && (
-                          <line
-                            x1="2"
-                            x2="22"
-                            y1="199"
-                            y2="199"
-                            stroke="var(--muted)"
-                          />
-                        )}
-                      </svg>
-                    </Hint>
-                    <span className="statistics-date" aria-hidden="true">
-                      {index %
-                        (days.length > 90 ? 7 : days.length > 30 ? 3 : 1) ===
-                      0
-                        ? shortDate(day.date)
-                        : "\u00a0"}
-                    </span>
-                  </div>
-                );
-              })}
+                          )}
+                        </svg>
+                      </Hint>
+                      <span className="statistics-date" aria-hidden="true">
+                        {index === days.length - 1 ||
+                        index % (days.length > 14 ? 3 : 1) === 0
+                          ? shortDate(day.date)
+                          : "\u00a0"}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
           {total === 0 && (
-            <p className="muted">За выбранный период откликов нет.</p>
+            <p className="muted">За последние 30 дней откликов нет.</p>
           )}
-        </>
-      )}
       <div className="statistics-legend">
         {Object.entries(stages).map(([key, label]) => (
           <span key={key}>
@@ -409,7 +410,11 @@ function PieChart({
   const hintId = useId();
   let angle = -Math.PI / 2;
   return (
-    <section className="panel statistics-panel" aria-label={title}>
+    <section
+      className="panel statistics-panel"
+      data-tone={kind === "stage" ? "violet" : "mint"}
+      aria-label={title}
+    >
       <h2>{title}</h2>
       <p className="muted">
         Весь журнал · {applications.length}{" "}
@@ -536,8 +541,10 @@ export function Statistics({
           Активность и ход поиска работы · часовой пояс: {user.timezone}
         </p>
       </header>
-      <Activity user={user} today={today} />
-      <DailyChart applications={applications} today={today} />
+      <div className="statistics-overview">
+        <Activity user={user} today={today} />
+        <DailyChart applications={applications} today={today} />
+      </div>
       <div className="statistics-pies">
         <PieChart
           applications={applications}

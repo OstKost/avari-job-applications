@@ -1,0 +1,181 @@
+/* Semantic accents, scoped to the web workspace. */
+:root {
+  --tone-blue: #70c5ff;
+  --tone-mint: #73d9b6;
+  --tone-violet: #b8a4ff;
+  --tone-amber: #f3c677;
+  --tone-action: #65cec8;
+  --chart-saved: #8197a6;
+  --chart-applied: #58aaf3;
+  --chart-hr: #38c8c2;
+  --chart-interview: #a59af4;
+  --chart-final: #d490d9;
+  --chart-offer: #73d9b6;
+  --chart-active: #73d9b6;
+  --chart-paused: #f3c677;
+  --chart-closed: #f28e8e;
+}
+:root[data-theme="light"] {
+  --tone-blue: #1766b0;
+  --tone-mint: #13795c;
+  --tone-violet: #7350be;
+  --tone-amber: #98600d;
+  --tone-action: #147d78;
+  --chart-saved: #8197a6;
+  --chart-applied: #2b82d9;
+  --chart-hr: #16a69e;
+  --chart-interview: #8b72d9;
+  --chart-final: #bf6cba;
+  --chart-offer: #2baa80;
+  --chart-active: #2baa80;
+  --chart-paused: #d89a35;
+  --chart-closed: #dc7171;
+}
+[data-tone="action"] {
+  --tone: var(--tone-action);
+}
+[data-tone="blue"] {
+  --tone: var(--tone-blue);
+}
+[data-tone="mint"] {
+  --tone: var(--tone-mint);
+}
+[data-tone="violet"] {
+  --tone: var(--tone-violet);
+}
+[data-tone="amber"] {
+  --tone: var(--tone-amber);
+}
+
+.dashboard-metrics .metric-card {
+  border-color: color-mix(in srgb, var(--tone) 26%, var(--line));
+  background: linear-gradient(
+    140deg,
+    color-mix(in srgb, var(--tone) 9%, var(--panel)),
+    var(--panel) 72%
+  );
+  box-shadow: inset 0 2px 0 color-mix(in srgb, var(--tone) 65%, transparent);
+}
+.dashboard-metrics .metric-card > strong {
+  color: var(--tone);
+}
+.dashboard-metrics .metric-icon {
+  color: var(--tone);
+  background: color-mix(in srgb, var(--tone) 13%, var(--panel));
+  border: 1px solid color-mix(in srgb, var(--tone) 28%, transparent);
+}
+.quick-links > :is(a, button) {
+  border-color: color-mix(in srgb, var(--tone) 24%, var(--line));
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--tone) 9%, var(--panel-2)),
+    var(--panel-2) 80%
+  );
+}
+.quick-links > :is(a, button) svg {
+  color: var(--tone);
+}
+.quick-links > :is(a, button):hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--tone) 60%, var(--line));
+  background: color-mix(in srgb, var(--tone) 12%, var(--panel-2));
+}
+.quick-link-badge,
+.sidebar a[data-tone="amber"] .nav-count {
+  background: var(--tone-amber);
+  color: var(--panel);
+  border: 0;
+  box-shadow: none;
+}
+
+/* Navigation gets a quiet colored icon; the selected destination carries its tint. */
+:root .sidebar nav a[data-tone] svg {
+  color: color-mix(in srgb, var(--tone) 78%, var(--muted));
+  filter: none;
+}
+:root .sidebar nav a[data-tone].active {
+  color: var(--text);
+  background: color-mix(in srgb, var(--tone) 13%, var(--panel));
+  border-color: color-mix(in srgb, var(--tone) 35%, var(--line));
+  box-shadow: inset 3px 0 var(--tone);
+}
+:root .sidebar nav a[data-tone].active svg {
+  color: var(--tone);
+}
+:root .sidebar nav a[data-tone].active::before {
+  background: radial-gradient(
+    ellipse at 40% 45%,
+    color-mix(in srgb, var(--tone) 18%, transparent),
+    transparent 70%
+  );
+}
+:root .sidebar nav a[data-tone].active::after {
+  background: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  :root .sidebar nav a[data-tone]:hover {
+    border-color: color-mix(in srgb, var(--tone) 35%, var(--line));
+    background: color-mix(in srgb, var(--tone) 10%, var(--panel));
+  }
+  :root .sidebar nav a[data-tone].active:hover {
+    box-shadow: inset 3px 0 var(--tone);
+  }
+}
+.dashboard-hero .greeting svg {
+  color: #f3c677;
+}
+:root[data-theme="light"] .dashboard-hero .greeting svg {
+  color: var(--tone-amber);
+}
+.dashboard-hero .hero-link {
+  color: #9ce9d4;
+}
+:root[data-theme="light"] .dashboard-hero .hero-link {
+  color: var(--tone-mint);
+}
+
+/* The same stage colors appear in charts and progress meters. */
+.dot-saved,
+.fill-saved {
+  background: var(--chart-saved);
+}
+.dot-applied,
+.fill-applied {
+  background: var(--chart-applied);
+}
+.dot-hr,
+.fill-hr {
+  background: var(--chart-hr);
+}
+.dot-interview,
+.fill-interview {
+  background: var(--chart-interview);
+}
+.dot-final,
+.fill-final {
+  background: var(--chart-final);
+}
+.dot-offer,
+.fill-offer {
+  background: var(--chart-offer);
+}
+.statistics-page .statistics-panel[data-tone] {
+  border-top-color: color-mix(in srgb, var(--tone) 55%, var(--line));
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--tone) 5%, var(--panel)),
+    var(--panel) 60%
+  );
+}
+.statistics-panel h2 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.statistics-panel h2::before {
+  content: "";
+  width: 4px;
+  height: 17px;
+  flex-shrink: 0;
+  border-radius: 3px;
+  background: var(--tone);
+}

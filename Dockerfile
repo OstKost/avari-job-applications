@@ -9,8 +9,9 @@ COPY tsconfig.json ./
 COPY packages packages
 COPY apps/web apps/web
 COPY scripts scripts
+COPY releases releases
 COPY dist/avari-extension.zip dist/avari-extension.zip
-ARG AVARI_VERSION=1.0.0
+ARG AVARI_VERSION=
 ARG CHROME_STORE_URL=
 ARG GA_MEASUREMENT_ID=
 ENV AVARI_VERSION=${AVARI_VERSION} VITE_CHROME_STORE_URL=${CHROME_STORE_URL} VITE_GA_MEASUREMENT_ID=${GA_MEASUREMENT_ID}

@@ -24,7 +24,7 @@ func (s *Store) ActivityStatistics(user, from, to string) (ActivityStatistics, e
 	if err != nil || end.Before(start) {
 		return result, Fail(400, "Некорректная конечная дата")
 	}
-	// Bound allocation even for direct API callers; the page only requests 30/90 days.
+	// Bound allocation even for direct API callers; the page only requests 90 days.
 	if end.Sub(start) > 366*24*time.Hour {
 		return result, Fail(400, "Период не должен превышать 367 дней")
 	}

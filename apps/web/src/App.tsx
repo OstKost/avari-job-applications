@@ -1,3 +1,4 @@
+import { UpdateNotice, WhatsNew, WhatsNewLabel } from "./Updates";
 import {
   FilterPresence,
   FilterModalMotion,
@@ -74,6 +75,8 @@ import {
   Star,
   ClockAlert,
   FileText,
+  Copy,
+  RefreshCw,
 } from "lucide-react";
 import {
   createAPI,
@@ -879,6 +882,7 @@ function Workspace({ user }: { user: User }) {
                     icon: GitCompareArrows,
                   },
                   { path: "/settings", label: "Настройки", icon: Settings },
+                  { path: "/whats-new", label: "Что нового", icon: Sparkles },
                 ],
               },
             ].map(({ title, links }) => (
@@ -892,9 +896,27 @@ function Workspace({ user }: { user: User }) {
                     className="sidebar-nav-hint"
                     enabled={sidebarCollapsed}
                   >
-                    <NavLink to={path} end={path === "/"} aria-label={label}>
+                    <NavLink
+                      to={path}
+                      end={path === "/"}
+                      aria-label={label}
+                      data-tone={
+                        ({
+                          "/": "blue",
+                          "/applications": "blue",
+                          "/favorites": "amber",
+                          "/calendar": "violet",
+                          "/statistics": "mint",
+                          "/resumes": "violet",
+                          "/proposals": "amber",
+                          "/settings": "blue",
+                        } as Record<string, string>)[path]
+                      }
+                    >
                       <Icon size={18} />
-                      <span>{label}</span>
+                      <span>
+                        {path === "/whats-new" ? <WhatsNewLabel userId={user.id} /> : label}
+                      </span>
                       {path === "/proposals" && pending.length > 0 && (
                         <span className="nav-count">{pending.length}</span>
                       )}
@@ -994,6 +1016,7 @@ function Workspace({ user }: { user: User }) {
               </button>
             </div>
           )}
+          <UpdateNotice />
           {query.isPending ? (
             <Loading />
           ) : query.error ? (
@@ -1029,6 +1052,10 @@ function Workspace({ user }: { user: User }) {
                   <Route path="/resumes" element={<ResumeManager />} />
                   <Route path="/proposals" element={<Proposals />} />
                   <Route path="/settings" element={<SettingsPage />} />
+                  <Route
+                    path="/whats-new"
+                    element={<WhatsNew userId={user.id} />}
+                  />
                   <Route
                     path="/privacy"
                     element={<PublicPage privacy={true} />}
@@ -1319,17 +1346,17 @@ function Dashboard() {
       <section className="panel quick-access">
         <h2>Быстрый доступ</h2>
         <div className="quick-links">
-          <Link to="/applications">
+          <Link to="/applications" data-tone="blue">
             <BriefcaseBusiness />
             <strong>Отклики</strong>
             <small>Все возможности</small>
           </Link>
-          <Link to="/calendar">
+          <Link to="/calendar" data-tone="violet">
             <CalendarDays />
             <strong>Календарь</strong>
             <small>Встречи и задачи</small>
           </Link>
-          <Link to="/proposals">
+          <Link to="/proposals" data-tone="amber">
             <div className="quick-link-top">
               <GitCompareArrows />
               {pending > 0 && (
@@ -1344,7 +1371,7 @@ function Dashboard() {
             <strong>Предложения</strong>
             <small>{pending ? "Ожидают проверки" : "Всё актуально"}</small>
           </Link>
-          <button onClick={() => editTask()}>
+          <button data-tone="action" onClick={() => editTask()}>
             <Plus />
             <strong>Новая задача</strong>
             <small>Следующий шаг</small>
@@ -1355,12 +1382,14 @@ function Dashboard() {
         {[
           {
             label: "Активные отклики",
+            tone: "blue",
             value: active.length,
             icon: BriefcaseBusiness,
             hint: "В вашем поиске",
           },
           {
             label: "Интервью впереди",
+            tone: "violet",
             value: openTasks.filter(
               (t) => t.kind === "interview" && t.date >= today,
             ).length,
@@ -1369,18 +1398,20 @@ function Dashboard() {
           },
           {
             label: "Офферы",
+            tone: "mint",
             value: active.filter((a) => a.stage === "offer").length,
             icon: Target,
             hint: "На этапе предложения",
           },
           {
             label: "Ожидают внимания",
+            tone: "amber",
             value: overdue.length + pending,
             icon: Clock3,
             hint: "Просроченные задачи и предложения",
           },
-        ].map(({ label, value, icon: Icon, hint }) => (
-          <div className="metric-card" key={label}>
+        ].map(({ label, value, icon: Icon, hint, tone }) => (
+          <div className="metric-card" data-tone={tone} key={label}>
             <span className="metric-icon">
               <Icon size={19} />
             </span>
@@ -3117,7 +3148,6 @@ function Applications({
                   <Link
                     to="/applications"
                     className="button primary water-interaction"
-                    style={{ textDecoration: "none" }}
                   >
                     Перейти ко всем откликам
                   </Link>
@@ -4646,8 +4676,34 @@ function ExtensionDownloadPanel() {
     }
   };
 
+  const [copied, setCopied] = useState(false);
+  const copyTimeoutRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+    };
+  }, []);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setNotice("Ссылка скопирована");
+      setError(undefined);
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+      copyTimeoutRef.current = window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setError(
+        new Error(
+          "Не удалось скопировать. Выделите ссылку и скопируйте её вручную.",
+        ),
+      );
+    }
+  };
+
   return (
-    <div className="extension-download-box">
+    <div className="extension-download-card">
       <ErrorBox error={error} />
       {notice && (
         <div className="success notice" role="status">
@@ -4657,45 +4713,45 @@ function ExtensionDownloadPanel() {
       {download.isPending ? (
         <Loading />
       ) : url ? (
-        <>
+        <div className="extension-download-content">
           <FieldInput
             label="Индивидуальная ссылка на ZIP-архив"
             hint="Ссылка привязана к вашей учётной записи. Не публикуйте её в открытом доступе."
           >
-            <input
-              readOnly
-              value={url}
-              onFocus={(e) => e.currentTarget.select()}
-            />
+            <div className="extension-download-input-row">
+              <input
+                readOnly
+                value={url}
+                className="extension-download-input"
+                onFocus={(e) => e.currentTarget.select()}
+              />
+              <button
+                type="button"
+                className="button extension-copy-btn"
+                disabled={busy}
+                onClick={handleCopy}
+                title="Скопировать ссылку"
+              >
+                {copied ? <Check size={14} /> : <Copy size={14} />}
+                <span>{copied ? "Скопировано" : "Скопировать ссылку"}</span>
+              </button>
+            </div>
           </FieldInput>
-          <div className="actions">
+          <div className="actions extension-download-actions">
             <a className="button primary" href={url} download>
-              <Download size={14} /> Скачать ZIP расширения
+              <Download size={15} /> Скачать ZIP расширения
             </a>
             <button
               type="button"
+              className="button"
               disabled={busy}
-              onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(url);
-                  setNotice("Ссылка скопирована");
-                  setError(undefined);
-                } catch {
-                  setError(
-                    new Error(
-                      "Не удалось скопировать. Выделите ссылку и скопируйте её вручную.",
-                    ),
-                  );
-                }
-              }}
+              onClick={generate}
             >
-              Скопировать ссылку
-            </button>
-            <button type="button" disabled={busy} onClick={generate}>
-              Сменить ссылку
+              <RefreshCw size={14} className={busy ? "spin" : ""} />
+              <span>Сменить ссылку</span>
             </button>
           </div>
-        </>
+        </div>
       ) : (
         <div className="actions">
           <button
@@ -4704,7 +4760,8 @@ function ExtensionDownloadPanel() {
             disabled={busy}
             onClick={generate}
           >
-            Создать персональную ссылку скачивания
+            <Download size={15} />
+            <span>Создать персональную ссылку скачивания</span>
           </button>
         </div>
       )}
@@ -4712,6 +4769,7 @@ function ExtensionDownloadPanel() {
   );
 }
 function SettingsPage() {
+  const settingsLocation = useLocation();
   const local = useQuery({
     queryKey: ["local-status"],
     queryFn: () => api<LocalStatus>("/local/status"),
@@ -4762,6 +4820,9 @@ function SettingsPage() {
   const [activeTab, setActiveTab] = useState<
     "general" | "calendar" | "fields" | "extension" | "transfer"
   >("general");
+  useEffect(() => {
+    if (settingsLocation.hash === "#updates") setActiveTab("general");
+  }, [settingsLocation.hash]);
   const connectedExtensionsCount =
     sessions.data?.filter((s) => s.kind === "extension").length ?? 0;
 
@@ -4771,6 +4832,7 @@ function SettingsPage() {
         title="Настройки"
         subtitle="Настройте журнал под свой поиск"
       />
+      <p><Link to="/whats-new">Что нового в Avari.Jobs</Link></p>
       <div
         className="settings-tabs-bar"
         role="tablist"
