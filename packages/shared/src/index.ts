@@ -31,6 +31,7 @@ export type CalendarSubscription =
 export type ExtensionDownload = components["schemas"]["ExtensionDownload"];
 export type Note = components["schemas"]["Note"];
 export type Field = components["schemas"]["Field"];
+export type ActivityStatistics = components["schemas"]["ActivityStatistics"];
 export type HistoryEvent = components["schemas"]["HistoryEvent"];
 export type Proposal = components["schemas"]["Proposal"];
 export type Detail = components["schemas"]["Detail"];

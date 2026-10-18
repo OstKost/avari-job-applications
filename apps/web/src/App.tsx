@@ -41,6 +41,7 @@ import {
   CheckCircle2,
   Pencil,
   LayoutDashboard,
+  ChartNoAxesCombined,
   ArrowUpRight,
   ChevronLeft,
   ChevronRight,
@@ -128,6 +129,7 @@ import {
   handleFormSubmitShortcut,
   SubmitShortcutHint,
 } from "@avari/shared/ui";
+import { Statistics } from "./Statistics";
 import { PageTransition } from "./PageTransition";
 
 import { TransferPanel } from "./TransferPanel";
@@ -781,6 +783,7 @@ function Workspace({ user }: { user: User }) {
     client.invalidateQueries({ queryKey: ["data"] });
     client.invalidateQueries({ queryKey: ["detail"] });
     client.invalidateQueries({ queryKey: ["calendar"] });
+    client.invalidateQueries({ queryKey: ["statistics-activity"] });
   };
   const saved = () => {
     setForm(undefined);
@@ -855,6 +858,11 @@ function Workspace({ user }: { user: User }) {
                     icon: Star,
                   },
                   { path: "/calendar", label: "Календарь", icon: CalendarDays },
+                  {
+                    path: "/statistics",
+                    label: "Статистика",
+                    icon: ChartNoAxesCombined,
+                  },
                 ],
               },
               {
@@ -996,6 +1004,16 @@ function Workspace({ user }: { user: User }) {
                 <Routes location={location}>
                   <Route path="/" element={<Dashboard />} />
                   <Route path="/calendar" element={<Calendar />} />
+                  <Route
+                    path="/statistics"
+                    element={
+                      <Statistics
+                        key={user.id}
+                        user={user}
+                        applications={data.applications}
+                      />
+                    }
+                  />
                   <Route
                     path="/applications"
                     element={<Applications key={`apps:${user.id}`} />}

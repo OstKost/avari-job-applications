@@ -73,6 +73,10 @@ const schemas = {
     version: integer,
     createdAt: stamp,
   }),
+  ActivityStatistics: object({
+    timezone: s,
+    days: array(object({ date, count: { type: "integer", minimum: 0 } })),
+  }),
   CalendarSubscription: object({ url: s }),
   ExtensionDownload: object({ url: s }),
   Note: object({
@@ -375,6 +379,18 @@ operation(
   "PasswordRecovery",
   true,
 );
+operation(
+  "/statistics/activity",
+  "get",
+  "Daily user activity in the account timezone (inclusive, up to 367 days)",
+  "ActivityStatistics",
+);
+paths["/statistics/activity"].get.parameters = ["from", "to"].map((name) => ({
+  name,
+  in: "query",
+  required: true,
+  schema: date,
+}));
 operation(
   "/journal/export",
   "get",

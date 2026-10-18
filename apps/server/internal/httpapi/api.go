@@ -32,6 +32,9 @@ func (s *Server) api(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	switch {
+	case p == "statistics/activity" && method == "GET":
+		v, e := s.Store.ActivityStatistics(user, r.URL.Query().Get("from"), r.URL.Query().Get("to"))
+		respond(v, e)
 	case p == "journal/export" && method == "GET":
 		journal, e := s.Store.ExportJournal(user)
 		w.Header().Set("Content-Disposition", `attachment; filename="avari-journal.json"`)
