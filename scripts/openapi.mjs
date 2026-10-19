@@ -77,6 +77,38 @@ const schemas = {
     timezone: s,
     days: array(object({ date, count: { type: "integer", minimum: 0 } })),
   }),
+  DailySummary: object({
+    today: date,
+    timezone: s,
+    goal: integer,
+    added: integer,
+    applied: integer,
+    completedTasks: integer,
+    completedInterviews: integer,
+    total: integer,
+    plannedTasks: integer,
+    plannedInterviews: integer,
+    completedTodayTasks: integer,
+    completedTodayInterviews: integer,
+  }),
+  PushConfig: object({
+    enabled: { type: "boolean" },
+    publicKey: s,
+    subscribed: { type: "boolean" },
+  }),
+  PushSubscription: object({
+    endpoint: s,
+    keys: object({
+      auth: s,
+      p256dh: s,
+    }),
+  }),
+  PushUnsubscribe: object({
+    endpoint: s,
+  }),
+  QueuedResult: object({
+    queued: { type: "boolean" },
+  }),
   CalendarSubscription: object({ url: s }),
   ExtensionDownload: object({ url: s }),
   Note: object({
@@ -318,6 +350,19 @@ schemas.LocalStatus = object(
   ["personal", "setupNeeded", "launcher"],
 );
 schemas.LocalSetup = object({ email: s, password: s, timezone: s, token: s });
+schemas.VacancyPreviewRequest = object({ url: { ...s, maxLength: 2048 } });
+schemas.VacancyPreviewFields = object(
+  {
+    company: s,
+    position: s,
+    location: s,
+    workFormat: s,
+    companyLogo: s,
+    salary: object(schemas.Salary.properties, []),
+  },
+  [],
+);
+schemas.VacancyPreview = object({ url: s, fields: ref("VacancyPreviewFields") });
 const paths = {};
 const operation = (
   path,
@@ -386,6 +431,17 @@ const operation = (
   };
 };
 operation(
+  "/vacancies/preview",
+  "post",
+  "Read public vacancy metadata without saving",
+  "VacancyPreview",
+  "VacancyPreviewRequest",
+);
+paths["/vacancies/preview"].post.responses[422] = {
+  description: "Vacancy metadata unavailable",
+  content: { "application/json": { schema: ref("Error") } },
+};
+operation(
   "/auth/register",
   "post",
   "Register a pending account",
@@ -415,6 +471,39 @@ operation(
   "get",
   "Daily user activity in the account timezone (inclusive, up to 367 days)",
   "ActivityStatistics",
+);
+operation(
+  "/daily-summary",
+  "get",
+  "Daily goal and scheduled items summary for today in account timezone",
+  "DailySummary",
+);
+operation(
+  "/push/config",
+  "get",
+  "Public Web Push VAPID configuration (enabled and public key)",
+  "PushConfig",
+);
+operation(
+  "/push/subscribe",
+  "post",
+  "Subscribe current device/browser session to Web Push notifications",
+  "Success",
+  "PushSubscription",
+);
+operation(
+  "/push/unsubscribe",
+  "post",
+  "Unsubscribe device endpoint from Web Push notifications",
+  "Success",
+  "PushUnsubscribe",
+);
+operation(
+  "/push/test",
+  "post",
+  "Send an immediate test Web Push notification to current device",
+  "QueuedResult",
+  "PushUnsubscribe",
 );
 paths["/statistics/activity"].get.parameters = ["from", "to"].map((name) => ({
   name,

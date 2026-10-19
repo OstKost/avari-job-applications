@@ -91,7 +91,7 @@ test("personal first run, extension options and journal merge from settings", as
   expect(journal.applications).toHaveLength(1);
   expect(journal.notes).toHaveLength(1);
   await page
-    .getByLabel("Импортировать журнал JSON")
+    .locator('input[type="file"][aria-label="Импортировать журнал JSON"]')
     .setInputFiles({
       name: "journal.json",
       mimeType: "application/json",

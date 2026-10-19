@@ -236,6 +236,16 @@ func (s *Store) ResolveProposal(user, id, action string, version int, patch map[
 						if e = event(tx, user, out.ID, "proposal", "extension", changes(existing, out)); e != nil {
 							return e
 						}
+						if (existing.Stage == "saved" && existing.AppliedDate == "") && (out.Stage != "saved" || out.AppliedDate != "") {
+							localToday := s.localDate(tx, user)
+							appliedPoints := 1
+							if out.AppliedDate != "" && out.AppliedDate < localToday {
+								appliedPoints = 0
+							}
+							if e = s.recordGoalAction(tx, user, out.ID, "applied", localToday, appliedPoints, out.UpdatedAt); e != nil {
+								return e
+							}
+						}
 					}
 					p.Status, p.ApplicationID = "applied", existing.ID
 					if e = put(tx, user, "proposal", p.ID, p); e != nil {
@@ -271,6 +281,25 @@ func (s *Store) ResolveProposal(user, id, action string, version int, patch map[
 			}
 			if e = event(tx, user, out.ID, "created", "extension", changes(Application{}, out)); e != nil {
 				return e
+			}
+			localToday := s.localDate(tx, user)
+			createdPoints := 1
+			if p.DetectedStatus != "favorite" {
+				createdPoints = 0
+			}
+			if e = s.recordGoalAction(tx, user, out.ID, "created", localToday, createdPoints, out.CreatedAt); e != nil {
+				return e
+			}
+			if out.Stage != "saved" || out.AppliedDate != "" {
+				appliedPoints := 1
+				if p.DetectedStatus != "favorite" {
+					appliedPoints = 0
+				} else if out.AppliedDate != "" && out.AppliedDate < localToday {
+					appliedPoints = 0
+				}
+				if e = s.recordGoalAction(tx, user, out.ID, "applied", localToday, appliedPoints, out.CreatedAt); e != nil {
+					return e
+				}
 			}
 			p.Status, p.ApplicationID, p.Changes = "applied", out.ID, updates
 			if e = put(tx, user, "proposal", p.ID, p); e != nil {
@@ -313,6 +342,16 @@ func (s *Store) ResolveProposal(user, id, action string, version int, patch map[
 		}
 		if e = event(tx, user, out.ID, "proposal", "extension", changes(a, out)); e != nil {
 			return e
+		}
+		if (a.Stage == "saved" && a.AppliedDate == "") && (out.Stage != "saved" || out.AppliedDate != "") {
+			localToday := s.localDate(tx, user)
+			appliedPoints := 1
+			if out.AppliedDate != "" && out.AppliedDate < localToday {
+				appliedPoints = 0
+			}
+			if e = s.recordGoalAction(tx, user, out.ID, "applied", localToday, appliedPoints, out.UpdatedAt); e != nil {
+				return e
+			}
 		}
 		p.Status = "applied"
 		p.Changes = updates

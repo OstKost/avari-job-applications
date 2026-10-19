@@ -1,5 +1,7 @@
 # Approved feature implementation (2026-10)
 
+> **Исторический документ планирования (Октябрь 2026):** Данный документ фиксирует утверждённый план и отчёт о приёмке семи функциональных областей (T0–T7: активность, избранное, резюме, логотипы, напоминания) от 17 октября 2026 года. Последующие работы по PWA, офлайн-режиму, Web Push и автозаполнению ссылок специфицированы в `docs/PWA-Tasks.md` и отражены в `docs/Usage.md`.
+
 Implement through supervised Orca Antigravity workers; coordinator owns integration and acceptance. Preserve unrelated untracked promotional media. Workers commit only their own changes and report commit IDs and tests. Do not deploy or publish.
 
 ## T0/T1/T2/T3 UI/T5/T6 UI: web

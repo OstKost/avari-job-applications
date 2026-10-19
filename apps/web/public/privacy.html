@@ -272,12 +272,71 @@
           </li>
         </ul>
 
-        <h2>5. Веб-сервис и внешние сервисы</h2>
+        <h2>5. Веб-сервис, PWA и внешние сервисы</h2>
         <p>
           Веб-сервис хранит email, хеш пароля и данные журнала на выбранном
           сервере. Резервные копии могут сохранять удалённые записи до ротации
           копий.
         </p>
+        <p>
+          <strong>Локальное хранилище PWA (IndexedDB и Service Worker):</strong>
+          приложение может устанавливаться как Progressive Web App (PWA) на компьютер
+          и мобильные устройства. Оболочка приложения кэшируется Service Worker для
+          быстрого запуска.
+        </p>
+        <ul>
+          <li>
+            <strong>Автономное чтение (Offline Read):</strong> доступно только при
+            явном согласии пользователя (opt-in, по умолчанию выключено). При включении
+            в локальной базе IndexedDB сохраняются последние загруженные списки вакансий,
+            задач, календаря и открытые карточки откликов. Серверные сессионные токены
+            никогда не сохраняются в постоянном кэше.
+          </li>
+          <li>
+            <strong>Локальные черновики (Drafts):</strong> формы вакансий, задач и заметок
+            автоматически сохраняют вводимый текст локально в браузере с привязкой к
+            аккаунту, предотвращая потерю данных при случайном закрытии страницы или
+            обновлении приложения.
+          </li>
+          <li>
+            <strong>Очистка данных:</strong> при выходе из учётной записи (logout)
+            или через настройки приложения локальный кэш журнала, детали и черновики
+            полностью и безвозвратно удаляются из IndexedDB на данном устройстве.
+            Очередь отложенных изменений (offline write queue) отсутствует: изменения
+            отправляются на сервер только при наличии активного соединения.
+          </li>
+        </ul>
+        <p>
+          <strong>Web Push уведомления:</strong>
+        </p>
+        <ul>
+          <li>
+            Push-уведомления включаются только по явному действию пользователя
+            (opt-in переключатель в настройках аккаунта). Запрос разрешения браузера
+            (Notification permission) вызывается только при клике на включение.
+          </li>
+          <li>
+            При включении браузер генерирует уникальный адрес доставки (push endpoint)
+            и криптографические ключи шифрования (p256dh, auth), которые сохраняются
+            на сервере Avari.Jobs для адресации сообщений.
+          </li>
+          <li>
+            <strong>Только агрегированные данные:</strong> сообщения push формируются
+            исключительно в виде обезличенных числовых сводок (количество запланированных
+            задач и собеседований на день, прогресс выполнения цели 10 действий).
+            Тела push-уведомлений <em>никогда не содержат</em> названий компаний, должностей,
+            контактных лиц, заметок или конфиденциальных деталей.
+          </li>
+          <li>
+            Служба доставки push платформы (Apple Push Notification service для iOS/macOS,
+            Google FCM для Android/Chrome, Mozilla Push Service для Firefox) передаёт
+            зашифрованный полезный груз без доступа к открытому тексту.
+          </li>
+          <li>
+            Подписка отключается в любой момент в настройках Avari.Jobs или отзывом
+            разрешения в браузере.
+          </li>
+        </ul>
         <p>
           При включённой Google Analytics веб-сайт передаёт Google сведения о
           посещениях страниц, браузере и устройстве. Для аватара браузер
@@ -288,7 +347,7 @@
         </p>
         <h2>6. Контакты разработчика</h2>
         <p>
-          По всем вопросам, связанным с работой расширения, обработкой данных и
+          По всем вопросам, связанным с работой расширения, PWA, обработкой данных и
           политикой конфиденциальности, обращайтесь по электронной почте:<br />
           <strong>Email:</strong>
           <a href="mailto:web@ostkost.ru">web@ostkost.ru</a><br />
@@ -300,13 +359,14 @@
       <hr class="divider" />
 
       <section id="en">
-        <h2>Privacy Policy for Avari.Jobs Chrome Extension & Service</h2>
+        <h2>Privacy Policy for Avari.Jobs Chrome Extension, PWA & Service</h2>
         <p>
           This Privacy Policy explains how the browser extension
           <strong>"Avari.Jobs — журнал откликов"</strong> (Avari.Jobs
-          Application Tracker) and the <strong>Avari.Jobs</strong> web platform
-          (available at <code>https://jobs.avari.dev</code>) collect, handle,
-          and store user data.
+          Application Tracker), the Progressive Web App (PWA), and the
+          <strong>Avari.Jobs</strong> web platform (available at
+          <code>https://jobs.avari.dev</code>) collect, handle, and store user
+          data.
         </p>
 
         <h2>1. Data Collection & Handling</h2>
@@ -386,7 +446,7 @@
           </li>
         </ul>
 
-        <h2>5. Web Service and External Services</h2>
+        <h2>5. Web Service, PWA Offline Storage & Web Push</h2>
         <p>
           The web service stores your email, password hash and journal data on
           your selected server. Backups may retain deleted records until backup
@@ -394,6 +454,59 @@
           and drafts; your Avari.Jobs email and password are sent to the
           selected server when signing in.
         </p>
+        <p>
+          <strong>Progressive Web App (PWA) Offline Storage:</strong>
+        </p>
+        <ul>
+          <li>
+            <strong>Offline Reading (Opt-In Only):</strong> Offline journal data
+            caching in IndexedDB is strictly opt-in and disabled by default. When
+            explicitly enabled by the user, the latest loaded vacancies, tasks,
+            calendar entries, and viewed detail cards are cached locally for
+            offline review. Session authentication tokens are never stored in
+            this offline cache.
+          </li>
+          <li>
+            <strong>Local Drafts:</strong> Vacancy, task, and note input forms
+            automatically persist unsaved text locally in IndexedDB scoped to
+            the active account, protecting your work against accidental tab closures
+            or app updates.
+          </li>
+          <li>
+            <strong>Cache Clearance:</strong> Signing out (logout) or manually
+            clearing data via settings immediately purges all cached journal entries,
+            details, and drafts from the device. There is no offline server mutation queue;
+            all record modifications require an active server connection.
+          </li>
+        </ul>
+        <p>
+          <strong>Web Push Notifications:</strong>
+        </p>
+        <ul>
+          <li>
+            Push notifications are strictly opt-in on a per-device basis. Browser
+            notification permissions are requested solely upon an explicit click to enable
+            push in user settings.
+          </li>
+          <li>
+            When subscribed, your browser generates a push endpoint URL and encryption keys
+            (p256dh, auth), which are stored on the Avari.Jobs server to route notifications.
+          </li>
+          <li>
+            <strong>Aggregate-Only Payloads:</strong> Notification messages contain only
+            aggregate counts (e.g. number of planned tasks/interviews for today and progress
+            towards the 10-actions weekday goal). They <em>never contain</em> company names,
+            job titles, contacts, notes, or confidential text.
+          </li>
+          <li>
+            Platform push delivery services (Apple APNs for iOS/macOS, Google FCM for Android/Chrome,
+            Mozilla WebPush for Firefox) transport encrypted payloads without access to plaintext content.
+          </li>
+          <li>
+            Push subscriptions can be revoked at any time via Avari.Jobs settings or by revoking
+            site permissions in your browser.
+          </li>
+        </ul>
         <p>
           When Google Analytics is enabled, the website sends Google page visit,
           browser and device information. To display an avatar, your browser

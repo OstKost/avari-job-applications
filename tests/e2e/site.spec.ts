@@ -1,3 +1,4 @@
+import { submitLogin } from "./auth";
 import { test, expect, type Page } from "@playwright/test";
 test("public extension page and privacy are available before login", async ({
   page,
@@ -39,7 +40,7 @@ const login = async (page: Page) => {
   await page
     .getByLabel("Пароль", { exact: true })
     .fill("browser-test-password");
-  await page.getByRole("button", { name: "Войти", exact: true }).click();
+  await submitLogin(page);
   await expect(
     page.getByRole("heading", { name: "Главная", exact: true }),
   ).toBeVisible();
@@ -289,7 +290,7 @@ test("registration stays pending and unauthorized data is blocked", async ({
   await expect(
     page.getByText("Аккаунт создан.", { exact: false }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Войти", exact: true }).click();
+  await submitLogin(page);
   await expect(
     page.getByRole("heading", { name: "Заявка отправлена" }),
   ).toBeVisible();
@@ -727,4 +728,225 @@ test("page motion: rapid navigation settles on the latest route and respects red
     ),
   ).toBeTruthy();
   expect(errors).toEqual([]);
+});
+
+// Close every inspection connection: leaving one open masks multi-instance lifecycle bugs.
+async function offlineRecords(page: Page, store: string): Promise<any[]> {
+  return page.evaluate((storeName) => new Promise<any[]>((resolve, reject) => {
+    const request = indexedDB.open("avari_offline_v1", 1);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const db = request.result;
+      const tx = db.transaction(storeName, "readonly");
+      const get = tx.objectStore(storeName).getAll();
+      tx.oncomplete = () => { db.close(); resolve(get.result); };
+      tx.onabort = () => { db.close(); reject(tx.error); };
+    };
+  }), store);
+}
+
+test("pwa & offline: real list/detail/calendar cold start, read-only, optout drafts and relogin", async ({ page: initialPage, context }) => {
+  let page = initialPage;
+  const company = `Offline Company ${Date.now()}`;
+  const note = `Offline detail note ${company}`;
+  const taskTitle = `Offline interview ${company}`;
+  await login(page);
+  const csrf = (await context.cookies()).find(c => c.name === "avari_csrf")!.value;
+  const headers = { "X-CSRF-Token": csrf };
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Moscow" });
+  const created = await page.request.post("/api/v1/applications", { headers, data: {
+    company, position: "Offline Engineer", stage: "saved", state: "active", savedDate: today,
+  } });
+  expect(created.ok()).toBeTruthy();
+  const application = await created.json();
+  expect((await page.request.post("/api/v1/notes", { headers, data: { applicationId: application.id, text: note } })).ok()).toBeTruthy();
+  expect((await page.request.post("/api/v1/tasks", { headers, data: {
+    applicationId: application.id, title: taskTitle, date: today, time: "12:00", kind: "interview",
+  } })).ok()).toBeTruthy();
+
+  await page.goto("/settings");
+  await page.getByText("Разрешить чтение журнала офлайн (Opt-in)").click();
+  await expect(page.getByLabel("Разрешить чтение журнала офлайн (Opt-in)")).toBeChecked();
+  await page.goto("/applications");
+  await expect(page.locator(".table-wrap .company-link").filter({ hasText: company }).first()).toBeVisible();
+  await page.goto(`/applications/${application.id}`);
+  await expect(page.getByText(note, { exact: true })).toBeVisible();
+  await expect.poll(async () => (await offlineRecords(page, "details")).some(r => r.applicationId === application.id)).toBe(true);
+  await page.goto("/calendar");
+  await expect(page.locator(".calendar-agenda").getByText(taskTitle, { exact: true })).toBeVisible();
+  await expect.poll(async () => (await offlineRecords(page, "journal")).some(r => r.tasks.some((t: any) => t.title === taskTitle))).toBe(true);
+  await page.evaluate(async () => { await navigator.serviceWorker.ready; });
+  await expect.poll(() => page.evaluate(() => !!navigator.serviceWorker.controller)).toBe(true);
+
+  await context.setOffline(true);
+  await page.close();
+  page = await context.newPage();
+  const offlineMutations: string[] = [];
+  page.on("request", request => {
+    if (request.url().includes("/api/v1/") && !["GET", "HEAD"].includes(request.method())) offlineMutations.push(request.url());
+  });
+  await page.goto("/applications");
+  await expect(page.locator(".offline-notice")).toBeVisible();
+  await expect(page.locator(".table-wrap .company-link").filter({ hasText: company }).first()).toBeVisible();
+  await page.goto(`/applications/${application.id}`);
+  await expect(page.getByText(note, { exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "Календарь", exact: true }).click();
+  await expect(page.locator(".calendar-agenda").getByText(taskTitle, { exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "Главная", exact: true }).click();
+  await page.getByRole("button", { name: "Добавить вакансию" }).click();
+  await page.getByRole("dialog").getByLabel("Компания *").fill("Offline local draft");
+  await page.getByRole("dialog").getByLabel("Позиция *", { exact: true }).fill("Offline Engineer");
+  await page.getByRole("dialog").getByRole("button", { name: "Сохранить", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("отправка пока недоступна");
+  expect(offlineMutations).toEqual([]);
+  await page.getByRole("dialog").getByRole("button", { name: "Закрыть", exact: true }).click();
+
+  await context.setOffline(false);
+  await expect.poll(() => page.locator(".offline-notice").count()).toBe(0);
+  // Opting out clears READ copies, while independent drafts continue to save.
+  await page.getByRole("link", { name: "Настройки", exact: true }).click();
+  await page.getByText("Разрешить чтение журнала офлайн (Opt-in)").click();
+  await expect(page.getByLabel("Разрешить чтение журнала офлайн (Opt-in)")).not.toBeChecked();
+  await expect.poll(async () => (await offlineRecords(page, "journal")).length).toBe(0);
+  await page.getByRole("link", { name: "Главная", exact: true }).click();
+  await page.getByRole("button", { name: "Добавить вакансию" }).click();
+  await page.getByRole("dialog").getByLabel("Компания *").fill("Optout still saves drafts");
+  await expect.poll(async () => (await offlineRecords(page, "drafts")).some(r => r.data.company === "Optout still saves drafts")).toBe(true);
+  await page.getByRole("dialog").getByRole("button", { name: "Закрыть", exact: true }).click();
+
+  const pageB = await context.newPage();
+  await pageB.goto("/");
+  await pageB.getByRole("button", { name: "Добавить вакансию" }).click();
+  await pageB.getByRole("dialog").getByLabel("Компания *").fill("Pending old-tab draft");
+  await page.locator(".sidebar-footer").getByRole("button", { name: "Выйти из аккаунта" }).click();
+  await page.getByRole("dialog", { name: "Выйти из аккаунта?" }).getByRole("button", { name: "Выйти", exact: true }).click();
+  await expect(pageB.getByRole("button", { name: "Войти", exact: true })).toBeVisible();
+  await expect(pageB.getByRole("dialog")).toHaveCount(0);
+  await expect.poll(async () => (await offlineRecords(page, "drafts")).length).toBe(0);
+  await login(page);
+  await page.getByRole("link", { name: "Главная", exact: true }).click();
+  await page.getByRole("button", { name: "Добавить вакансию" }).click();
+  await page.getByRole("dialog").getByLabel("Компания *").fill("Post-relogin fresh draft");
+  await expect.poll(async () => (await offlineRecords(page, "drafts")).some(r => r.data.company === "Post-relogin fresh draft")).toBe(true);
+  await page.getByRole("dialog").getByRole("button", { name: "Закрыть", exact: true }).click();
+  await page.getByRole("button", { name: "Добавить вакансию" }).click();
+  await page.locator(".draft-restore-banner").getByRole("button", { name: "Восстановить", exact: true }).click();
+  await expect(page.getByRole("dialog").getByLabel("Компания *")).toHaveValue("Post-relogin fresh draft");
+  await pageB.close();
+  await page.close();
+});
+
+for (const status of [401, 403]) {
+  test(`pwa auth ${status}: navigator false cannot restore persisted account`, async ({ page, context }) => {
+    await login(page);
+    await page.goto("/settings");
+    await page.getByText("Разрешить чтение журнала офлайн (Opt-in)").click();
+  await expect(page.getByLabel("Разрешить чтение журнала офлайн (Opt-in)")).toBeChecked();
+    await expect.poll(async () => (await offlineRecords(page, "user")).length).toBeGreaterThan(0);
+    await context.addInitScript(() => Object.defineProperty(navigator, "onLine", { get: () => false }));
+    await page.route("**/api/v1/me", route => route.fulfill({ status, contentType: "application/json", body: JSON.stringify({ error: "denied" }) }));
+    await page.reload();
+    await expect(page.getByRole("button", { name: "Войти", exact: true })).toBeVisible();
+    await expect.poll(async () => (await offlineRecords(page, "user")).length).toBe(0);
+    await expect(page.locator(".company-link")).toHaveCount(0);
+  });
+}
+
+test("pwa cached fallback stays read-only with navigator true until live me verifies", async ({ page }) => {
+  await login(page);
+  await page.goto("/settings");
+  await page.getByText("Разрешить чтение журнала офлайн (Opt-in)").click();
+  await expect(page.getByLabel("Разрешить чтение журнала офлайн (Opt-in)")).toBeChecked();
+  await expect.poll(async () => (await offlineRecords(page, "journal")).length).toBe(1);
+  await page.route("**/api/v1/me", route => route.abort("failed"));
+  await page.route("**/api/v1/applications", route => route.abort("failed"));
+  await page.goto("/");
+  expect(await page.evaluate(() => navigator.onLine)).toBe(true);
+  await expect(page.locator(".offline-notice")).toBeVisible();
+  await page.getByRole("button", { name: "Добавить вакансию" }).click();
+  await page.getByRole("dialog").getByLabel("Компания *").fill("Cached fallback draft");
+  let mutationCount = 0;
+  page.on("request", request => { if (request.method() === "POST" && request.url().endsWith("/applications")) mutationCount++; });
+  await page.getByRole("dialog").getByLabel("Позиция *", { exact: true }).fill("Offline Engineer");
+  await page.getByRole("dialog").getByRole("button", { name: "Сохранить", exact: true }).click();
+  await expect(page.getByRole("alert")).toBeVisible();
+  expect(mutationCount).toBe(0);
+  await page.getByRole("dialog").getByRole("button", { name: "Закрыть", exact: true }).click();
+
+  await page.unroute("**/api/v1/me");
+  await page.unroute("**/api/v1/applications");
+  let releaseVerification!: () => void;
+  const verificationGate = new Promise<void>(resolve => { releaseVerification = resolve; });
+  await page.route("**/api/v1/me", async route => { await verificationGate; await route.continue(); });
+  const meRequest = page.waitForRequest("**/api/v1/me");
+  await page.locator(".offline-notice").getByRole("button", { name: "Повторить" }).click();
+  await meRequest;
+  await expect(page.locator(".offline-notice")).toBeVisible();
+  await page.getByRole("button", { name: "Добавить вакансию" }).click();
+  await page.getByRole("dialog").getByLabel("Компания *").fill("Awaiting verification draft");
+  await page.getByRole("dialog").getByLabel("Позиция *", { exact: true }).fill("Offline Engineer");
+  await page.getByRole("dialog").getByRole("button", { name: "Сохранить", exact: true }).click();
+  await expect(page.getByRole("alert")).toBeVisible();
+  expect(mutationCount).toBe(0);
+  releaseVerification();
+  await expect(page.locator(".offline-notice")).toHaveCount(0);
+});
+
+test("pwa share: confirmed intake across login, canonical duplicate, shortcut and manual paste", async ({ page, context }) => {
+  const unique = Date.now();
+  const incomingUrl = `https://jobs.example.org/vacancy/${unique}`;
+  const mutations: string[] = [];
+  page.on("request", request => {
+    if (request.method() === "POST" && request.url().endsWith("/api/v1/applications")) mutations.push(request.url());
+  });
+  await page.goto(`/share?url=${encodeURIComponent(incomingUrl)}&title=Shared%20Engineer`);
+  await page.getByLabel("Email", { exact: true }).fill("browser@example.com");
+  await page.getByLabel("Пароль", { exact: true }).fill("browser-test-password");
+  await submitLogin(page);
+  const form = page.getByRole("dialog", { name: "Добавить вакансию", exact: true });
+  await expect(form.getByLabel("Ссылка на вакансию", { exact: true })).toHaveValue(incomingUrl);
+  await expect(form.getByLabel("Позиция *", { exact: true })).toHaveValue("Shared Engineer");
+  expect(mutations).toEqual([]);
+  await expect(page.getByRole("heading", { name: "Страница не найдена", exact: true })).toHaveCount(0);
+  const before = await (await page.request.get("/api/v1/daily-summary")).json();
+  await form.getByLabel("Компания *", { exact: true }).fill(`Shared Confirmed ${unique}`);
+  await form.getByRole("button", { name: "Сохранить", exact: true }).click();
+  await expect(page.getByRole("heading", { name: `Shared Confirmed ${unique}`, exact: true })).toBeVisible();
+  expect(mutations).toHaveLength(1);
+  await page.getByRole("link", { name: "Главная", exact: true }).click();
+  await expect(page.getByTestId("daily-goal-score")).toHaveText(`${before.total + 1}/10`);
+
+  const csrf = (await context.cookies()).find(cookie => cookie.name === "avari_csrf")!.value;
+  const company = `Canonical Duplicate ${unique}`;
+  const response = await page.request.post("/api/v1/applications", {
+    headers: { "X-CSRF-Token": csrf }, data: {
+      company, position: "Existing Engineer", url: "https://hh.ru/vacancy/987123456",
+      stage: "saved", state: "active", savedDate: new Date().toISOString().slice(0, 10),
+    },
+  });
+  expect(response.ok()).toBeTruthy();
+  const existing = await response.json();
+  await page.goto(`/share?url=${encodeURIComponent("https://hh.ru/vacancy/987123456?utm_source=share")}`);
+  await expect(page).toHaveURL(new RegExp(`/applications/${existing.id}$`));
+  await expect(page.getByRole("heading", { name: company, exact: true })).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  expect(mutations).toHaveLength(1);
+
+  await page.goto("/#add-vacancy");
+  await expect(form).toBeVisible();
+  await expect(form.getByLabel("Компания *", { exact: true })).toHaveValue("");
+  await form.getByRole("button", { name: "Закрыть", exact: true }).click();
+  await page.getByRole("button", { name: "Вставить ссылку", exact: true }).click();
+  const paste = page.getByRole("dialog", { name: "Добавить вакансию по ссылке", exact: true });
+  await paste.getByLabel("Ссылка или текст вакансии").fill("javascript:alert(1)");
+  await paste.getByRole("button", { name: "Продолжить", exact: true }).click();
+  await expect(paste.getByRole("alert")).toBeVisible();
+  await paste.getByLabel("Ссылка или текст вакансии").fill(`Новая вакансия ${incomingUrl}`);
+  await paste.getByRole("button", { name: "Продолжить", exact: true }).click();
+  await expect(page.getByRole("heading", { name: `Shared Confirmed ${unique}`, exact: true })).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  expect(mutations).toHaveLength(1);
+  await page.goto("/share?url=javascript%3Aalert(1)");
+  await expect(page.getByRole("heading", { name: "Главная", exact: true })).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
 });

@@ -1,3 +1,4 @@
+import { submitLogin } from "./auth";
 import { test, expect, type Page } from "@playwright/test";
 
 async function login(page: Page) {
@@ -6,7 +7,7 @@ async function login(page: Page) {
   await page
     .getByLabel("Пароль", { exact: true })
     .fill("browser-test-password");
-  await page.getByRole("button", { name: "Войти", exact: true }).click();
+  await submitLogin(page);
   await expect(
     page.getByRole("heading", { name: "Главная", exact: true }),
   ).toBeVisible();

@@ -1,3 +1,4 @@
+import { createWebAPI, assertServerMutationAllowed, requireLiveVerification } from "./offline/policy";
 import { useState, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -12,14 +13,13 @@ import {
   X,
 } from "lucide-react";
 import {
-  createAPI,
   dateLabel,
   type Resume,
   type ResumeVersion,
 } from "@avari/shared";
 import { Modal, ErrorBox, Empty, FieldInput } from "@avari/shared/ui";
 
-const api = createAPI();
+const api = createWebAPI();
 
 const ALLOWED_EXTENSIONS = [
   ".pdf",
@@ -131,6 +131,7 @@ export function ResumeManager() {
         ?.slice(11);
 
       const path = resumeId ? `/api/v1/resumes/${resumeId}/versions` : "/api/v1/resumes";
+      assertServerMutationAllowed();
       const res = await fetch(path, {
         method: "POST",
         headers: {
@@ -138,9 +139,13 @@ export function ResumeManager() {
         },
         credentials: "include",
         body: formData,
+      }).catch((error) => {
+        requireLiveVerification();
+        throw error;
       });
 
       if (!res.ok) {
+        if ([401, 403].includes(res.status)) window.dispatchEvent(new Event("avari-session-expired"));
         const payload = await res.json().catch(() => ({}));
         throw new Error(payload.error || "Ошибка загрузки резюме");
       }

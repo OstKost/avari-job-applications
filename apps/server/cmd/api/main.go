@@ -7,6 +7,7 @@ import (
 	"github.com/OstKost/avari-job-applications/apps/server/assets"
 	"github.com/OstKost/avari-job-applications/apps/server/internal/core"
 	"github.com/OstKost/avari-job-applications/apps/server/internal/httpapi"
+	"github.com/OstKost/avari-job-applications/apps/server/internal/webpush"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -77,7 +78,40 @@ func main() {
 			os.Exit(1)
 		}
 	}
-	api := &httpapi.Server{Store: store, Origin: origin, Secure: len(origin) >= 8 && origin[:8] == "https://", Assets: web, TrustedProxy: !*personal && os.Getenv("AVARI_TRUST_PROXY") == "true", Personal: *personal}
+	vapidCfg := webpush.VAPIDConfig{
+		PublicKey:  os.Getenv("AVARI_VAPID_PUBLIC_KEY"),
+		PrivateKey: os.Getenv("AVARI_VAPID_PRIVATE_KEY"),
+		Contact:    os.Getenv("AVARI_VAPID_CONTACT"),
+	}
+	cfg, err := webpush.NewConfig(vapidCfg)
+	if err != nil {
+		slog.Error("invalid VAPID configuration", "error", err)
+		os.Exit(1)
+	}
+
+	pushTransport, err := webpush.NewTransport(cfg)
+	if err != nil {
+		slog.Error("failed to create webpush transport", "error", err)
+		os.Exit(1)
+	}
+
+	pushService := core.NewPushNotificationService(store, pushTransport)
+	if cfg.Enabled() {
+		slog.Info("web push notifications enabled", "contact", os.Getenv("AVARI_VAPID_CONTACT"))
+	} else {
+		slog.Info("web push notifications disabled (no VAPID keys configured)")
+	}
+
+	api := &httpapi.Server{
+		Store:         store,
+		Origin:        origin,
+		Secure:        len(origin) >= 8 && origin[:8] == "https://",
+		Assets:        web,
+		TrustedProxy:  !*personal && os.Getenv("AVARI_TRUST_PROXY") == "true",
+		Personal:      *personal,
+		PushTransport: pushTransport,
+		PushService:   pushService,
+	}
 	if *personal {
 		api.SetupToken = os.Getenv("AVARI_SETUP_TOKEN")
 		if *launcher {
@@ -90,9 +124,17 @@ func main() {
 	defer stop()
 	go func() {
 		// Startup reconciliation
-		if err := store.ReconcileReminders(ctx, time.Now().UTC()); err != nil && ctx.Err() == nil {
+		nowUTC := time.Now().UTC()
+		if err := store.ReconcileReminders(ctx, nowUTC); err != nil && ctx.Err() == nil {
 			slog.Error("failed startup reminder reconciliation", "error", err)
 		}
+		if err := pushService.ReconcileDigests(ctx, nowUTC); err != nil && ctx.Err() == nil {
+			slog.Error("failed startup push digest reconciliation", "error", err)
+		}
+		if err := pushService.ProcessOutbox(ctx, nowUTC); err != nil && ctx.Err() == nil {
+			slog.Error("failed startup push outbox processing", "error", err)
+		}
+
 		ticker := time.NewTicker(1 * time.Minute)
 		defer ticker.Stop()
 		for {
@@ -100,8 +142,15 @@ func main() {
 			case <-ctx.Done():
 				return
 			case t := <-ticker.C:
-				if err := store.ReconcileReminders(ctx, t.UTC()); err != nil && ctx.Err() == nil {
+				current := t.UTC()
+				if err := store.ReconcileReminders(ctx, current); err != nil && ctx.Err() == nil {
 					slog.Error("failed scheduled reminder reconciliation", "error", err)
+				}
+				if err := pushService.ReconcileDigests(ctx, current); err != nil && ctx.Err() == nil {
+					slog.Error("failed scheduled push digest reconciliation", "error", err)
+				}
+				if err := pushService.ProcessOutbox(ctx, current); err != nil && ctx.Err() == nil {
+					slog.Error("failed scheduled push outbox processing", "error", err)
 				}
 			}
 		}

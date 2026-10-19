@@ -68,6 +68,15 @@ func trackedJobURL(raw string) string {
 	return canonical
 }
 
+// VacancyPreviewURL accepts only HTTPS links to individual supported vacancies.
+func VacancyPreviewURL(raw string) (string, string) {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u.Scheme != "https" || u.Host != u.Hostname() {
+		return "", ""
+	}
+	return canonicalJobURL(u)
+}
+
 func jobResponsesSite(u *url.URL) string {
 	site := jobSiteURL(u)
 	if site == "hh.ru" && (u.Path == "/applicant/negotiations" || u.Path == "/applicant/negotiations/") {

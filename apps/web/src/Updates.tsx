@@ -1,15 +1,15 @@
+import { createWebAPI } from "./offline/policy";
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  createAPI,
   type LocalStatus,
   type ReleaseNote,
   type UpdateStatus,
 } from "@avari/shared";
 import { ErrorBox, Loading } from "@avari/shared/ui";
 import "./updates.css";
-const api = createAPI();
+const api = createWebAPI();
 const pendingKey = "avari-update-restart";
 async function json<T>(url: string): Promise<T> {
   const response = await fetch(url, { cache: "no-cache" });

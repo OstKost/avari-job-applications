@@ -134,7 +134,7 @@ test.describe("Approved Features E2E Acceptance", () => {
     await expect(page.locator("tr.application-data-row")).toHaveCount(1);
 
     // Go to /favorites
-    await page.getByRole("link", { name: "Избранные вакансии", exact: true }).click();
+    await page.getByRole("link", { name: "Избранные", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Избранные вакансии", exact: true })).toBeVisible();
 
     // In /favorites, search should NOT be inherited from /applications
@@ -226,7 +226,7 @@ test.describe("Approved Features E2E Acceptance", () => {
     await expect(starBtn).toHaveClass(/active/);
 
     // Verify presence in /favorites
-    await page.getByRole("link", { name: "Избранные вакансии", exact: true }).click();
+    await page.getByRole("link", { name: "Избранные", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Избранные вакансии", exact: true })).toBeVisible();
     await expect(page.locator("tr.application-data-row a.company-link", { hasText: testApp.company })).toBeVisible();
 
@@ -242,7 +242,7 @@ test.describe("Approved Features E2E Acceptance", () => {
     await expect(detailFavBtn).toContainText("В избранное");
 
     // Verify removed from /favorites
-    await page.getByRole("link", { name: "Избранные вакансии", exact: true }).click();
+    await page.getByRole("link", { name: "Избранные", exact: true }).click();
     await expect(page.locator("tr.application-data-row a.company-link", { hasText: testApp.company })).toHaveCount(0);
 
     // 3. Switch to card view in /applications and toggle favorite on card
@@ -257,7 +257,7 @@ test.describe("Approved Features E2E Acceptance", () => {
     await expect(cardStar).toHaveClass(/active/);
 
     // Verify back in /favorites
-    await page.getByRole("link", { name: "Избранные вакансии", exact: true }).click();
+    await page.getByRole("link", { name: "Избранные", exact: true }).click();
     await expect(page.locator("tr.application-data-row a.company-link", { hasText: testApp.company })).toBeVisible();
   });
 

@@ -9,6 +9,7 @@ import "./accents.css";
 const client = new QueryClient({
   defaultOptions: {
     queries: {
+      networkMode: "always",
       retry: (count, error) =>
         !("status" in error && [401, 403].includes(Number(error.status))) &&
         count < 1,

@@ -5,6 +5,7 @@ __pycache__/
 dist/
 bin/
 data/
+docs/growth/
 .env
 *.db
 *.db-*

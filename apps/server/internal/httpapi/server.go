@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/OstKost/avari-job-applications/apps/server/internal/core"
+	"github.com/OstKost/avari-job-applications/apps/server/internal/webpush"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -30,6 +31,8 @@ type Server struct {
 	SetupToken    string
 	LauncherURL   string
 	LauncherToken string
+	PushService   *core.PushNotificationService
+	PushTransport webpush.Transport
 	limitMu       sync.Mutex
 	limits        map[string][]time.Time
 	LoginGate     chan struct{}
@@ -382,8 +385,13 @@ func (s *Server) static(w http.ResponseWriter, r *http.Request) {
 		}
 		name = "index.html"
 	}
-	if name == "index.html" || name == "release.json" || name == "release-notes.json" || name == "privacy.html" {
+	if name == "index.html" || name == "release.json" || name == "release-notes.json" || name == "privacy.html" || name == "sw.js" || name == "manifest.webmanifest" {
 		w.Header().Set("Cache-Control", "no-cache")
+	}
+	if name == "sw.js" {
+		w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+	} else if name == "manifest.webmanifest" {
+		w.Header().Set("Content-Type", "application/manifest+json; charset=utf-8")
 	}
 	raw, e := fs.ReadFile(s.Assets, name)
 	if e != nil {

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/fstest"
 )
 
 func setup(t *testing.T) (*core.Store, *Server, *httptest.Server) {
@@ -236,3 +237,65 @@ func TestProductionContentSecurityPolicyImageDirective(t *testing.T) {
 	}
 }
 
+func TestStaticPWAAssetHeaders(t *testing.T) {
+	store, e := core.Open(filepath.Join(t.TempDir(), "db.sqlite"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer store.Close()
+	assetsFS := fstest.MapFS{
+		"index.html":            {Data: []byte("<!doctype html><html></html>")},
+		"sw.js":                 {Data: []byte("console.log('sw');")},
+		"manifest.webmanifest": {Data: []byte(`{"name":"Avari.Jobs"}`)},
+		"assets/bundle.js":      {Data: []byte("console.log('bundle');")},
+	}
+	api := &Server{Store: store, Assets: assetsFS}
+	server := httptest.NewServer(api.Handler())
+	defer server.Close()
+	api.Origin = server.URL
+
+	// 1. Service Worker: no-cache and application/javascript
+	resSW, err := server.Client().Get(server.URL + "/sw.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resSW.Body.Close()
+	if resSW.StatusCode != 200 {
+		t.Fatalf("expected 200 for sw.js, got %d", resSW.StatusCode)
+	}
+	if ct := resSW.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/javascript") {
+		t.Errorf("expected application/javascript for sw.js, got %q", ct)
+	}
+	if cc := resSW.Header.Get("Cache-Control"); cc != "no-cache" {
+		t.Errorf("expected Cache-Control no-cache for sw.js, got %q", cc)
+	}
+
+	// 2. Manifest: no-cache and application/manifest+json
+	resMan, err := server.Client().Get(server.URL + "/manifest.webmanifest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resMan.Body.Close()
+	if resMan.StatusCode != 200 {
+		t.Fatalf("expected 200 for manifest.webmanifest, got %d", resMan.StatusCode)
+	}
+	if ct := resMan.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/manifest+json") {
+		t.Errorf("expected application/manifest+json for manifest.webmanifest, got %q", ct)
+	}
+	if cc := resMan.Header.Get("Cache-Control"); cc != "no-cache" {
+		t.Errorf("expected Cache-Control no-cache for manifest.webmanifest, got %q", cc)
+	}
+
+	// 3. Regular asset: does not force no-cache
+	resBundle, err := server.Client().Get(server.URL + "/assets/bundle.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resBundle.Body.Close()
+	if resBundle.StatusCode != 200 {
+		t.Fatalf("expected 200 for bundle.js, got %d", resBundle.StatusCode)
+	}
+	if cc := resBundle.Header.Get("Cache-Control"); cc == "no-cache" {
+		t.Errorf("expected normal caching for bundle.js, got %q", cc)
+	}
+}

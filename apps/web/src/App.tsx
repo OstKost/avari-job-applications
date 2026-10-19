@@ -1,3 +1,9 @@
+import { jobIdentity } from "@avari/shared";
+import { PushSettings, disableDevicePushOnLogout } from "./pwa/PushSettings";
+import { DailyGoal, getDailySummaryQueryKey } from "./pwa/DailyGoal";
+import type { ParsedShareData } from "./pwa/share-target";
+import { createWebAPI } from "./offline/policy";
+import { readVacancyClipboard } from "@avari/shared";
 import { UpdateNotice, WhatsNew, WhatsNewLabel } from "./Updates";
 import {
   FilterPresence,
@@ -8,6 +14,7 @@ import {
   createContext,
   useContext,
   useState,
+  useCallback,
   useEffect,
   useRef,
   type ReactNode,
@@ -79,7 +86,6 @@ import {
   RefreshCw,
 } from "lucide-react";
 import {
-  createAPI,
   APIError,
   type User,
   type Application,
@@ -140,9 +146,36 @@ import { LocalSetup, LocalAutostart } from "./LocalSetup";
 import { ResumeManager } from "./ResumeManager";
 import { useApplicationList } from "./useApplicationList";
 import type { LocalStatus } from "@avari/shared";
+import {
+  offlineManager,
+  useIsOnline,
+  useOfflineSettings,
+  useOfflineHydration,
+  OfflineNotice,
+  OfflineSettingsPanel,
+  OfflineApplicationForm,
+  OfflineTaskForm,
+  OfflineNoteForm,
+  flushAllDrafts,
+  hasDirtyDrafts,
+  offlineBroadcast,
+  cancelAllDraftTimers,
+  isNetworkError,
+  getUserGeneration,
+  requireLiveVerification,
+  isOfflineOrReadOnly,
+} from "./offline";
+import {
+  usePwa,
+  PwaInstallPrompt,
+  PwaUpdatePrompt,
+  useShareTarget,
+  ShareFallbackModal,
+} from "./pwa";
 
-const api = createAPI();
+const api = createWebAPI();
 function clearSession(client: ReturnType<typeof useQueryClient>) {
+  requireLiveVerification();
   void client.cancelQueries();
   client.setQueryData(["me"], null);
   client.removeQueries({ predicate: (query) => query.queryKey[0] !== "me" });
@@ -159,6 +192,7 @@ type Actions = {
   data: Data;
   refresh: () => void;
   logout: () => Promise<void>;
+  pasteVacancy: () => void;
   editApplication: (a?: Application) => void;
   editTask: (t?: Partial<Task>) => void;
   addNote: (id: string, note?: Note) => void;
@@ -197,9 +231,19 @@ function PageTracking() {
 }
 export default function App() {
   const { pathname } = useLocation();
+  const share = useShareTarget({ autoIntake: true });
   const local = useQuery({
     queryKey: ["local-status"],
-    queryFn: () => api<LocalStatus>("/local/status"),
+    queryFn: async () => {
+      try {
+        return await api<LocalStatus>("/local/status");
+      } catch (err) {
+        if (isNetworkError(err)) {
+          return { personal: false, setupNeeded: false, launcher: false };
+        }
+        throw err;
+      }
+    },
     staleTime: Infinity,
   });
   useEffect(() => {
@@ -232,7 +276,7 @@ export default function App() {
   return (
     <>
       <PageTracking />
-      <AuthenticatedApp personal={local.data?.personal ?? false} />
+      <AuthenticatedApp personal={local.data?.personal ?? false} pendingShare={share.pendingShare} consumeShare={share.consumeShare} />
     </>
   );
 }
@@ -395,21 +439,71 @@ function PublicPage({ privacy }: { privacy: boolean }) {
     </div>
   );
 }
-function AuthenticatedApp({ personal = false }: { personal?: boolean }) {
+function AuthenticatedApp({ personal = false, pendingShare, consumeShare }: {
+  personal?: boolean;
+  pendingShare: ParsedShareData | null;
+  consumeShare: () => ParsedShareData | null;
+}) {
   const client = useQueryClient();
   useEffect(() => {
     const expired = () => {
+      cancelAllDraftTimers();
+      void disableDevicePushOnLogout(api, { notifyServer: false });
+      void offlineManager.handleLogout();
       clearSession(client);
     };
     window.addEventListener("avari-session-expired", expired);
-    return () => window.removeEventListener("avari-session-expired", expired);
+
+    const unsubscribe = offlineBroadcast.subscribe((msg) => {
+      if (msg.type === "SESSION_EXPIRED") {
+        cancelAllDraftTimers();
+        void disableDevicePushOnLogout(api, { notifyServer: false });
+        clearSession(client);
+      }
+    });
+
+    return () => {
+      window.removeEventListener("avari-session-expired", expired);
+      unsubscribe();
+    };
   }, [client]);
   const me = useQuery({
     queryKey: ["me"],
-    queryFn: () => api<User>("/me"),
+    queryFn: async () => {
+      try {
+        const u = await api<User>("/me");
+        // Wire active session in production ONLY after successful live /me
+        return u;
+      } catch (err) {
+        // Auth errors (401/403) MUST strictly reject immediately and purge persisted data
+        if (err instanceof APIError && (err.status === 401 || err.status === 403)) {
+          throw err;
+        }
+        // Cached user fallback ONLY on true network failure (status === 0)
+        if (isNetworkError(err)) {
+          const offlineAccount = await offlineManager.restoreLastOptedInAccount();
+          if (offlineAccount?.user) {
+            return offlineAccount.user as unknown as User;
+          }
+        }
+        throw err;
+      }
+    },
+    retry: false,
     refetchInterval: (q) =>
       q.state.data?.status === "pending" ? 10000 : false,
   });
+  useEffect(() => {
+    const reconnect = async () => {
+      const result = await me.refetch();
+      if (!result.error && !isOfflineOrReadOnly()) {
+        await client.invalidateQueries({ queryKey: ["data"] });
+        await client.invalidateQueries({ queryKey: ["detail"] });
+      }
+    };
+    window.addEventListener("online", reconnect);
+    return () => window.removeEventListener("online", reconnect);
+  }, [client, me.refetch]);
   if (me.isPending) return <Loading />;
   if (me.error || !me.data)
     return (
@@ -424,12 +518,16 @@ function AuthenticatedApp({ personal = false }: { personal?: boolean }) {
         user={me.data}
         refresh={() => me.refetch()}
         logout={async () => {
-          await api("/auth/logout", "POST", {});
+          try {
+            await disableDevicePushOnLogout(api);
+            await api("/auth/logout", "POST", {});
+          } catch {}
+          await offlineManager.handleLogout(me.data.id);
           clearSession(client);
         }}
       />
     );
-  return <Workspace user={me.data} />;
+  return <Workspace user={me.data} pendingShare={pendingShare} consumeShare={consumeShare} />;
 }
 function Brand() {
   return (
@@ -735,14 +833,20 @@ function AccountStatus({
     </div>
   );
 }
-function Workspace({ user }: { user: User }) {
+function Workspace({ user, pendingShare, consumeShare }: {
+  user: User;
+  pendingShare: ParsedShareData | null;
+  consumeShare: () => ParsedShareData | null;
+}) {
   const client = useQueryClient();
   const navigate = useNavigate();
   const [form, setForm] = useState<{
     kind: "application" | "task" | "note";
     value?: Application | Partial<Task> | Note | string;
+    clipboardText?: Promise<string>;
   }>();
   const [notice, setNotice] = useState("");
+  const [shareFallbackOpen, setShareFallbackOpen] = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -763,16 +867,46 @@ function Workspace({ user }: { user: User }) {
       return next;
     });
   };
+  const { hydrated, lastUpdated } = useOfflineHydration(client, user.id);
+  const pwa = usePwa({
+    onFlushDirtyDrafts: async () => {
+      if (hasDirtyDrafts()) {
+        await flushAllDrafts();
+      }
+      return true;
+    },
+  });
+  const [isCachedData, setIsCachedData] = useState(false);
   const query = useQuery({
     queryKey: ["data"],
     queryFn: async () => {
-      const [applications, tasks, fields, proposals] = await Promise.all([
-        api<Application[]>("/applications"),
-        api<Task[]>("/tasks"),
-        api<Field[]>("/fields"),
-        api<Proposal[]>("/proposals"),
-      ]);
-      return { applications, tasks, fields, proposals };
+      try {
+        const epoch = getUserGeneration(user.id);
+        const [applications, tasks, fields, proposals] = await Promise.all([
+          api<Application[]>("/applications"),
+          api<Task[]>("/tasks"),
+          api<Field[]>("/fields"),
+          api<Proposal[]>("/proposals"),
+        ]);
+        const result = { applications, tasks, fields, proposals };
+        setIsCachedData(false);
+        void offlineManager.recordSuccessfulFetch(user.id, user, result, epoch);
+        return result;
+      } catch (err) {
+        if (isNetworkError(err)) {
+          const snapshot = await offlineManager.restoreLastOptedInAccount();
+          if (snapshot?.journal) {
+            setIsCachedData(true);
+            return {
+              applications: snapshot.journal.applications || [],
+              tasks: snapshot.journal.tasks || [],
+              fields: snapshot.journal.fields || [],
+              proposals: snapshot.journal.proposals || [],
+            };
+          }
+        }
+        throw err;
+      }
     },
     refetchInterval: 30000,
   });
@@ -782,11 +916,37 @@ function Workspace({ user }: { user: User }) {
     fields: [],
     proposals: [],
   };
-  const refresh = () => {
+  const openSharedVacancy = useCallback((shared: ParsedShareData) => {
+    const sharedUrl = shared.canonicalUrl || shared.rawUrl || "";
+    const identity = jobIdentity(sharedUrl);
+    const existing = sharedUrl && data.applications.find((application) => {
+      const candidate = jobIdentity(application.url || "");
+      if (identity && candidate) return candidate.site === identity.site && candidate.id === identity.id;
+      try { return new URL(application.url).href === new URL(sharedUrl).href; } catch { return false; }
+    });
+    if (existing) {
+      setForm(undefined);
+      navigate("/applications/" + existing.id, { replace: true });
+      setNotice("Эта вакансия уже в журнале");
+      return;
+    }
+    setForm({ kind: "application", value: {
+      ...emptyApplication(), savedDate: dateToday(user.timezone),
+      url: sharedUrl, position: shared.title || "", company: "",
+    } });
+  }, [data.applications, user.timezone, navigate]);
+  useEffect(() => {
+    if (!pendingShare || !query.data) return;
+    consumeShare();
+    openSharedVacancy(pendingShare);
+  }, [pendingShare, consumeShare, query.data, openSharedVacancy]);
+  const refresh = async () => {
+    if (isOfflineOrReadOnly()) await client.refetchQueries({ queryKey: ["me"] });
     client.invalidateQueries({ queryKey: ["data"] });
     client.invalidateQueries({ queryKey: ["detail"] });
     client.invalidateQueries({ queryKey: ["calendar"] });
     client.invalidateQueries({ queryKey: ["statistics-activity"] });
+    client.invalidateQueries({ queryKey: getDailySummaryQueryKey(user.id) });
   };
   const saved = () => {
     setForm(undefined);
@@ -803,10 +963,12 @@ function Workspace({ user }: { user: User }) {
     if (loggingOut) return;
     setLoggingOut(true);
     try {
+      await disableDevicePushOnLogout(api);
       await api("/auth/logout", "POST", {});
     } catch {
       /* End the local session even if the server cannot be reached. */
     } finally {
+      await offlineManager.handleLogout(user.id);
       clearSession(client);
     }
   };
@@ -814,12 +976,14 @@ function Workspace({ user }: { user: User }) {
     user,
     data,
     refresh,
+    pasteVacancy: () => setShareFallbackOpen(true),
     logout: async () => {
       setConfirmLogout(true);
     },
     editApplication: (a) =>
       setForm({
         kind: "application",
+        clipboardText: a ? undefined : readVacancyClipboard(),
         value: a ?? {
           ...emptyApplication(),
           savedDate: dateToday(user.timezone),
@@ -857,7 +1021,7 @@ function Workspace({ user }: { user: User }) {
                   },
                   {
                     path: "/favorites",
-                    label: "Избранные вакансии",
+                    label: "Избранные",
                     icon: Star,
                   },
                   { path: "/calendar", label: "Календарь", icon: CalendarDays },
@@ -926,6 +1090,11 @@ function Workspace({ user }: { user: User }) {
               </div>
             ))}
             <div className="sidebar-meta-section">
+              {pwa.isInstallable && (
+                <div style={{ marginBottom: 8, padding: sidebarCollapsed ? "0" : "0 4px" }}>
+                  <PwaInstallPrompt pwa={pwa} />
+                </div>
+              )}
               <RowActionHint
                 label="Конфиденциальность"
                 placement="right"
@@ -998,6 +1167,8 @@ function Workspace({ user }: { user: User }) {
           </div>
         </aside>
         <main className="main">
+          <PwaUpdatePrompt pwa={pwa} />
+          <OfflineNotice lastUpdated={lastUpdated} onRefresh={refresh} isCached={isCachedData} />
           {notice && (
             <div className="toast toast-success" role="status">
               <span className="toast-icon">
@@ -1019,7 +1190,7 @@ function Workspace({ user }: { user: User }) {
           <UpdateNotice />
           {query.isPending ? (
             <Loading />
-          ) : query.error ? (
+          ) : query.error && data.applications.length === 0 ? (
             <ErrorBox error={query.error} retry={() => query.refetch()} />
           ) : (
             <PageTransition>
@@ -1109,6 +1280,7 @@ function Workspace({ user }: { user: User }) {
           </div>
         </Modal>
       )}
+      <ShareFallbackModal isOpen={shareFallbackOpen} onClose={() => setShareFallbackOpen(false)} onAddParsedVacancy={openSharedVacancy} />
       {form && (
         <Modal
           title={
@@ -1125,7 +1297,10 @@ function Workspace({ user }: { user: User }) {
           onClose={() => setForm(undefined)}
         >
           {form.kind === "application" ? (
-            <ApplicationForm
+            <OfflineApplicationForm
+              userKey={user.id}
+              autofill
+              clipboardText={form.clipboardText}
               groupOptions={Array.from(
                 new Set(data.applications.flatMap((a) => a.groups ?? [])),
               ).sort((a, b) => a.localeCompare(b, "ru"))}
@@ -1142,7 +1317,8 @@ function Workspace({ user }: { user: User }) {
               }}
             />
           ) : form.kind === "task" ? (
-            <TaskForm
+            <OfflineTaskForm
+              userKey={user.id}
               initial={form.value as Partial<Task>}
               applications={data.applications}
               api={api}
@@ -1150,7 +1326,8 @@ function Workspace({ user }: { user: User }) {
               onSaved={saved}
             />
           ) : (
-            <NoteForm
+            <OfflineNoteForm
+              userKey={user.id}
               applicationId={
                 typeof form.value === "string"
                   ? form.value
@@ -1234,7 +1411,7 @@ function StageBreakdown({ applications }: { applications: Application[] }) {
   );
 }
 function Dashboard() {
-  const { user, data, refresh, editTask, editApplication } = useApp();
+  const { user, data, refresh, editTask, editApplication, pasteVacancy } = useApp();
   const moveHeroWaves = (event: ReactPointerEvent<HTMLElement>) => {
     if (
       event.pointerType !== "mouse" ||
@@ -1294,6 +1471,7 @@ function Dashboard() {
           <Plus size={17} />
           Добавить вакансию
         </button>
+        <button onClick={pasteVacancy}>Вставить ссылку</button>
       </PageHeader>
       <section
         className="dashboard-hero"
@@ -1343,6 +1521,7 @@ function Dashboard() {
           <small>{user.timezone}</small>
         </div>
       </section>
+      <DailyGoal userId={user.id} api={api} />
       <section className="panel quick-access">
         <h2>Быстрый доступ</h2>
         <div className="quick-links">
@@ -3613,7 +3792,24 @@ function ApplicationDetail() {
 
   const q = useQuery({
     queryKey: ["detail", id],
-    queryFn: () => api<Detail>("/applications/" + id),
+    queryFn: async () => {
+      try {
+        const epoch = getUserGeneration(user.id);
+        const detail = await api<Detail>("/applications/" + id);
+        if (id) {
+          void offlineManager.recordDetailFetch(user.id, id, detail, epoch);
+        }
+        return detail;
+      } catch (err) {
+        if (isNetworkError(err) && id) {
+          const cached = await offlineManager.getCachedDetail(user.id, id);
+          if (cached?.detail) {
+            return cached.detail as Detail;
+          }
+        }
+        throw err;
+      }
+    },
   });
   if (q.isPending) return <Loading />;
   if (q.error) return <ErrorBox error={q.error} retry={() => q.refetch()} />;
@@ -5065,6 +5261,9 @@ function SettingsPage() {
                   </div>
                 </form>
               </section>
+
+              <PushSettings userId={user.id} api={api} />
+              <OfflineSettingsPanel userKey={user.id} user={user} data={data} />
             </>
           )}
 

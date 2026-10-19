@@ -14,12 +14,20 @@ import (
 	"time"
 )
 
-const SchemaVersion = 9
+const SchemaVersion = 11
 
 type Store struct {
 	DB   *sql.DB
 	Path string
 	lock *os.File
+	Now  func() time.Time
+}
+
+func (s *Store) nowTime() time.Time {
+	if s != nil && s.Now != nil {
+		return s.Now()
+	}
+	return time.Now().UTC()
 }
 type queryer interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
@@ -160,7 +168,62 @@ CREATE INDEX IF NOT EXISTS resume_versions_resume ON resume_versions(resume_id,v
 CREATE INDEX IF NOT EXISTS resume_versions_user ON resume_versions(user_id);
 CREATE TABLE IF NOT EXISTS reminder_records(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,application_id TEXT NOT NULL,task_id TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(user_id,application_id));
 INSERT OR IGNORE INTO instance_metadata(key,value) VALUES('rollout_cutoff',datetime('now'));`, `CREATE TABLE IF NOT EXISTS reminder_eligibility(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,application_id TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(user_id,application_id));
-CREATE INDEX IF NOT EXISTS reminder_eligibility_user ON reminder_eligibility(user_id);`}
+CREATE INDEX IF NOT EXISTS reminder_eligibility_user ON reminder_eligibility(user_id);`, `CREATE TABLE IF NOT EXISTS daily_goal_ledger(
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  action TEXT NOT NULL CHECK(action IN ('created', 'applied', 'task_completed', 'interview_completed')),
+  object_id TEXT NOT NULL,
+  local_date TEXT NOT NULL,
+  points INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  UNIQUE(user_id, object_id, action)
+);
+CREATE INDEX IF NOT EXISTS daily_goal_ledger_user_date ON daily_goal_ledger(user_id, local_date);
+CREATE UNIQUE INDEX IF NOT EXISTS daily_goal_ledger_completion ON daily_goal_ledger(user_id, object_id) WHERE action IN ('task_completed', 'interview_completed');
+INSERT OR IGNORE INTO daily_goal_ledger(id, user_id, action, object_id, local_date, points, created_at)
+  SELECT lower(hex(randomblob(16))), user_id, 'created', id, coalesce(json_extract(payload, '$.savedDate'), ''), 0, created_at
+  FROM documents WHERE kind='application';
+INSERT OR IGNORE INTO daily_goal_ledger(id, user_id, action, object_id, local_date, points, created_at)
+  SELECT lower(hex(randomblob(16))), user_id, 'applied', id, coalesce(json_extract(payload, '$.appliedDate'), ''), 0, created_at
+  FROM documents WHERE kind='application' AND (json_extract(payload, '$.stage') != 'saved' OR coalesce(json_extract(payload, '$.appliedDate'), '') != '');
+INSERT OR IGNORE INTO daily_goal_ledger(id, user_id, action, object_id, local_date, points, created_at)
+  SELECT lower(hex(randomblob(16))), user_id,
+    CASE WHEN json_extract(payload, '$.kind') = 'interview' THEN 'interview_completed' ELSE 'task_completed' END,
+    id, coalesce(json_extract(payload, '$.date'), ''), 0, created_at
+  FROM documents WHERE kind='task' AND json_extract(payload, '$.state') = 'done';`, `CREATE TABLE IF NOT EXISTS push_subscriptions(
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  endpoint TEXT NOT NULL UNIQUE,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS push_subscriptions_user ON push_subscriptions(user_id);
+CREATE INDEX IF NOT EXISTS push_subscriptions_session ON push_subscriptions(session_id);
+CREATE TABLE IF NOT EXISTS push_outbox(
+  id TEXT PRIMARY KEY,
+  subscription_id TEXT NOT NULL REFERENCES push_subscriptions(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  local_date TEXT NOT NULL,
+  digest_type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  url TEXT NOT NULL,
+  tag TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('pending', 'delivered', 'expired', 'failed')),
+  attempts INTEGER NOT NULL DEFAULT 0,
+  next_attempt_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  lease_token TEXT NOT NULL DEFAULT '',
+  leased_until TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(subscription_id, local_date, digest_type)
+);
+CREATE INDEX IF NOT EXISTS push_outbox_claim ON push_outbox(status, next_attempt_at, leased_until);
+CREATE INDEX IF NOT EXISTS push_outbox_user ON push_outbox(user_id);`}
 	for i, migration := range migrations {
 		if i+1 <= version {
 			continue
@@ -293,6 +356,15 @@ func (s *Store) User(id string) (User, error) {
 	var u User
 	e := s.DB.QueryRow("SELECT id,email,status,timezone,created_at FROM users WHERE id=?", id).Scan(&u.ID, &u.Email, &u.Status, &u.Timezone, &u.CreatedAt)
 	return u, e
+}
+func (s *Store) localDate(q queryer, user string) string {
+	var tz string
+	_ = q.QueryRowContext(context.Background(), "SELECT timezone FROM users WHERE id=?", user).Scan(&tz)
+	loc, e := time.LoadLocation(tz)
+	if e != nil {
+		loc = time.UTC
+	}
+	return s.nowTime().In(loc).Format("2006-01-02")
 }
 func localDate(q queryer, user string) string {
 	var tz string

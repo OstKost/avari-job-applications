@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"github.com/OstKost/avari-job-applications/apps/server/internal/core"
+	"github.com/OstKost/avari-job-applications/apps/server/internal/webpush"
 	"io"
 	"mime"
 	"net/http"
@@ -32,8 +33,76 @@ func (s *Server) api(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	switch {
+	case p == "vacancies/preview" && method == "POST":
+		s.vacancyPreview(w, r)
 	case p == "statistics/activity" && method == "GET":
 		v, e := s.Store.ActivityStatistics(user, r.URL.Query().Get("from"), r.URL.Query().Get("to"))
+		respond(v, e)
+	case p == "push/config" && method == "GET":
+		enabled := false
+		publicKey := ""
+		if s.PushTransport != nil && s.PushTransport.Config() != nil {
+			enabled = s.PushTransport.Config().Enabled()
+			publicKey = s.PushTransport.Config().PublicKey()
+		}
+		subscribed := false
+		if s.Store != nil && who.Session.ID != "" {
+			subscribed = s.Store.IsSessionPushSubscribed(user, who.Session.ID)
+		}
+		write(w, 200, map[string]any{
+			"enabled":    enabled,
+			"publicKey":  publicKey,
+			"subscribed": subscribed,
+		})
+	case p == "push/subscribe" && method == "POST":
+		if s.PushTransport == nil || s.PushTransport.Config() == nil || !s.PushTransport.Config().Enabled() {
+			fail(w, core.Fail(503, "Push-уведомления не настроены на сервере"))
+			return
+		}
+		var sub webpush.Subscription
+		if e := read(r, &sub); e != nil {
+			fail(w, e)
+			return
+		}
+		e := s.Store.SubscribePush(user, who.Session.ID, sub)
+		respond(map[string]bool{"ok": true}, e)
+	case p == "push/unsubscribe" && method == "POST":
+		var b struct {
+			Endpoint string `json:"endpoint"`
+		}
+		if e := read(r, &b); e != nil {
+			fail(w, e)
+			return
+		}
+		e := s.Store.UnsubscribePush(user, who.Session.ID, b.Endpoint)
+		respond(map[string]bool{"ok": true}, e)
+	case p == "push/test" && method == "POST":
+		if s.PushTransport == nil || s.PushTransport.Config() == nil || !s.PushTransport.Config().Enabled() {
+			fail(w, core.Fail(503, "Push-уведомления не настроены на сервере"))
+			return
+		}
+		var b struct {
+			Endpoint string `json:"endpoint"`
+		}
+		// Body is optional
+		if r.Body != nil && r.ContentLength > 0 {
+			if e := read(r, &b); e != nil {
+				fail(w, e)
+				return
+			}
+		}
+		e := s.Store.EnqueueTestPush(user, who.Session.ID, b.Endpoint)
+		if e != nil {
+			fail(w, e)
+			return
+		}
+		// If PushService is available, immediately trigger outbox processing
+		if s.PushService != nil {
+			_ = s.PushService.ProcessOutbox(r.Context(), time.Now().UTC())
+		}
+		write(w, 200, map[string]bool{"queued": true})
+	case p == "daily-summary" && method == "GET":
+		v, e := s.Store.DailySummary(user)
 		respond(v, e)
 	case p == "journal/export" && method == "GET":
 		journal, e := s.Store.ExportJournal(user)

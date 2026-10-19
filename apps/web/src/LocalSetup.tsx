@@ -1,9 +1,9 @@
+import { createWebAPI } from "./offline/policy";
 import { UpdatePanel } from "./Updates";
 import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import {
-  createAPI,
   type LocalStatus,
   type LocalSettings,
   type Session,
@@ -11,7 +11,7 @@ import {
   type ExtensionDownload,
 } from "@avari/shared";
 import { ErrorBox, Loading } from "@avari/shared/ui";
-const api = createAPI();
+const api = createWebAPI();
 
 export function LocalAutostart({ launcher }: { launcher: boolean }) {
   const client = useQueryClient();

@@ -128,6 +128,22 @@ func (s *Store) SaveApplication(user string, a Application, idempotency, source 
 			if _, e = tx.Exec("INSERT OR IGNORE INTO reminder_eligibility(user_id, application_id, created_at) VALUES(?,?,?)", user, a.ID, now()); e != nil {
 				return e
 			}
+			localToday := s.localDate(tx, user)
+			if e = s.recordGoalAction(tx, user, a.ID, "created", localToday, 1, a.CreatedAt); e != nil {
+				return e
+			}
+			if a.Stage != "saved" || a.AppliedDate != "" {
+				if e = s.recordGoalAction(tx, user, a.ID, "applied", localToday, 1, a.CreatedAt); e != nil {
+					return e
+				}
+			}
+		} else {
+			if (old.Stage == "saved" && old.AppliedDate == "") && (a.Stage != "saved" || a.AppliedDate != "") {
+				localToday := s.localDate(tx, user)
+				if e = s.recordGoalAction(tx, user, a.ID, "applied", localToday, 1, a.UpdatedAt); e != nil {
+					return e
+				}
+			}
 		}
 		events, err := related[Event](tx, user, "event", a.ID)
 		if err != nil {
@@ -194,6 +210,20 @@ func (s *Store) SaveTask(user string, t Task, key, source string) (Task, error) 
 		}
 		if t.ApplicationID != "" {
 			if e := event(tx, user, t.ApplicationID, "task", source, changes(old, t)); e != nil {
+				return e
+			}
+		}
+		if t.State == "done" && (isNew || old.State != "done") {
+			action := "task_completed"
+			if t.Kind == "interview" {
+				action = "interview_completed"
+			}
+			localToday := s.localDate(tx, user)
+			stamp := t.UpdatedAt
+			if isNew {
+				stamp = t.CreatedAt
+			}
+			if e := s.recordGoalAction(tx, user, t.ID, action, localToday, 1, stamp); e != nil {
 				return e
 			}
 		}

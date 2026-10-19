@@ -1,0 +1,187 @@
+.pwa-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 7, 13, 0.72);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  padding: 16px;
+  animation: pwa-fade-in 0.2s ease-out;
+}
+
+.pwa-modal-card {
+  background: #111726;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  max-width: 440px;
+  width: 100%;
+  padding: 24px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.45);
+  color: #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.pwa-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.pwa-modal-header h3 {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: #f8fafc;
+}
+
+.pwa-modal-close {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pwa-modal-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.pwa-ios-steps {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: #cbd5e1;
+}
+
+.pwa-ios-steps li strong {
+  color: #38bdf8;
+}
+
+.pwa-banner {
+  position: fixed;
+  bottom: max(24px, env(safe-area-inset-bottom));
+  right: max(24px, env(safe-area-inset-right));
+  z-index: 9999;
+  background: #151d30;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  border-radius: 14px;
+  padding: 16px 20px;
+  max-width: 380px;
+  width: calc(100vw - 48px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: pwa-slide-up 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Native modal descendants remain pointer- and keyboard-reachable in the top layer.
+   Keep the prompt in the dialog's scroll flow, above the existing form. */
+.pwa-update-host-in-dialog {
+  position: sticky;
+  top: 0;
+  z-index: 9999;
+  padding-top: env(safe-area-inset-top, 0px);
+  margin-bottom: 16px;
+}
+
+.pwa-update-host-in-dialog .pwa-banner {
+  position: static;
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+  animation: none;
+}
+
+.pwa-banner-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: #f1f5f9;
+}
+
+.pwa-banner-desc {
+  font-size: 0.85rem;
+  color: #94a3b8;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.pwa-banner-warning {
+  font-size: 0.82rem;
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.1);
+  padding: 8px 10px;
+  border-radius: 8px;
+  border-left: 3px solid #fbbf24;
+}
+
+.pwa-banner-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.pwa-button {
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: none;
+}
+
+.pwa-button-primary {
+  background: #0284c7;
+  color: #ffffff;
+}
+
+.pwa-button-primary:hover:not(:disabled) {
+  background: #0369a1;
+}
+
+.pwa-button-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.pwa-button-secondary {
+  background: rgba(255, 255, 255, 0.08);
+  color: #cbd5e1;
+}
+
+.pwa-button-secondary:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+
+@keyframes pwa-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes pwa-slide-up {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}

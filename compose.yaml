@@ -10,6 +10,10 @@ services:
       AVARI_ORIGIN: ${AVARI_ORIGIN:-http://localhost:47831}
       AVARI_TRUST_PROXY: ${AVARI_TRUST_PROXY:-false}
       AVARI_LOG_LEVEL: ${AVARI_LOG_LEVEL:-info}
+      AVARI_VAPID_PUBLIC_KEY: ${AVARI_VAPID_PUBLIC_KEY:-}
+      AVARI_VAPID_PRIVATE_KEY: ${AVARI_VAPID_PRIVATE_KEY:-}
+      AVARI_VAPID_CONTACT: ${AVARI_VAPID_CONTACT:-}
+
     volumes:
       - avari-data:/data
     ports:

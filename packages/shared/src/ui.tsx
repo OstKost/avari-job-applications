@@ -1,3 +1,4 @@
+import { VacancyAutofill } from "./VacancyAutofill";
 import {
   useEffect,
   useId,
@@ -1074,6 +1075,8 @@ function useDraftState<T>(
   return [value, set] as const;
 }
 export function ApplicationForm({
+  autofill = false,
+  clipboardText,
   groupOptions = [],
   tagOptions = [],
   initial,
@@ -1085,8 +1088,12 @@ export function ApplicationForm({
   actionsAtTop = false,
   onBack,
   title,
+  draftAdapter,
+  onDiscardDraft,
 }: {
   initial: Application;
+  autofill?: boolean;
+  clipboardText?: Promise<string>;
   actionsAtTop?: boolean;
   onBack?: () => void;
   title?: ReactNode;
@@ -1097,6 +1104,12 @@ export function ApplicationForm({
   onSaved: (a: Application) => void;
   onCancel: () => void;
   onDraftChange?: (value: Application) => void;
+  draftAdapter?: {
+    hasStoredDraft?: boolean;
+    onRestore?: () => void;
+    onDiscard?: () => void;
+  };
+  onDiscardDraft?: () => void;
 }) {
   const [a, setA] = useDraftState<Application>(
     () => structuredClone(initial),
@@ -1164,9 +1177,59 @@ export function ApplicationForm({
       onKeyDown={handleFormSubmitShortcut}
       className="form"
     >
+      {draftAdapter?.hasStoredDraft && (
+        <div
+          className="draft-restore-banner"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            padding: "8px 14px",
+            marginBottom: 12,
+            background: "var(--panel-2, #204354)",
+            border: "1px solid var(--accent, #57c8ed)",
+            borderRadius: 8,
+          }}
+        >
+          <span style={{ fontSize: "0.9em" }}>Обнаружен сохранённый черновик</span>
+          <div style={{ display: "flex", gap: 8 }}>
+            {draftAdapter.onRestore && (
+              <button
+                type="button"
+                className="primary"
+                style={{ padding: "4px 10px", fontSize: "0.85em" }}
+                onClick={draftAdapter.onRestore}
+              >
+                Восстановить
+              </button>
+            )}
+            {draftAdapter.onDiscard && (
+              <button
+                type="button"
+                className="text-button"
+                style={{ padding: "4px 8px", fontSize: "0.85em" }}
+                onClick={draftAdapter.onDiscard}
+              >
+                Удалить
+              </button>
+            )}
+          </div>
+        </div>
+      )}
       {actionsAtTop && actions}
       {title && (isValidElement(title) ? title : <h2>{title}</h2>)}
       <ErrorBox error={error} />
+      {autofill && !initial.id && (
+        <VacancyAutofill
+          value={a}
+          update={setA}
+          api={api}
+          enabled
+          clipboardText={clipboardText}
+          disabled={busy}
+        />
+      )}
       {current && (
         <ConflictComparison
           draft={a}
@@ -1304,7 +1367,7 @@ export function ApplicationForm({
             maxLength={500}
             value={a.company}
             onChange={(e) => set("company", e.target.value)}
-            autoFocus
+            autoFocus={!autofill || !!initial.id}
           />
         </FieldInput>
         <FieldInput label="Позиция *">
@@ -1315,15 +1378,17 @@ export function ApplicationForm({
             onChange={(e) => set("position", e.target.value)}
           />
         </FieldInput>
-        <FieldInput label="Ссылка на вакансию">
-          <input
-            type="url"
-            maxLength={2048}
-            value={a.url}
-            onChange={(e) => set("url", e.target.value)}
-            placeholder="https://hh.ru/vacancy/…"
-          />
-        </FieldInput>
+        {(!autofill || !!initial.id) && (
+          <FieldInput label="Ссылка на вакансию">
+            <input
+              type="url"
+              maxLength={2048}
+              value={a.url}
+              onChange={(e) => set("url", e.target.value)}
+              placeholder="https://hh.ru/vacancy/…"
+            />
+          </FieldInput>
+        )}
         <FieldInput label="Этап">
           <Select
             value={a.stage}
@@ -1528,6 +1593,8 @@ export function TaskForm({
   onSaved,
   onCancel,
   onDraftChange,
+  draftAdapter,
+  onDiscardDraft,
 }: {
   initial: Partial<Task>;
   applications: Application[];
@@ -1535,6 +1602,12 @@ export function TaskForm({
   onSaved: () => void;
   onCancel: () => void;
   onDraftChange?: (value: Partial<Task>) => void;
+  draftAdapter?: {
+    hasStoredDraft?: boolean;
+    onRestore?: () => void;
+    onDiscard?: () => void;
+  };
+  onDiscardDraft?: () => void;
 }) {
   const [task, setTask] = useDraftState<Partial<Task>>(
     {
@@ -1577,6 +1650,46 @@ export function TaskForm({
         }
       }}
     >
+      {draftAdapter?.hasStoredDraft && (
+        <div
+          className="draft-restore-banner"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            padding: "8px 14px",
+            marginBottom: 12,
+            background: "var(--panel-2, #204354)",
+            border: "1px solid var(--accent, #57c8ed)",
+            borderRadius: 8,
+          }}
+        >
+          <span style={{ fontSize: "0.9em" }}>Обнаружен сохранённый черновик</span>
+          <div style={{ display: "flex", gap: 8 }}>
+            {draftAdapter.onRestore && (
+              <button
+                type="button"
+                className="primary"
+                style={{ padding: "4px 10px", fontSize: "0.85em" }}
+                onClick={draftAdapter.onRestore}
+              >
+                Восстановить
+              </button>
+            )}
+            {draftAdapter.onDiscard && (
+              <button
+                type="button"
+                className="text-button"
+                style={{ padding: "4px 8px", fontSize: "0.85em" }}
+                onClick={draftAdapter.onDiscard}
+              >
+                Удалить
+              </button>
+            )}
+          </div>
+        </div>
+      )}
       <ErrorBox error={error} />
       {current && (
         <ConflictComparison
@@ -1664,6 +1777,8 @@ export function NoteForm({
   onCancel,
   draftText,
   onDraftChange,
+  draftAdapter,
+  onDiscardDraft,
 }: {
   applicationId: string;
   initial?: Note;
@@ -1672,6 +1787,12 @@ export function NoteForm({
   onCancel: () => void;
   draftText?: string;
   onDraftChange?: (text: string) => void;
+  draftAdapter?: {
+    hasStoredDraft?: boolean;
+    onRestore?: () => void;
+    onDiscard?: () => void;
+  };
+  onDiscardDraft?: () => void;
 }) {
   const [base, setBase] = useState(initial);
   const [text, setText] = useDraftState(
@@ -1707,6 +1828,46 @@ export function NoteForm({
         }
       }}
     >
+      {draftAdapter?.hasStoredDraft && (
+        <div
+          className="draft-restore-banner"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            padding: "8px 14px",
+            marginBottom: 12,
+            background: "var(--panel-2, #204354)",
+            border: "1px solid var(--accent, #57c8ed)",
+            borderRadius: 8,
+          }}
+        >
+          <span style={{ fontSize: "0.9em" }}>Обнаружен сохранённый черновик</span>
+          <div style={{ display: "flex", gap: 8 }}>
+            {draftAdapter.onRestore && (
+              <button
+                type="button"
+                className="primary"
+                style={{ padding: "4px 10px", fontSize: "0.85em" }}
+                onClick={draftAdapter.onRestore}
+              >
+                Восстановить
+              </button>
+            )}
+            {draftAdapter.onDiscard && (
+              <button
+                type="button"
+                className="text-button"
+                style={{ padding: "4px 8px", fontSize: "0.85em" }}
+                onClick={draftAdapter.onDiscard}
+              >
+                Удалить
+              </button>
+            )}
+          </div>
+        </div>
+      )}
       <ErrorBox error={error} />
       {current && (
         <ConflictComparison

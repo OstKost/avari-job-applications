@@ -285,6 +285,7 @@ export type Transport = <T>(
   method?: string,
   body?: unknown,
   key?: string,
+  options?: { signal?: AbortSignal },
 ) => Promise<T>;
 export function createAPI(base = "", token?: string): Transport {
   return async <T>(
@@ -292,6 +293,7 @@ export function createAPI(base = "", token?: string): Transport {
     method = "GET",
     body?: unknown,
     key?: string,
+    options?: { signal?: AbortSignal },
   ) => {
     const headers: Record<string, string> = {};
     if (body !== undefined) headers["Content-Type"] = "application/json";
@@ -309,7 +311,9 @@ export function createAPI(base = "", token?: string): Transport {
       headers,
       credentials: token ? "omit" : "include",
       body: body === undefined ? undefined : JSON.stringify(body),
-    }).catch(() => {
+      signal: options?.signal,
+    }).catch((error) => {
+      if (options?.signal?.aborted) throw error;
       throw new APIError(
         0,
         "Нет соединения с сервером. Проверьте подключение и повторите.",
@@ -446,3 +450,5 @@ export function isApplicationStale(a: Application): boolean {
   const diffHours = (Date.now() - timestamp) / (1000 * 60 * 60);
   return diffHours >= 240;
 }
+
+export { readVacancyClipboard } from "./vacancy-preview";

@@ -146,8 +146,13 @@ func (s *Store) Authenticate(token string) (User, Session, error) {
 	return u, ss, e
 }
 func (s *Store) Logout(user, id string) error {
-	_, e := s.DB.Exec("DELETE FROM sessions WHERE user_id=? AND id=?", user, id)
-	return e
+	return s.transaction(func(tx *sql.Tx) error {
+		if _, e := tx.Exec("DELETE FROM push_subscriptions WHERE user_id=? AND session_id=?", user, id); e != nil {
+			return e
+		}
+		_, e := tx.Exec("DELETE FROM sessions WHERE user_id=? AND id=?", user, id)
+		return e
+	})
 }
 func (s *Store) ExtensionDownloadToken(user string) (string, error) {
 	var token string
@@ -258,6 +263,9 @@ func (s *Store) Admin(action, user, password string) error {
 			return Fail(400, fmt.Sprintf("Неизвестная операция %s", action))
 		}
 		if oneOf(action, "block", "reset_password", "revoke_sessions") {
+			if _, e := tx.Exec("DELETE FROM push_subscriptions WHERE user_id=?", user); e != nil {
+				return e
+			}
 			if _, e := tx.Exec("DELETE FROM sessions WHERE user_id=?", user); e != nil {
 				return e
 			}
@@ -311,6 +319,9 @@ func (s *Store) ChangePassword(userID, currentPassword, newPassword, currentSess
 		}
 		// Revoke other sessions to protect account across other devices
 		if currentSessionID != "" {
+			if _, e := tx.Exec("DELETE FROM push_subscriptions WHERE user_id=? AND session_id!=?", userID, currentSessionID); e != nil {
+				return e
+			}
 			if _, e := tx.Exec("DELETE FROM sessions WHERE user_id=? AND id!=?", userID, currentSessionID); e != nil {
 				return e
 			}
@@ -381,6 +392,9 @@ func (s *Store) ApprovePasswordReset(requestID string) error {
 			return e
 		}
 		if _, e := tx.Exec("UPDATE password_resets SET status='approved' WHERE id=?", requestID); e != nil {
+			return e
+		}
+		if _, e := tx.Exec("DELETE FROM push_subscriptions WHERE user_id=?", userID); e != nil {
 			return e
 		}
 		if _, e := tx.Exec("DELETE FROM sessions WHERE user_id=?", userID); e != nil {

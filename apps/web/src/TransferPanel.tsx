@@ -1,6 +1,14 @@
-import { useState } from "react";
+import { createWebAPI } from "./offline/policy";
+import { useState, useRef } from "react";
 import {
-  createAPI,
+  Download,
+  Upload,
+  FileJson,
+  LoaderCircle,
+  FileCheck,
+  X,
+} from "lucide-react";
+import {
   type Journal,
   type ImportReport,
   type Field,
@@ -8,7 +16,14 @@ import {
 } from "@avari/shared";
 import { ErrorBox } from "@avari/shared/ui";
 
-const api = createAPI();
+const api = createWebAPI();
+
+function formatBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export function TransferPanel({
   user,
   onImported,
@@ -17,6 +32,10 @@ export function TransferPanel({
   onImported: () => void;
 }) {
   const [journal, setJournal] = useState<Journal>();
+  const [selectedFile, setSelectedFile] = useState<{
+    name: string;
+    size: number;
+  } | null>(null);
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [applySettings, setApplySettings] = useState(false);
   const [report, setReport] = useState<ImportReport>();
@@ -24,8 +43,93 @@ export function TransferPanel({
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [fields, setFields] = useState<Field[]>([]);
+  const [dragging, setDragging] = useState(false);
+  const dragDepth = useRef(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const invalidate = () =>
     setReport((r) => (r ? { ...r, ready: false, revision: "" } : r));
+
+  const processFile = async (file: File) => {
+    setSelectedFile({ name: file.name, size: file.size });
+    setJournal(undefined);
+    setReport(undefined);
+    setMapping({});
+    setApplySettings(false);
+    setNotice("");
+    setError(undefined);
+    setBusy(true);
+    try {
+      if (file.size > 31 * 1024 * 1024)
+        throw new Error("Файл слишком большой: максимум 31 МБ.");
+      const data: Journal = JSON.parse(await file.text());
+      if (
+        data.format !== "avari-journal" ||
+        data.version !== 1 ||
+        !data.settings
+      )
+        throw new Error(
+          "Выберите полный JSON-экспорт Avari.Jobs версии 1.",
+        );
+      const existing = await api<Field[]>("/fields");
+      const preview = await api<ImportReport>(
+        "/journal/import/preview",
+        "POST",
+        { journal: data, fieldMapping: {}, applySettings: false },
+      );
+      setFields(existing);
+      setJournal(data);
+      setReport(preview);
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleExport = async () => {
+    setBusy(true);
+    setError(undefined);
+    try {
+      const data = await api<Journal>("/journal/export");
+      const theme = localStorage.getItem("avari-theme");
+      if (theme === "dark" || theme === "light")
+        data.settings.theme = theme;
+      const stored = JSON.parse(
+        localStorage.getItem("avari-table:" + user.id) ?? "null",
+      );
+      if (
+        stored &&
+        ["", "stage", "state", "group", "priority"].includes(
+          stored.group,
+        )
+      ) {
+        data.settings.table = {
+          group: stored.group,
+          cards: stored.cards === true,
+          statistics: stored.statistics !== false,
+        };
+      }
+      const url = URL.createObjectURL(
+        new Blob([JSON.stringify(data, null, 2)], {
+          type: "application/json",
+        }),
+      );
+      const link = document.createElement("a");
+      link.href = url;
+      link.download =
+        "avari-journal-" +
+        new Date().toISOString().slice(0, 10) +
+        ".json";
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const run = async (apply: boolean) => {
     if (!journal) return;
     setBusy(true);
@@ -57,6 +161,7 @@ export function TransferPanel({
         }
         setNotice("Импорт завершён. Текущие версии записей сохранены.");
         setJournal(undefined);
+        setSelectedFile(null);
         setMapping({});
         onImported();
       }
@@ -67,6 +172,7 @@ export function TransferPanel({
       setBusy(false);
     }
   };
+
   return (
     <section className="panel transfer-panel">
       <div className="panel-head">
@@ -83,101 +189,134 @@ export function TransferPanel({
           {notice}
         </p>
       )}
-      <div className="form">
-        <button
-          type="button"
-          disabled={busy}
-          onClick={async () => {
-            setBusy(true);
-            setError(undefined);
-            try {
-              const data = await api<Journal>("/journal/export");
-              const theme = localStorage.getItem("avari-theme");
-              if (theme === "dark" || theme === "light")
-                data.settings.theme = theme;
-              const stored = JSON.parse(
-                localStorage.getItem("avari-table:" + user.id) ?? "null",
-              );
-              if (
-                stored &&
-                ["", "stage", "state", "group", "priority"].includes(
-                  stored.group,
-                )
-              ) {
-                data.settings.table = {
-                  group: stored.group,
-                  cards: stored.cards === true,
-                  statistics: stored.statistics !== false,
-                };
-              }
-              const url = URL.createObjectURL(
-                new Blob([JSON.stringify(data, null, 2)], {
-                  type: "application/json",
-                }),
-              );
-              const link = document.createElement("a");
-              link.href = url;
-              link.download =
-                "avari-journal-" +
-                new Date().toISOString().slice(0, 10) +
-                ".json";
-              link.click();
-              setTimeout(() => URL.revokeObjectURL(url), 1000);
-            } catch (e) {
-              setError(e);
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          Скачать журнал JSON
-        </button>
-        <label>
-          Импортировать журнал JSON
-          <input
-            type="file"
-            accept=".json,application/json"
+      <div className="transfer-grid">
+        <div className="transfer-card transfer-export-card">
+          <span className="transfer-card-icon" aria-hidden="true">
+            <Download size={22} />
+          </span>
+          <strong className="transfer-card-title">Экспорт журнала</strong>
+          <span className="muted transfer-card-desc">
+            Резервная копия откликов, задач, заметок и настроек
+          </span>
+          <button
+            type="button"
+            className="button primary transfer-action-btn"
             disabled={busy}
-            onChange={async (event) => {
-              const file = event.target.files?.[0];
-              event.target.value = "";
+            onClick={handleExport}
+          >
+            <Download size={15} aria-hidden="true" />
+            Скачать журнал JSON
+          </button>
+          <span className="transfer-card-formats">Формат JSON · без файлов резюме</span>
+        </div>
+
+        <div className="transfer-import-wrap">
+          <label className="transfer-upload-label">
+            <span className="sr-only">Импортировать журнал JSON</span>
+            <input
+              type="file"
+              ref={fileInputRef}
+              className="transfer-upload-input"
+              aria-label="Импортировать журнал JSON"
+              accept=".json,application/json"
+              disabled={busy}
+              tabIndex={-1}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (file) void processFile(file);
+              }}
+            />
+          </label>
+          <button
+            type="button"
+            className={`transfer-dropzone${dragging ? " is-dragging" : ""}${selectedFile ? " has-file" : ""}`}
+            aria-label="Импортировать журнал JSON"
+            disabled={busy}
+            onClick={() => fileInputRef.current?.click()}
+            onDragEnter={(e) => {
+              e.preventDefault();
+              if (busy || !e.dataTransfer.types.includes("Files")) return;
+              dragDepth.current += 1;
+              setDragging(true);
+            }}
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = busy ? "none" : "copy";
+            }}
+            onDragLeave={(e) => {
+              e.preventDefault();
+              dragDepth.current = Math.max(0, dragDepth.current - 1);
+              if (!dragDepth.current) setDragging(false);
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              dragDepth.current = 0;
+              setDragging(false);
+              const file = e.dataTransfer.files?.[0];
+              if (file) void processFile(file);
+            }}
+          >
+            <span className="transfer-dropzone-icon" aria-hidden="true">
+              {busy ? (
+                <LoaderCircle size={22} className="transfer-upload-spinner" />
+              ) : selectedFile ? (
+                <FileCheck size={22} />
+              ) : (
+                <Upload size={22} />
+              )}
+            </span>
+            <strong className="transfer-card-title">
+              {busy
+                ? "Чтение файла…"
+                : dragging
+                  ? "Отпустите файл здесь"
+                  : selectedFile
+                    ? "Файл готов к импорту"
+                    : "Импорт журнала"}
+            </strong>
+            <span className="muted transfer-card-desc">
+              {selectedFile
+                ? "Нажмите или перетащите другой файл для замены"
+                : "Перетащите JSON-файл сюда или выберите на устройстве"}
+            </span>
+            <span className="button transfer-action-btn" aria-hidden="true">
+              <Upload size={15} aria-hidden="true" />
+              {selectedFile ? "Заменить файл JSON" : "Выбрать файл JSON"}
+            </span>
+            <span className="transfer-dropzone-formats">Экспорт Avari (.json) до 31 МБ</span>
+          </button>
+        </div>
+      </div>
+
+      {selectedFile && (
+        <div className="transfer-upload-file" role="status">
+          <FileJson size={20} aria-hidden="true" />
+          <div>
+            <strong title={selectedFile.name}>{selectedFile.name}</strong>
+            <span className="muted">{formatBytes(selectedFile.size)} · JSON</span>
+          </div>
+          <button
+            type="button"
+            className="icon-button text-button"
+            aria-label="Убрать выбранный файл"
+            disabled={busy}
+            onClick={() => {
+              setSelectedFile(null);
               setJournal(undefined);
               setReport(undefined);
               setMapping({});
               setApplySettings(false);
               setNotice("");
               setError(undefined);
-              if (!file) return;
-              setBusy(true);
-              try {
-                if (file.size > 31 * 1024 * 1024)
-                  throw new Error("Файл слишком большой: максимум 31 МБ.");
-                const data: Journal = JSON.parse(await file.text());
-                if (
-                  data.format !== "avari-journal" ||
-                  data.version !== 1 ||
-                  !data.settings
-                )
-                  throw new Error(
-                    "Выберите полный JSON-экспорт Avari.Jobs версии 1.",
-                  );
-                const existing = await api<Field[]>("/fields");
-                const preview = await api<ImportReport>(
-                  "/journal/import/preview",
-                  "POST",
-                  { journal: data, fieldMapping: {}, applySettings: false },
-                );
-                setFields(existing);
-                setJournal(data);
-                setReport(preview);
-              } catch (e) {
-                setError(e);
-              } finally {
-                setBusy(false);
-              }
             }}
-          />
-        </label>
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
+      <div className="form">
         {journal && (
           <>
             <p>
@@ -273,6 +412,7 @@ export function TransferPanel({
                 disabled={busy}
                 onClick={() => {
                   setJournal(undefined);
+                  setSelectedFile(null);
                   setReport(undefined);
                 }}
               >

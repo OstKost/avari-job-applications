@@ -71,3 +71,20 @@ describe("API response handling", () => {
   });
 });
 
+it("forwards request cancellation and preserves the abort error", async () => {
+  const controller = new AbortController();
+  const error = new DOMException("Aborted", "AbortError");
+  const fetchMock = vi.fn().mockRejectedValue(error);
+  vi.stubGlobal("fetch", fetchMock);
+  controller.abort();
+  await expect(
+    createAPI()(
+      "/vacancies/preview",
+      "POST",
+      { url: "https://hh.ru/vacancy/123" },
+      undefined,
+      { signal: controller.signal },
+    ),
+  ).rejects.toBe(error);
+  expect(fetchMock.mock.calls[0][1].signal).toBe(controller.signal);
+});

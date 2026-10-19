@@ -636,12 +636,28 @@ func (s *Store) ImportJournal(user string, req ImportRequest, apply bool) (Impor
 			if err = put(tx, user, w.kind, w.id, w.value); err != nil {
 				return err
 			}
+			if w.kind == "application" {
+				appMap, _ := w.value.(Application)
+				localToday := s.localDate(tx, user)
+				_ = s.recordGoalAction(tx, user, w.id, "created", localToday, 0, now())
+				if appMap.Stage != "saved" || appMap.AppliedDate != "" {
+					_ = s.recordGoalAction(tx, user, w.id, "applied", localToday, 0, now())
+				}
+			}
 			if w.kind == "task" {
 				if tMap, ok := w.value.(map[string]any); ok {
 					title, _ := tMap["title"].(string)
 					appID, _ := tMap["applicationId"].(string)
 					if strings.TrimSpace(title) == ReminderTaskTitle && appID != "" {
 						_, _ = tx.Exec("INSERT OR IGNORE INTO reminder_records(user_id, application_id, task_id, created_at) VALUES(?,?,?,?)", user, appID, w.id, now())
+					}
+					if state, _ := tMap["state"].(string); state == "done" {
+						action := "task_completed"
+						if kind, _ := tMap["kind"].(string); kind == "interview" {
+							action = "interview_completed"
+						}
+						localToday := s.localDate(tx, user)
+						_ = s.recordGoalAction(tx, user, w.id, action, localToday, 0, now())
 					}
 				}
 			}
