@@ -49,6 +49,26 @@ async function api(path, options = {}) {
 console.log(`Checking Opera package ${packageId}...`);
 const pkg = await api(`/api/developer/packages/${packageId}/`);
 
+if (process.env.OPERA_DIAGNOSTICS === "true") {
+  console.log("Package response fields: " + Object.keys(pkg).join(", "));
+  console.log("Versions: " + JSON.stringify(pkg.versions));
+  const html = await (await fetch(`https://addons.opera.com/developer/package/${packageId}/`, { headers: baseHeaders })).text();
+  const scripts = [...html.matchAll(/<script[^>]+src=["']([^"']+)/g)].map(m => new URL(m[1], "https://addons.opera.com").href);
+  for (const url of scripts) {
+    if (!url.startsWith("https://addons-static.operacdn.com/") && !url.startsWith("https://addons.opera.com/static/")) continue;
+    console.log("Opera developer script: " + url);
+    const source = await (await fetch(url)).text();
+    for (const key of ["package-versions", "file-upload", "flowIdentifier", "file_id"]) {
+      let at = source.indexOf(key), count = 0;
+      while (at >= 0 && count++ < 5) {
+        console.log(key + ": " + source.slice(Math.max(0, at - 250), at + 500));
+        at = source.indexOf(key, at + key.length);
+      }
+    }
+  }
+  process.exit(0);
+}
+
 const existingVersion = pkg.versions?.find((v) => v.version === wantedVersion);
 if (existingVersion && existingVersion.submitted_for_moderation) {
   console.log(`Version ${wantedVersion} is already submitted or published on Opera Add-ons`);

@@ -6,6 +6,10 @@ on:
         description: Successful Avari.Jobs release tag (vX.Y.Z)
         required: true
         type: string
+      diagnostics:
+        description: Inspect Opera publisher API and frontend without uploading
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
@@ -45,4 +49,5 @@ jobs:
           OPERA_CSRF_TOKEN: ${{ secrets.OPERA_CSRF_TOKEN }}
           OPERA_PACKAGE_ID: ${{ vars.OPERA_PACKAGE_ID }}
           TAG: ${{ inputs.tag }}
+          OPERA_DIAGNOSTICS: ${{ inputs.diagnostics }}
         run: node scripts/publish-opera.mjs /tmp/avari-opera/avari-extension.zip
