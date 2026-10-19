@@ -76,10 +76,7 @@ fd.append("file", new Blob([archive], { type: "application/zip" }), filename);
 
 const uploadRes = await fetch("https://addons.opera.com/api/file-upload/", {
   method: "POST",
-  headers: {
-    "X-CSRFToken": csrfToken,
-    "Cookie": cookieHeader,
-  },
+  headers: baseHeaders,
   body: fd,
 });
 
