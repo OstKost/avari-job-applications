@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-const SchemaVersion = 11
+const SchemaVersion = 12
 
 type Store struct {
 	DB   *sql.DB
@@ -29,6 +29,7 @@ func (s *Store) nowTime() time.Time {
 	}
 	return time.Now().UTC()
 }
+
 type queryer interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
@@ -223,7 +224,7 @@ CREATE TABLE IF NOT EXISTS push_outbox(
   UNIQUE(subscription_id, local_date, digest_type)
 );
 CREATE INDEX IF NOT EXISTS push_outbox_claim ON push_outbox(status, next_attempt_at, leased_until);
-CREATE INDEX IF NOT EXISTS push_outbox_user ON push_outbox(user_id);`}
+CREATE INDEX IF NOT EXISTS push_outbox_user ON push_outbox(user_id);`, telegramMigration}
 	for i, migration := range migrations {
 		if i+1 <= version {
 			continue

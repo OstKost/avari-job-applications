@@ -22,20 +22,23 @@ import (
 )
 
 type Server struct {
-	Store         *core.Store
-	Origin        string
-	Secure        bool
-	Assets        fs.FS
-	TrustedProxy  bool
-	Personal      bool
-	SetupToken    string
-	LauncherURL   string
-	LauncherToken string
-	PushService   *core.PushNotificationService
-	PushTransport webpush.Transport
-	limitMu       sync.Mutex
-	limits        map[string][]time.Time
-	LoginGate     chan struct{}
+	TelegramEnabled  bool
+	TelegramSecret   string
+	TelegramUsername string
+	Store            *core.Store
+	Origin           string
+	Secure           bool
+	Assets           fs.FS
+	TrustedProxy     bool
+	Personal         bool
+	SetupToken       string
+	LauncherURL      string
+	LauncherToken    string
+	PushService      *core.PushNotificationService
+	PushTransport    webpush.Transport
+	limitMu          sync.Mutex
+	limits           map[string][]time.Time
+	LoginGate        chan struct{}
 }
 type identity struct {
 	User    core.User
@@ -57,6 +60,13 @@ func (s *Server) Handler() http.Handler {
 	})
 	mux.HandleFunc("GET /api/v1/local/status", s.localStatus)
 	mux.HandleFunc("POST /api/v1/local/setup", s.localSetup)
+	mux.HandleFunc("POST /api/v1/telegram/webhook", s.telegramWebhook)
+	mux.HandleFunc("GET /api/v1/auth/telegram/config", func(w http.ResponseWriter, r *http.Request) {
+		write(w, 200, map[string]bool{"enabled": s.telegramEnabled()})
+	})
+	mux.HandleFunc("POST /api/v1/auth/telegram/requests", s.telegramLogin)
+	mux.HandleFunc("GET /api/v1/auth/telegram/requests/{id}", s.telegramLogin)
+	mux.HandleFunc("POST /api/v1/auth/telegram/requests/{id}/complete", s.telegramLogin)
 	mux.HandleFunc("POST /api/v1/auth/register", s.register)
 	mux.HandleFunc("POST /api/v1/auth/login", s.login)
 	mux.HandleFunc("POST /api/v1/auth/recovery", s.recovery)
@@ -125,7 +135,7 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 			w.Header().Set("Vary", "Origin")
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-CSRF-Token, Idempotency-Key")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 		}
 		if r.Method == "OPTIONS" {
 			if !allowed {
@@ -237,7 +247,7 @@ func (s *Server) auth(next http.Handler) http.Handler {
 				return
 			}
 		}
-		if u.Status != "active" && r.URL.Path != "/api/v1/me" && r.URL.Path != "/api/v1/auth/logout" {
+		if u.Status != "active" && !(u.Status == "pending" && (r.URL.Path == "/api/v1/telegram" && r.Method == "GET" || strings.HasPrefix(r.URL.Path, "/api/v1/telegram/challenges"))) && r.URL.Path != "/api/v1/me" && r.URL.Path != "/api/v1/auth/logout" {
 			fail(w, core.Fail(403, "Аккаунт ожидает одобрения или заблокирован"))
 			return
 		}

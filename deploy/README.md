@@ -50,3 +50,28 @@ After configuring VAPID keys and restarting the server:
 3. Use «Проверить» to queue a test notification, then verify its actual arrival on the device; a queued response is not a delivery receipt.
 
 Real provider delivery must be checked separately after operator opt-in and valid VAPID configuration; the automated integration run does not prove APNs/FCM/Mozilla delivery or background timing on real devices.
+
+## Telegram (disabled until acceptance)
+
+The integration is off by default. It only starts with `AVARI_TELEGRAM_ENABLED=true` on `https://jobs.avari.dev`; personal mode and local origins reject enabled configuration. Local development must never use the production token. Tests use an in-process fake Bot API.
+
+Configure these values through the private production environment:
+
+- `AVARI_TELEGRAM_ENABLED=false` until the acceptance checks below are complete.
+- `AVARI_TELEGRAM_BOT_TOKEN`: the token issued by BotFather.
+- `AVARI_TELEGRAM_BOT_USERNAME`: the bot username without `@`.
+- `AVARI_TELEGRAM_WEBHOOK_SECRET`: 32–256 characters from `A-Z`, `a-z`, `0-9`, `_`, `-`; generate independently of the bot token.
+
+Forward all four variables to the app container. With the intended production environment loaded, run `/app/avari -telegram-setup` (or the server binary's corresponding path) as a one-shot deployment step. This explicitly registers the HTTPS webhook and Russian commands for private chats. Normal startup does not register or replace webhooks. Telegram authenticates deliveries with `X-Telegram-Bot-Api-Secret-Token`; see the [Bot API webhook documentation](https://core.telegram.org/bots/api#setwebhook). Do not put tokens or deep links in command arguments, logs or tracked files.
+
+Schema 12 adds independent Telegram tables. Existing journal JSON exports contain neither bindings nor secrets. SQLite backups include the integration state and must remain private. Incoming events are acknowledged after SQLite commit. One worker processes the durable inbox serially; journal changes, drafts, receipts and queued responses commit atomically. Outgoing sends retry temporary failures and `retry_after`; delivery is at least once (Telegram `sendMessage` has no idempotency key, so a crash after Telegram accepts a send can duplicate a response). Domain mutations remain idempotent. Drafts expire after 24 hours.
+
+Morning and evening digests are independent of Web Push, default off, run on weekdays at 09:00/18:00 in the account timezone and expire at 09:15/18:15. Forbidden Bot API responses switch automatic delivery off while preserving the binding. Users can unblock the bot and explicitly enable digests again. Disconnecting preserves web sessions; blocking or administrative session revocation cancels pending login authorizations.
+
+Before enabling the production bot, use a separate test bot in an isolated acceptance deployment and check: registration activation and TUI approval, website confirmation of a linked identity, explicit login confirmation with matching code, original-browser completion, disconnect, forwarded text and unavailable vacancy pages, duplicate callbacks, timezone scheduling, and retry/blocked-bot behavior. Automated tests do not prove delivery through Telegram's real infrastructure. The integration remains disabled until this external check is complete.
+
+### GitHub production environment
+
+Store `AVARI_TELEGRAM_BOT_TOKEN` and `AVARI_TELEGRAM_WEBHOOK_SECRET` as environment secrets; set variables `AVARI_TELEGRAM_BOT_USERNAME=AvariJobsBot` and `AVARI_TELEGRAM_ENABLED=true` after acceptance. Release CI passes the four settings as JSON on stdin to the restricted `avari-jobs-deploy --telegram-config` entry point. It preserves unrelated `.env` settings and atomically writes `/opt/avari-jobs/.env` with mode 0600. Invalid settings are rejected without changing the file. Install the checked-in deploy helper and production Compose file on the VPS when updating deployment infrastructure. The release registers the webhook after readiness, then checks the bot identity, webhook URL and private-chat commands before recording deployment success.
+
+The release workflow verifies a tagged commit already on `main`. For a bot acceptance run, keep the main website on its existing version, run the candidate binary with a separate SQLite database on a free loopback port, and temporarily proxy only an isolated HTTPS webhook path to it. Switch the bot to the production webhook only during the release's normal setup step; remove the temporary proxy, service and database afterwards. Never import acceptance bindings into production.

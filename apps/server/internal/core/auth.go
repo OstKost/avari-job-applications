@@ -263,6 +263,9 @@ func (s *Store) Admin(action, user, password string) error {
 			return Fail(400, fmt.Sprintf("Неизвестная операция %s", action))
 		}
 		if oneOf(action, "block", "reset_password", "revoke_sessions") {
+			if _, e := tx.Exec("UPDATE telegram_challenges SET status='cancelled' WHERE user_id=? AND purpose='login' AND status IN ('pending','approved')", user); e != nil {
+				return e
+			}
 			if _, e := tx.Exec("DELETE FROM push_subscriptions WHERE user_id=?", user); e != nil {
 				return e
 			}

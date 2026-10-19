@@ -1,5 +1,6 @@
 """Exercise the production deploy helper with isolated Docker/network substitutes."""
 import os
+import json
 from pathlib import Path
 import sqlite3
 import subprocess
@@ -30,6 +31,7 @@ import json, os, pathlib, sqlite3, sys
 root = pathlib.Path(os.environ['FAKE_ROOT'])
 with (root / 'commands').open('a') as output: output.write(' '.join(sys.argv[1:]) + '\n')
 if sys.argv[1] == 'login': sys.stdin.read()
+if 'exec' in sys.argv and os.environ.get('FAKE_TELEGRAM_FAILURE') == '1': sys.exit(1)
 if sys.argv[1:3] == ['volume', 'inspect']: print(os.environ['FAKE_DATA'])
 if 'up' in sys.argv:
     image = os.environ['AVARI_IMAGE']
@@ -65,6 +67,22 @@ if sys.argv[-1].endswith('/release.json'): print(json.dumps({'version': '1.0.1' 
     def deploy(self, tag="v1.0.1", digest=None):
         return subprocess.run(["bash", str(self.script), tag, digest or "sha256:" + "b" * 64, "OstKost"], input="fake-token", text=True, capture_output=True, env=self.env, timeout=20)
 
+    def test_telegram_config_is_atomic_private_and_preserves_other_settings(self):
+        env_file = self.app / ".env"
+        env_file.write_text("UNRELATED=keep\nAVARI_TELEGRAM_ENABLED=false\n")
+        data = {"enabled": True, "token": "123456789:" + "a" * 35, "username": "AvariJobsBot", "webhookSecret": "s" * 64}
+        result = subprocess.run(["bash", str(self.script), "--telegram-config"], input=json.dumps(data), text=True, capture_output=True, env=self.env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("UNRELATED=keep", env_file.read_text())
+        self.assertIn("AVARI_TELEGRAM_ENABLED=true", env_file.read_text())
+        self.assertEqual(env_file.stat().st_mode & 0o777, 0o600)
+        self.assertNotIn(data["token"], result.stdout + result.stderr)
+        before = env_file.read_bytes()
+        data["token"] = "invalid\nINJECTED=unsafe"
+        result = subprocess.run(["bash", str(self.script), "--telegram-config"], input=json.dumps(data), text=True, capture_output=True, env=self.env)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(env_file.read_bytes(), before)
+
     def test_first_deploy_without_backups(self):
         result = self.deploy("v1.0.0", "sha256:" + "a" * 64)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -95,6 +113,26 @@ if sys.argv[-1].endswith('/release.json'): print(json.dumps({'version': '1.0.1' 
         result = self.deploy("v1.0.2")
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual((self.root / "running").read_text(), self.image_a)
+
+    def test_telegram_setup_is_opt_in_without_secret_arguments(self):
+        self.seed()
+        self.env["AVARI_TELEGRAM_BOT_TOKEN"] = "must-stay-secret"
+        result = self.deploy()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        commands = (self.root / "commands").read_text()
+        self.assertIn('if [ "$AVARI_TELEGRAM_ENABLED" = true ]', commands)
+        self.assertIn('/app/avari -telegram-setup', commands)
+        self.assertNotIn("must-stay-secret", commands)
+
+    def test_failed_telegram_setup_restores_database_and_image(self):
+        self.seed()
+        self.env["FAKE_TELEGRAM_FAILURE"] = "1"
+        result = self.deploy()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual((self.root / "running").read_text(), self.image_a)
+        self.assertTrue((self.app / "current").read_text().startswith("v1.0.0 "))
+        with sqlite3.connect(self.data / "avari.db") as db:
+            self.assertEqual(db.execute("SELECT value FROM records").fetchone()[0], "original")
 
     def test_repeated_release_has_no_side_effects(self):
         self.seed()

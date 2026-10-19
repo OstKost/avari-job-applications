@@ -362,7 +362,10 @@ schemas.VacancyPreviewFields = object(
   },
   [],
 );
-schemas.VacancyPreview = object({ url: s, fields: ref("VacancyPreviewFields") });
+schemas.VacancyPreview = object({
+  url: s,
+  fields: ref("VacancyPreviewFields"),
+});
 const paths = {};
 const operation = (
   path,
@@ -383,7 +386,7 @@ const operation = (
     security: publicRoute ? [] : [{ cookieAuth: [] }, { extensionToken: [] }],
     parameters: [
       ...id,
-      ...(["post", "put", "delete"].includes(method)
+      ...(["post", "put", "patch", "delete"].includes(method)
         ? [
             {
               name: "X-CSRF-Token",
@@ -852,13 +855,179 @@ paths["/resumes/{id}/versions/{versionId}/download"].get = {
       .reduce((a, b) => ({ ...a, ...b }), {}),
   },
 };
+
+schemas.TelegramLink = object({
+  telegramId: integer,
+  username: s,
+  displayName: s,
+  morning: { type: "boolean" },
+  evening: { type: "boolean" },
+  deliveryEnabled: { type: "boolean" },
+});
+schemas.TelegramStatus = object({
+  enabled: { type: "boolean" },
+  link: { anyOf: [ref("TelegramLink"), { type: "null" }] },
+});
+schemas.TelegramChallenge = object(
+  {
+    id: s,
+    purpose: enumeration("registration", "link", "login"),
+    status: enumeration(
+      "pending",
+      "approved",
+      "completed",
+      "cancelled",
+      "expired",
+    ),
+    expiresAt: stamp,
+    createdAt: stamp,
+    browser: s,
+    code: s,
+    email: s,
+    telegramId: integer,
+    username: s,
+    displayName: s,
+  },
+  ["id", "purpose", "status", "expiresAt", "createdAt", "browser", "code"],
+);
+schemas.TelegramRequest = object({
+  challenge: ref("TelegramChallenge"),
+  url: s,
+});
+schemas.TelegramPurpose = object({
+  purpose: enumeration("registration", "link"),
+});
+schemas.TelegramPreferences = object({
+  morning: { type: "boolean" },
+  evening: { type: "boolean" },
+});
+operation(
+  "/telegram",
+  "get",
+  "Telegram connection and availability",
+  "TelegramStatus",
+);
+operation(
+  "/telegram",
+  "delete",
+  "Disconnect Telegram and cancel pending requests",
+  object({ ok: { type: "boolean" } }),
+);
+operation(
+  "/telegram/challenges",
+  "post",
+  "Create registration or linking challenge",
+  "TelegramRequest",
+  "TelegramPurpose",
+  false,
+  "201",
+);
+operation(
+  "/telegram/challenges/{id}",
+  "get",
+  "Poll browser-bound Telegram challenge",
+  "TelegramChallenge",
+);
+operation(
+  "/telegram/challenges/{id}/complete",
+  "post",
+  "Confirm displayed Telegram account on website",
+  object({ ok: { type: "boolean" } }),
+);
+operation(
+  "/telegram/preferences",
+  "patch",
+  "Update independent Telegram digest preferences",
+  object({ ok: { type: "boolean" } }),
+  "TelegramPreferences",
+);
+operation(
+  "/auth/telegram/config",
+  "get",
+  "Public Telegram login availability",
+  object({ enabled: { type: "boolean" } }),
+  undefined,
+  true,
+);
+operation(
+  "/auth/telegram/requests",
+  "post",
+  "Create browser-bound Telegram login request",
+  "TelegramRequest",
+  undefined,
+  true,
+  "201",
+);
+operation(
+  "/auth/telegram/requests/{id}",
+  "get",
+  "Poll Telegram login without creating a session",
+  "TelegramChallenge",
+  undefined,
+  true,
+);
+operation(
+  "/auth/telegram/requests/{id}/complete",
+  "post",
+  "Consume approved Telegram login and issue normal web cookies",
+  object({ user: ref("User"), session: ref("Session"), csrf: s }),
+  undefined,
+  true,
+);
+operation(
+  "/telegram/webhook",
+  "post",
+  "Durably enqueue Telegram update",
+  object({ ok: { type: "boolean" } }),
+  undefined,
+  true,
+);
+paths["/telegram/webhook"].post.parameters = [
+  {
+    name: "X-Telegram-Bot-Api-Secret-Token",
+    in: "header",
+    required: true,
+    schema: s,
+  },
+];
+paths["/telegram/webhook"].post.requestBody = {
+  required: true,
+  content: {
+    "application/json": {
+      schema: {
+        type: "object",
+        required: ["update_id"],
+        properties: { update_id: integer },
+        additionalProperties: true,
+      },
+    },
+  },
+};
+for (const [path, methods] of Object.entries(paths)) {
+  if (
+    !path.startsWith("/telegram") &&
+    !path.startsWith("/auth/telegram/requests")
+  )
+    continue;
+  for (const [method, op] of Object.entries(methods)) {
+    if (path.startsWith("/telegram") && path !== "/telegram/webhook")
+      op.security = [{ cookieAuth: [] }];
+    if (path !== "/telegram/webhook")
+      op.description =
+        "Requires the HttpOnly avari_telegram browser cookie for challenge polling/completion. Mutations require the website Origin; authenticated mutations also require the session CSRF token. Pending accounts may only confirm registration. Telegram data is excluded from journal exports.";
+    if (path.startsWith("/auth/telegram/requests") && method === "post")
+      op.parameters = op.parameters
+        .filter((p) => p.name !== "X-CSRF-Token")
+        .concat([{ name: "Origin", in: "header", required: true, schema: s }]);
+  }
+}
 const spec = {
   openapi: "3.1.0",
   info: {
     title: "Avari.Jobs API",
     version: "1.1.0",
     description:
-      "Website mutations require a CSRF header with the avari_csrf cookie value. Extension sessions use Bearer tokens. Only /me and /auth/logout are accessible to pending/blocked accounts. The calendar feed uses a separate secret read-only token and is only available for active accounts. Changes require user confirmation. There is no administrative HTTP API.",
+      "Website mutations require a CSRF header with the avari_csrf cookie value. Extension sessions use Bearer tokens. Pending accounts may also access Telegram registration challenges and connection availability; blocked accounts may only access /me and /auth/logout. The calendar feed uses a separate secret read-only token and is only available for active accounts. Changes require user confirmation. There is no administrative HTTP API.",
   },
   servers: [{ url: "/api/v1" }],
   paths,

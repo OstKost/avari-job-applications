@@ -7,8 +7,17 @@ import (
 	"time"
 )
 
-func sourceOK(source string) bool { return oneOf(source, "manual", "extension") }
+func sourceOK(source string) bool { return oneOf(source, "manual", "extension", "telegram") }
 func (s *Store) SaveApplication(user string, a Application, idempotency, source string) (Application, error) {
+	var result Application
+	e := s.transaction(func(tx *sql.Tx) error {
+		var e error
+		result, e = s.saveApplicationTx(tx, user, a, idempotency, source)
+		return e
+	})
+	return result, e
+}
+func (s *Store) saveApplicationTx(tx *sql.Tx, user string, a Application, idempotency, source string) (Application, error) {
 	var result Application
 	if !sourceOK(source) {
 		return result, Fail(400, "Неизвестный источник")
@@ -16,7 +25,7 @@ func (s *Store) SaveApplication(user string, a Application, idempotency, source 
 	if len(idempotency) > 200 {
 		return result, Fail(400, "Слишком длинный ключ запроса")
 	}
-	e := s.transaction(func(tx *sql.Tx) error {
+	e := func() error {
 		if a.ID == "" && idempotency != "" {
 			var id string
 			e := tx.QueryRow("SELECT resource FROM requests WHERE user_id=? AND key=?", user, "application:"+idempotency).Scan(&id)
@@ -151,7 +160,7 @@ func (s *Store) SaveApplication(user string, a Application, idempotency, source 
 		}
 		result = EnrichApplication(a, events, time.Now().UTC())
 		return nil
-	})
+	}()
 	return result, e
 }
 func (s *Store) SaveTask(user string, t Task, key, source string) (Task, error) {
@@ -239,6 +248,11 @@ func (s *Store) SaveTask(user string, t Task, key, source string) (Task, error) 
 }
 func (s *Store) AddNote(user string, n Note, key, source string) (Note, error) {
 	var result Note
+	e := s.transaction(func(tx *sql.Tx) error { var e error; result, e = s.addNoteTx(tx, user, n, key, source); return e })
+	return result, e
+}
+func (s *Store) addNoteTx(tx *sql.Tx, user string, n Note, key, source string) (Note, error) {
+	var result Note
 	if !sourceOK(source) {
 		return result, Fail(400, "Неизвестный источник")
 	}
@@ -246,7 +260,7 @@ func (s *Store) AddNote(user string, n Note, key, source string) (Note, error) {
 	if n.Text == "" || textLength(n.Text) > 20000 {
 		return result, Fail(400, "Заметка должна содержать от 1 до 20000 символов")
 	}
-	e := s.transaction(func(tx *sql.Tx) error {
+	e := func() error {
 		if key != "" {
 			var id string
 			e := tx.QueryRow("SELECT resource FROM requests WHERE user_id=? AND key=?", user, "note:"+key).Scan(&id)
@@ -278,7 +292,7 @@ func (s *Store) AddNote(user string, n Note, key, source string) (Note, error) {
 		}
 		result = n
 		return nil
-	})
+	}()
 	return result, e
 }
 func (s *Store) UpdateNote(user string, n Note, source string) (Note, error) {

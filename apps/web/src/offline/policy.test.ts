@@ -8,6 +8,18 @@ afterEach(() => { closeOfflineDB(); vi.restoreAllMocks(); requireLiveVerificatio
 const user = { id: "policy-user", email: "policy@test.com", status: "active", timezone: "UTC", createdAt: "2026-10-01" };
 
 describe("web session transport policy", () => {
+  it("allows Telegram login before verification and activates offline state only after completion", async () => {
+    vi.spyOn(navigator, "onLine", "get").mockReturnValue(true);
+    requireLiveVerification();
+    const transport = vi.fn().mockResolvedValue({ challenge: { id: "telegram-request" } });
+    const api = createWebAPI(transport as Transport);
+    await api("/auth/telegram/requests", "POST", {});
+    expect(isOfflineOrReadOnly()).toBe(true);
+    transport.mockResolvedValueOnce({ user });
+    await api("/auth/telegram/requests/telegram-request/complete", "POST", {});
+    expect(isOfflineOrReadOnly()).toBe(false);
+    expect((await getSessionState(user.id))?.revoked).toBe(false);
+  });
   it("rejects unsafe writes before verification and while server is unreachable despite navigator true", async () => {
     vi.spyOn(navigator, "onLine", "get").mockReturnValue(true);
     const transport = vi.fn().mockResolvedValue(user);

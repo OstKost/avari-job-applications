@@ -288,10 +288,6 @@ test("registration stays pending and unauthorized data is blocked", async ({
   await page.getByLabel("Подтвердите пароль").fill("browser-test-password");
   await page.getByRole("button", { name: "Создать аккаунт" }).click();
   await expect(
-    page.getByText("Аккаунт создан.", { exact: false }),
-  ).toBeVisible();
-  await submitLogin(page);
-  await expect(
     page.getByRole("heading", { name: "Заявка отправлена" }),
   ).toBeVisible();
   const response = await page.request.get("/api/v1/applications");

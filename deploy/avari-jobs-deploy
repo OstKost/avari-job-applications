@@ -4,6 +4,51 @@ umask 077
 root=/opt/avari-jobs
 compose="$root/compose.production.yaml"
 image_repo=ghcr.io/ostkost/avari-job-applications
+# Only the four Telegram settings may be updated through this privileged entry point.
+# JSON is read on fd 3, keeping secrets out of command arguments and shell output.
+if [[ "${1:-}" == --telegram-config ]]; then
+    exec 9>"$root/deploy.lock"
+    flock -n 9 || { echo 'Another deploy is running' >&2; exit 1; }
+    python3 - "$root/.env" 3<&0 <<'PYCONFIG'
+import json, os, pathlib, re, sys, tempfile
+try:
+    with os.fdopen(3) as source:
+        raw = source.read(16385)
+    if len(raw) > 16384:
+        raise ValueError()
+    data = json.loads(raw)
+    if not isinstance(data, dict) or set(data) != {'enabled', 'token', 'username', 'webhookSecret'}:
+        raise ValueError()
+    if type(data['enabled']) is not bool:
+        raise ValueError()
+    for name, pattern in [('token', r'[0-9]{5,20}:[A-Za-z0-9_-]{20,100}'), ('username', r'[A-Za-z0-9_]{5,32}'), ('webhookSecret', r'[A-Za-z0-9_-]{32,256}')]:
+        value = data[name]
+        if not isinstance(value, str) or ((data['enabled'] or value) and re.fullmatch(pattern, value) is None):
+            raise ValueError()
+    path = pathlib.Path(sys.argv[1])
+    if path.is_symlink():
+        raise ValueError()
+    keys = {'AVARI_TELEGRAM_ENABLED': 'true' if data['enabled'] else 'false', 'AVARI_TELEGRAM_BOT_TOKEN': data['token'], 'AVARI_TELEGRAM_BOT_USERNAME': data['username'], 'AVARI_TELEGRAM_WEBHOOK_SECRET': data['webhookSecret']}
+    previous = path.read_text().splitlines() if path.exists() else []
+    lines = [line for line in previous if not re.match(r'^(?:export\s+)?(?:' + '|'.join(keys) + r')=', line)]
+    lines.extend(key + '=' + value for key, value in keys.items())
+    fd, temporary = tempfile.mkstemp(prefix='.telegram-env-', dir=path.parent)
+    try:
+        with os.fdopen(fd, 'w') as output:
+            output.write('\n'.join(lines) + '\n')
+            output.flush()
+            os.fsync(output.fileno())
+        os.chmod(temporary, 0o600)
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary): os.unlink(temporary)
+except (ValueError, KeyError, TypeError, OSError):
+    print('Invalid Telegram configuration or environment file unavailable', file=sys.stderr)
+    sys.exit(2)
+print('Telegram production configuration updated')
+PYCONFIG
+    exit 0
+fi
 tag=${1:?release tag required}
 digest=${2:?image digest required}
 registry_user=${3:?registry username required}
@@ -95,6 +140,8 @@ for i in $(seq 1 45); do
 done
 [[ "$ready" == 1 ]] || { echo 'Application failed readiness check' >&2; false; }
 [[ "$(curl -fsS --max-time 5 http://127.0.0.1:18081/release.json | python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])')" == "${tag#v}" ]]
+# Registration is explicit and only runs when the operator enabled Telegram.
+AVARI_IMAGE="$image" docker compose -f "$compose" exec -T app sh -c 'if [ "$AVARI_TELEGRAM_ENABLED" = true ]; then exec /app/avari -telegram-setup; fi'
 printf '%s %s\n' "$tag" "$image" > "$state.tmp"
 cp "$state.tmp" "$root/releases/$tag"
 mv "$state.tmp" "$state"

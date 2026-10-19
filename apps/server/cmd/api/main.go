@@ -7,6 +7,7 @@ import (
 	"github.com/OstKost/avari-job-applications/apps/server/assets"
 	"github.com/OstKost/avari-job-applications/apps/server/internal/core"
 	"github.com/OstKost/avari-job-applications/apps/server/internal/httpapi"
+	"github.com/OstKost/avari-job-applications/apps/server/internal/telegram"
 	"github.com/OstKost/avari-job-applications/apps/server/internal/webpush"
 	"io"
 	"io/fs"
@@ -29,6 +30,7 @@ func env(name, defaultValue string) string {
 func main() {
 	personal := flag.Bool("personal", false, "Run a single-owner local instance")
 	launcher := flag.Bool("launcher", false, "Accept shutdown through the native launcher's stdin")
+	telegramSetup := flag.Bool("telegram-setup", false, "Register Telegram webhook and private-chat commands, then exit")
 	flag.Parse()
 	var logLevel slog.Level
 	if levelStr := os.Getenv("AVARI_LOG_LEVEL"); levelStr != "" {
@@ -54,6 +56,26 @@ func main() {
 			slog.Error("personal mode requires a setup secret from the launcher")
 			os.Exit(1)
 		}
+	}
+	telegramEnabled := os.Getenv("AVARI_TELEGRAM_ENABLED") == "true"
+	telegramToken, telegramUsername, telegramSecret := os.Getenv("AVARI_TELEGRAM_BOT_TOKEN"), os.Getenv("AVARI_TELEGRAM_BOT_USERNAME"), os.Getenv("AVARI_TELEGRAM_WEBHOOK_SECRET")
+	if err := telegram.Validate(telegramEnabled, *personal, origin, telegramToken, telegramUsername, telegramSecret); err != nil {
+		slog.Error("invalid Telegram configuration", "error", err)
+		os.Exit(1)
+	}
+	telegramClient := &telegram.Client{Token: telegramToken}
+	if *telegramSetup {
+		if !telegramEnabled {
+			slog.Error("Telegram is disabled")
+			os.Exit(1)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := telegramClient.Configure(ctx, origin, telegramSecret); err != nil {
+			slog.Error("Telegram setup failed", "error", err)
+			os.Exit(1)
+		}
+		return
 	}
 	listener, e := net.Listen("tcp", addr)
 	if e != nil {
@@ -103,14 +125,17 @@ func main() {
 	}
 
 	api := &httpapi.Server{
-		Store:         store,
-		Origin:        origin,
-		Secure:        len(origin) >= 8 && origin[:8] == "https://",
-		Assets:        web,
-		TrustedProxy:  !*personal && os.Getenv("AVARI_TRUST_PROXY") == "true",
-		Personal:      *personal,
-		PushTransport: pushTransport,
-		PushService:   pushService,
+		Store:            store,
+		TelegramEnabled:  telegramEnabled,
+		TelegramUsername: telegramUsername,
+		TelegramSecret:   telegramSecret,
+		Origin:           origin,
+		Secure:           len(origin) >= 8 && origin[:8] == "https://",
+		Assets:           web,
+		TrustedProxy:     !*personal && os.Getenv("AVARI_TRUST_PROXY") == "true",
+		Personal:         *personal,
+		PushTransport:    pushTransport,
+		PushService:      pushService,
 	}
 	if *personal {
 		api.SetupToken = os.Getenv("AVARI_SETUP_TOKEN")
@@ -122,6 +147,12 @@ func main() {
 	server := &http.Server{Addr: addr, Handler: api.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 120 * time.Second, IdleTimeout: 60 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	if telegramEnabled {
+		worker := &telegram.Service{Store: store, Client: telegramClient, Origin: origin}
+		done := make(chan struct{})
+		go func() { defer close(done); worker.Run(ctx) }()
+		defer func() { stop(); <-done }()
+	}
 	go func() {
 		// Startup reconciliation
 		nowUTC := time.Now().UTC()

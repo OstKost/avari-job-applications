@@ -33,13 +33,14 @@ if (typeof window !== "undefined") {
 // Web-only policy: shared transports (including the extension) retain their behavior.
 export function createWebAPI(transport: Transport = createAPI()): Transport {
   return async <T,>(path: string, method = "GET", body?: unknown, key?: string, options?: { signal?: AbortSignal }): Promise<T> => {
-    const publicFlow = ["/auth/login", "/auth/register", "/auth/recovery", "/auth/logout", "/local/setup"].includes(path);
+    const telegramLoginFlow = /^\/auth\/telegram\/requests(?:\/[^/]+(?:\/complete)?)?$/.test(path);
+    const publicFlow = telegramLoginFlow || ["/auth/login", "/auth/register", "/auth/recovery", "/auth/logout", "/local/setup"].includes(path);
     if (!["GET", "HEAD"].includes(method.toUpperCase()) && !publicFlow) assertServerMutationAllowed();
     if (path === "/auth/logout") requireLiveVerification();
     const startedAt = revision;
     try {
       const result = await transport<T>(path, method, body, key, options);
-      if (path === "/me" || path === "/auth/login") {
+      if (path === "/me" || path === "/auth/login" || (telegramLoginFlow && path.endsWith("/complete"))) {
         if (startedAt !== revision) throw new Error("Сессия изменилась во время проверки. Повторите вход.");
         const user = path === "/me" ? result as User : (result as { user: User }).user;
         await initOrActivateSession(user.id, () => startedAt === revision);

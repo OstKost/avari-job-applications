@@ -1,9 +1,11 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"github.com/OstKost/avari-job-applications/apps/server/assets"
 	"github.com/OstKost/avari-job-applications/apps/server/internal/core"
 	"io/fs"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
@@ -22,13 +24,28 @@ func TestBrowser(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer store.Close()
-	for _, email := range []string{"browser@example.com", "extension@example.com", "features@example.com", "statistics@example.com", "autofill@example.com"} {
+	for _, email := range []string{"browser@example.com", "extension@example.com", "features@example.com", "statistics@example.com", "autofill@example.com", "telegram@example.com", "telegram-login@example.com"} {
 		u, e := store.Register(email, "browser-test-password", "Europe/Moscow")
 		if e != nil {
 			t.Fatal(e)
 		}
 		if e = store.Admin("approve", u.ID, ""); e != nil {
 			t.Fatal(e)
+		}
+		if email == "telegram-login@example.com" {
+			c, tok, secret, err := store.NewTelegramChallenge(u.ID, "link", "Browser test")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err = store.TelegramStart(tok, 7001, 7001, "telegram_tester", "Telegram Tester"); err != nil {
+				t.Fatal(err)
+			}
+			if err = store.TelegramDecide(c.ID, 7001, true); err != nil {
+				t.Fatal(err)
+			}
+			if err = store.CompleteTelegramLink(c.ID, secret, u.ID); err != nil {
+				t.Fatal(err)
+			}
 		}
 		if email == "features@example.com" {
 			// Seed two special apps ONLY for that account:
@@ -89,8 +106,43 @@ func TestBrowser(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	api := &Server{Store: store, Assets: web}
-	server := httptest.NewServer(api.Handler())
+	api := &Server{Store: store, Assets: web, TrustedProxy: true, TelegramEnabled: true, TelegramSecret: "browser-only-secret", TelegramUsername: "browser_test_bot"}
+	handler := api.Handler()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/__test/telegram" {
+			handler.ServeHTTP(w, r)
+			return
+		}
+		if r.Method != "POST" {
+			w.WriteHeader(405)
+			return
+		}
+		var b struct {
+			Token      string `json:"token"`
+			ID         string `json:"id"`
+			TelegramID int64  `json:"telegramId"`
+			Approve    bool   `json:"approve"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+			fail(w, err)
+			return
+		}
+		if b.Token != "" {
+			c, err := store.TelegramStart(b.Token, b.TelegramID, b.TelegramID, "telegram_tester", "Telegram Tester")
+			if err != nil {
+				fail(w, err)
+				return
+			}
+			b.ID = c.ID
+		}
+		if b.Approve {
+			if err := store.TelegramDecide(b.ID, b.TelegramID, true); err != nil {
+				fail(w, err)
+				return
+			}
+		}
+		write(w, 200, map[string]string{"id": b.ID})
+	}))
 	defer server.Close()
 	api.Origin = server.URL
 	root, e := filepath.Abs("../../../..")

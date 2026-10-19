@@ -1,3 +1,4 @@
+import { TelegramConnect, TelegramLogin, TelegramSettings } from "./Telegram";
 import { jobIdentity } from "@avari/shared";
 import { PushSettings, disableDevicePushOnLogout } from "./pwa/PushSettings";
 import { DailyGoal, getDailySummaryQueryKey } from "./pwa/DailyGoal";
@@ -633,6 +634,9 @@ function Auth({
               </button>
             </div>
           )}
+          {!personal && mode === "login" && (
+            <TelegramLogin api={api} onLogin={onLogin} />
+          )}
           {success && <div className="success notice">{success}</div>}
           <form
             className="form"
@@ -661,10 +665,18 @@ function Auth({
                     password,
                     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
                   });
-                  setSuccess(
-                    "Аккаунт создан. Войдите, чтобы отслеживать одобрение.",
-                  );
-                  setMode("login");
+                  try {
+                    const result = await api<{ user: User }>("/auth/login", "POST", {
+                      email,
+                      password,
+                      kind: "web",
+                    });
+                    onLogin(result.user);
+                  } catch (loginError) {
+                    setMode("login");
+                    setSuccess("Аккаунт создан. Войдите, чтобы отслеживать одобрение.");
+                    throw loginError;
+                  }
                 } else if (mode === "recovery") {
                   await api("/auth/recovery", "POST", {
                     email,
@@ -782,7 +794,7 @@ function Auth({
           </div>
           <p className="auth-footnote">
             {mode === "register"
-              ? "Доступ открывается после ручного одобрения администратором."
+              ? "Регистрацию можно подтвердить через Telegram, если он доступен, или дождаться ручного одобрения администратором."
               : mode === "recovery"
                 ? "Администратор одобряет смену пароля через TUI-консоль, не видя сам пароль."
                 : "Для начала работы используйте вашу учётную запись."}
@@ -823,6 +835,9 @@ function AccountStatus({
             : "Для восстановления доступа обратитесь к администратору."}
         </p>
         <p>{user.email}</p>
+        {user.status === "pending" && (
+          <TelegramConnect api={api} purpose="registration" onComplete={refresh} />
+        )}
         <div className="actions">
           <button className="primary" onClick={refresh}>
             Проверить статус
@@ -4394,7 +4409,11 @@ function ApplicationDetail() {
                       hour: "2-digit",
                       minute: "2-digit",
                     })}{" "}
-                    · {e.source === "extension" ? "Расширение" : "Вручную"}
+                    · {e.source === "telegram"
+                      ? "Telegram"
+                      : e.source === "extension"
+                        ? "Расширение"
+                        : "Вручную"}
                   </small>
                   {Object.entries(e.changes)
                     .filter(([k]) => k !== "noteId")
@@ -5262,6 +5281,7 @@ function SettingsPage() {
                 </form>
               </section>
 
+              <TelegramSettings api={api} />
               <PushSettings userId={user.id} api={api} />
               <OfflineSettingsPanel userKey={user.id} user={user} data={data} />
             </>
