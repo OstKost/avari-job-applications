@@ -1,4 +1,7 @@
-import { TelegramConnect, TelegramLogin, TelegramSettings } from "./Telegram";
+import { Auth } from "./Auth";
+import { Brand } from "./Brand";
+import { Landing } from "./Landing";
+import { TelegramConnect, TelegramSettings } from "./Telegram";
 import { jobIdentity } from "@avari/shared";
 import { PushSettings, disableDevicePushOnLogout } from "./pwa/PushSettings";
 import { DailyGoal, getDailySummaryQueryKey } from "./pwa/DailyGoal";
@@ -25,6 +28,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import {
+  Navigate,
   NavLink,
   Link,
   Routes,
@@ -179,7 +183,11 @@ function clearSession(client: ReturnType<typeof useQueryClient>) {
   requireLiveVerification();
   void client.cancelQueries();
   client.setQueryData(["me"], null);
-  client.removeQueries({ predicate: (query) => query.queryKey[0] !== "me" });
+  // Local installation status is public environment metadata, not account data.
+  // Keep its observer stable when the login URL changes modes.
+  client.removeQueries({
+    predicate: (query) => !["me", "local-status"].includes(String(query.queryKey[0])),
+  });
 }
 
 type Data = {
@@ -201,12 +209,19 @@ type Actions = {
 const Context = createContext<Actions>(null!);
 const useApp = () => useContext(Context);
 function PageTracking() {
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   useEffect(() => {
     window.scrollTo(0, 0);
 
-    let title = "Avari.Jobs — журнал откликов на вакансии";
-    if (pathname === "/calendar") {
+    let title = "Avari.Jobs — вакансии, отклики и собеседования в одном журнале";
+    if (pathname === "/login") {
+      const mode = new URLSearchParams(search).get("mode");
+      title = mode === "register"
+        ? "Создать аккаунт — Avari.Jobs"
+        : mode === "recovery"
+          ? "Восстановление доступа — Avari.Jobs"
+          : "Вход — Avari.Jobs";
+    } else if (pathname === "/calendar") {
       title = "Календарь — Avari.Jobs";
     } else if (pathname === "/applications") {
       title = "Отклики — Avari.Jobs";
@@ -226,8 +241,17 @@ function PageTracking() {
       title = "Конфиденциальность — Avari.Jobs";
     }
     document.title = title;
+    let robots = document.querySelector<HTMLMetaElement>('meta[name="robots"]');
+    if (!robots) {
+      robots = document.createElement("meta");
+      robots.name = "robots";
+      document.head.append(robots);
+    }
+    robots.content = pathname === "/login" ? "noindex, follow" : "index, follow";
+    const canonical = document.querySelector<HTMLLinkElement>('link[rel="canonical"]');
+    if (canonical) canonical.href = "https://jobs.avari.dev" + pathname;
     trackPageView(pathname, title);
-  }, [pathname]);
+  }, [pathname, search]);
   return null;
 }
 export default function App() {
@@ -432,7 +456,7 @@ function PublicPage({ privacy }: { privacy: boolean }) {
           </>
         )}
         <p>
-          <a href="/">Войти в Avari.Jobs</a> ·{" "}
+          <Link to="/login">Войти в Avari.Jobs</Link> ·{" "}
           <a href="/extension">Расширение</a> ·{" "}
           <a href="/privacy">Конфиденциальность</a>
         </p>
@@ -440,14 +464,38 @@ function PublicPage({ privacy }: { privacy: boolean }) {
     </div>
   );
 }
+function safeReturnPath(value: string | null): string {
+  if (!value || !value.startsWith("/") || value.startsWith("//") || /[\\\s]/.test(value)) {
+    return "/";
+  }
+  try {
+    const url = new URL(value, window.location.origin);
+    if (url.origin !== window.location.origin || url.pathname === "/login") return "/";
+    return url.pathname + url.search + url.hash;
+  } catch {
+    return "/";
+  }
+}
+
 function AuthenticatedApp({ personal = false, pendingShare, consumeShare }: {
   personal?: boolean;
   pendingShare: ParsedShareData | null;
   consumeShare: () => ParsedShareData | null;
 }) {
   const client = useQueryClient();
+  const location = useLocation();
+  const navigate = useNavigate();
   useEffect(() => {
+    const returnToLogin = () => {
+      if (client.getQueryData(["me"])) {
+        navigate(
+          "/login?returnTo=" + encodeURIComponent(location.pathname + location.search + location.hash),
+          { replace: true },
+        );
+      }
+    };
     const expired = () => {
+      returnToLogin();
       cancelAllDraftTimers();
       void disableDevicePushOnLogout(api, { notifyServer: false });
       void offlineManager.handleLogout();
@@ -457,6 +505,7 @@ function AuthenticatedApp({ personal = false, pendingShare, consumeShare }: {
 
     const unsubscribe = offlineBroadcast.subscribe((msg) => {
       if (msg.type === "SESSION_EXPIRED") {
+        returnToLogin();
         cancelAllDraftTimers();
         void disableDevicePushOnLogout(api, { notifyServer: false });
         clearSession(client);
@@ -467,7 +516,7 @@ function AuthenticatedApp({ personal = false, pendingShare, consumeShare }: {
       window.removeEventListener("avari-session-expired", expired);
       unsubscribe();
     };
-  }, [client]);
+  }, [client, navigate, location.pathname, location.search, location.hash]);
   const me = useQuery({
     queryKey: ["me"],
     queryFn: async () => {
@@ -506,13 +555,27 @@ function AuthenticatedApp({ personal = false, pendingShare, consumeShare }: {
     return () => window.removeEventListener("online", reconnect);
   }, [client, me.refetch]);
   if (me.isPending) return <Loading />;
-  if (me.error || !me.data)
-    return (
-      <Auth
-        personal={personal}
-        onLogin={(u) => client.setQueryData(["me"], u)}
-      />
-    );
+  const params = new URLSearchParams(location.search);
+  const requestedReturn = params.get("returnTo");
+  // Resolve only same-origin application paths; never follow external login redirects.
+  const returnTo = safeReturnPath(requestedReturn);
+  if (me.error || !me.data) {
+    const unauthorized = (!me.data && !me.error) ||
+      (me.error instanceof APIError && [401, 403].includes(me.error.status));
+    if (me.error && !unauthorized && !isNetworkError(me.error)) {
+      return <ErrorBox error={me.error} retry={() => me.refetch()} />;
+    }
+    const isWorkspaceShortcut = ["#today", "#add-vacancy"].includes(location.hash);
+    if (location.pathname === "/" && !personal && !pendingShare && !isWorkspaceShortcut && unauthorized) {
+      return <Landing />;
+    }
+    if (location.pathname !== "/login") {
+      const destination = location.pathname + location.search + location.hash;
+      return <Navigate replace to={"/login?returnTo=" + encodeURIComponent(destination)} />;
+    }
+    return <Auth api={api} personal={personal} onLogin={(u) => client.setQueryData(["me"], u)} />;
+  }
+  if (location.pathname === "/login") return <Navigate replace to={returnTo} />;
   if (me.data.status !== "active")
     return (
       <AccountStatus
@@ -525,288 +588,11 @@ function AuthenticatedApp({ personal = false, pendingShare, consumeShare }: {
           } catch {}
           await offlineManager.handleLogout(me.data.id);
           clearSession(client);
+          navigate("/login", { replace: true });
         }}
       />
     );
   return <Workspace user={me.data} pendingShare={pendingShare} consumeShare={consumeShare} />;
-}
-function Brand() {
-  return (
-    <div className="brand">
-      <div className="brand-mark brand-logo" aria-hidden="true">
-        <img src="/brand/avari-jobs-logo.png" alt="" />
-        <div className="brand-water" />
-      </div>
-      <span className="brand-name" data-text="Avari.Jobs">
-        Avari<span className="primary-text">.Jobs</span>
-      </span>
-    </div>
-  );
-}
-function Auth({
-  onLogin,
-  personal = false,
-}: {
-  onLogin: (u: User) => void;
-  personal?: boolean;
-}) {
-  const [mode, setMode] = useState<"login" | "register" | "recovery">("login");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
-  const [error, setError] = useState<unknown>();
-  const [busy, setBusy] = useState(false);
-  const [success, setSuccess] = useState("");
-  return (
-    <div className="auth-page">
-      <div className="auth-theme">
-        <ThemeButton />
-      </div>
-      <section className="auth-card auth-split">
-        <aside className="auth-story">
-          <div className="auth-water-canvas" aria-hidden="true">
-            <div className="water-wave wave-1" />
-            <div className="water-wave wave-2" />
-            <div className="water-wave wave-3" />
-            <div className="water-caustics" />
-          </div>
-          <Brand />
-          <div className="auth-story-copy">
-            <span className="eyebrow">Каждый шаг имеет значение</span>
-            <h2>
-              Новая глава.
-              <br />
-              Ваши правила.
-            </h2>
-            <p>
-              Сохраняйте возможности, планируйте встречи и двигайтесь к работе,
-              которая вам подходит.
-            </p>
-          </div>
-          <div className="auth-story-footer">
-            <span className="brand-mark">
-              <BriefcaseBusiness size={20} />
-            </span>
-            <span>
-              Меньше хаоса.
-              <br />
-              <strong>Больше ясности.</strong>
-            </span>
-          </div>
-        </aside>
-        <div className="auth-form-pane">
-          <span className="eyebrow">Ваше карьерное пространство</span>
-          <h1>
-            {mode === "login"
-              ? "С возвращением"
-              : mode === "register"
-                ? "Начните свою историю"
-                : "Восстановление доступа"}
-          </h1>
-          <p>
-            {mode === "recovery"
-              ? "Укажите email и новый пароль. Администратор одобрит смену вручную."
-              : "Отклики, встречи и следующие шаги — в одном месте."}
-          </p>
-          {!personal && (
-            <div className="auth-tabs">
-              <button
-                type="button"
-                className={mode === "login" ? "active" : ""}
-                onClick={() => {
-                  setMode("login");
-                  setError(undefined);
-                  setSuccess("");
-                }}
-              >
-                Вход
-              </button>
-              <button
-                type="button"
-                className={mode === "register" ? "active" : ""}
-                onClick={() => {
-                  setMode("register");
-                  setError(undefined);
-                  setSuccess("");
-                }}
-              >
-                Регистрация
-              </button>
-            </div>
-          )}
-          {!personal && mode === "login" && (
-            <TelegramLogin api={api} onLogin={onLogin} />
-          )}
-          {success && <div className="success notice">{success}</div>}
-          <form
-            className="form"
-            onKeyDown={handleFormSubmitShortcut}
-            onSubmit={async (e) => {
-              e.preventDefault();
-              setError(undefined);
-              if (
-                (mode === "register" || mode === "recovery") &&
-                password !== confirm
-              ) {
-                setError(new Error("Пароли не совпадают"));
-                return;
-              }
-              if (mode === "recovery" && password.length < 10) {
-                setError(
-                  new Error("Пароль должен содержать от 10 до 256 символов"),
-                );
-                return;
-              }
-              setBusy(true);
-              try {
-                if (mode === "register") {
-                  await api("/auth/register", "POST", {
-                    email,
-                    password,
-                    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-                  });
-                  try {
-                    const result = await api<{ user: User }>("/auth/login", "POST", {
-                      email,
-                      password,
-                      kind: "web",
-                    });
-                    onLogin(result.user);
-                  } catch (loginError) {
-                    setMode("login");
-                    setSuccess("Аккаунт создан. Войдите, чтобы отслеживать одобрение.");
-                    throw loginError;
-                  }
-                } else if (mode === "recovery") {
-                  await api("/auth/recovery", "POST", {
-                    email,
-                    password,
-                  });
-                  setPassword("");
-                  setConfirm("");
-                  setSuccess(
-                    "Запрос на смену пароля отправлен администратору. После одобрения войдите с новым паролем.",
-                  );
-                } else {
-                  const result = await api<{ user: User }>(
-                    "/auth/login",
-                    "POST",
-                    { email, password, kind: "web", name: navigator.platform },
-                  );
-                  onLogin(result.user);
-                }
-              } catch (e) {
-                setError(e);
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            <ErrorBox error={error} />
-            <FieldInput label="Email">
-              <input
-                type="email"
-                required
-                autoComplete="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </FieldInput>
-            <FieldInput
-              label={mode === "recovery" ? "Новый пароль" : "Пароль"}
-              hint={mode !== "login" ? "Не менее 10 символов" : undefined}
-            >
-              <input
-                type="password"
-                required
-                minLength={mode !== "login" ? 10 : undefined}
-                maxLength={256}
-                autoComplete={
-                  mode === "login" ? "current-password" : "new-password"
-                }
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </FieldInput>
-            <div
-              className={`auth-field-expand ${mode !== "login" ? "open" : ""}`}
-              aria-hidden={mode === "login"}
-            >
-              <div className="auth-field-expand-inner">
-                <FieldInput
-                  label={
-                    mode === "recovery"
-                      ? "Подтвердите новый пароль"
-                      : "Подтвердите пароль"
-                  }
-                >
-                  <input
-                    type="password"
-                    required={mode !== "login"}
-                    tabIndex={mode === "login" ? -1 : undefined}
-                    autoComplete="new-password"
-                    value={confirm}
-                    onChange={(e) => setConfirm(e.target.value)}
-                  />
-                </FieldInput>
-              </div>
-            </div>
-            <div className="form-actions">
-              <button className="primary" disabled={busy}>
-                {busy
-                  ? "Подождите…"
-                  : mode === "login"
-                    ? "Войти"
-                    : mode === "register"
-                      ? "Создать аккаунт"
-                      : "Запросить сброс пароля"}
-                <SubmitShortcutHint />
-              </button>
-            </div>
-          </form>
-          <div className="auth-footer-nav">
-            {mode === "login" && !personal && (
-              <button
-                type="button"
-                className="auth-link-button"
-                onClick={() => {
-                  setMode("recovery");
-                  setError(undefined);
-                  setSuccess("");
-                }}
-              >
-                Забыли пароль?
-              </button>
-            )}
-            {mode === "recovery" && (
-              <button
-                type="button"
-                className="auth-link-button"
-                onClick={() => {
-                  setMode("login");
-                  setError(undefined);
-                  setSuccess("");
-                }}
-              >
-                ← Вернуться ко входу
-              </button>
-            )}
-          </div>
-          <p className="auth-footnote">
-            {mode === "register"
-              ? "Регистрацию можно подтвердить через Telegram, если он доступен, или дождаться ручного одобрения администратором."
-              : mode === "recovery"
-                ? "Администратор одобряет смену пароля через TUI-консоль, не видя сам пароль."
-                : "Для начала работы используйте вашу учётную запись."}
-          </p>
-          <p className="auth-footnote">
-            <a href="/extension">Расширение для браузера</a> ·{" "}
-            <a href="/privacy">Конфиденциальность</a>
-          </p>
-        </div>
-      </section>
-    </div>
-  );
 }
 function AccountStatus({
   user,
@@ -985,6 +771,7 @@ function Workspace({ user, pendingShare, consumeShare }: {
     } finally {
       await offlineManager.handleLogout(user.id);
       clearSession(client);
+      navigate("/login", { replace: true });
     }
   };
   const context: Actions = {

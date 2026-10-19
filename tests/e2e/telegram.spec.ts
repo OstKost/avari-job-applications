@@ -33,7 +33,7 @@ async function bot(
 test("telegram registration activates the pending account", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("/login");
   await page.getByRole("button", { name: "Регистрация", exact: true }).click();
   await page
     .getByLabel("Email", { exact: true })
@@ -61,7 +61,7 @@ test("telegram registration activates the pending account", async ({
 test("telegram link requires website confirmation and supports disconnect", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("/login");
   await page.getByLabel("Email", { exact: true }).fill("telegram@example.com");
   await page
     .getByLabel("Пароль", { exact: true })
@@ -100,7 +100,7 @@ test("telegram link requires website confirmation and supports disconnect", asyn
 test("telegram login requires an explicit bot approval before issuing session", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("/login");
   await page
     .getByRole("button", { name: "Войти через Telegram", exact: true })
     .click();

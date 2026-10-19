@@ -35,7 +35,7 @@ test("public extension page and privacy are available before login", async ({
   ).toBeVisible();
 });
 const login = async (page: Page) => {
-  await page.goto("/");
+  await page.goto("/login");
   await page.getByLabel("Email", { exact: true }).fill("browser@example.com");
   await page
     .getByLabel("Пароль", { exact: true })
@@ -277,7 +277,7 @@ test("site: real API, vacancy, note, interview, themes, custom fields and mobile
 test("registration stays pending and unauthorized data is blocked", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("/login");
   await page.getByRole("button", { name: "Регистрация", exact: true }).click();
   await page
     .getByLabel("Email", { exact: true })
@@ -414,7 +414,7 @@ test("workspace design: dashboard, grouped table, cards, pagination and monthly 
 }) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  await page.goto("/");
+  await page.goto("/login");
   await page.screenshot({
     path: "test-results/design-login-desktop.png",
     fullPage: true,

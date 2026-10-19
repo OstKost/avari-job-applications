@@ -15,7 +15,7 @@ const loginDedicated = async (page: Page) => {
     await expect(page.getByRole("heading", { name: "Главная", exact: true })).toBeVisible();
     return;
   }
-  await page.goto("/");
+  await page.goto("/login");
   await page.getByLabel("Email", { exact: true }).fill(dedicatedUser.email);
   await page.getByLabel("Пароль", { exact: true }).fill(dedicatedUser.password);
   await page.getByRole("button", { name: "Войти", exact: true }).click();

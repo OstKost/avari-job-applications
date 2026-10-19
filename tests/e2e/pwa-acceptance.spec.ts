@@ -35,7 +35,7 @@ async function signIn(page: Page, email = "pwa@example.com") {
   ).toBeVisible();
 }
 async function login(page: Page) {
-  await page.goto("/");
+  await page.goto("/login");
   await signIn(page);
 }
 async function records(page: Page) {
@@ -137,7 +137,7 @@ test.describe("dedicated PWA acceptance", () => {
         String(Number(sessionStorage.getItem(key) || 0) + 1),
       );
     });
-    await page.goto("/");
+    await page.goto("/login");
     // Registration belongs to the authenticated workspace; login is an SPA transition.
     await signIn(page);
     await page.evaluate(() =>

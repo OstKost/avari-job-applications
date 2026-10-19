@@ -8,7 +8,7 @@ async function login(page: Page) {
     await page.context().addCookies(cookies);
     await page.goto("/");
   } else {
-    await page.goto("/");
+    await page.goto("/login");
     await page
       .getByLabel("Email", { exact: true })
       .fill("autofill@example.com");

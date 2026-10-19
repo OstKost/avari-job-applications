@@ -2,7 +2,7 @@ import { submitLogin } from "./auth";
 import { test, expect, type Page } from "@playwright/test";
 
 async function login(page: Page) {
-  await page.goto("/");
+  await page.goto("/login");
   await page.getByLabel("Email", { exact: true }).fill("browser@example.com");
   await page
     .getByLabel("Пароль", { exact: true })
