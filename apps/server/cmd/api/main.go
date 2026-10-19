@@ -58,6 +58,11 @@ func main() {
 		}
 	}
 	telegramEnabled := os.Getenv("AVARI_TELEGRAM_ENABLED") == "true"
+	telegramMode := env("AVARI_TELEGRAM_DELIVERY_MODE", "webhook")
+	if telegramEnabled && telegramMode != "webhook" && telegramMode != "polling" {
+		slog.Error("invalid Telegram delivery mode")
+		os.Exit(1)
+	}
 	telegramToken, telegramUsername, telegramSecret := os.Getenv("AVARI_TELEGRAM_BOT_TOKEN"), os.Getenv("AVARI_TELEGRAM_BOT_USERNAME"), os.Getenv("AVARI_TELEGRAM_WEBHOOK_SECRET")
 	if err := telegram.Validate(telegramEnabled, *personal, origin, telegramToken, telegramUsername, telegramSecret); err != nil {
 		slog.Error("invalid Telegram configuration", "error", err)
@@ -71,7 +76,7 @@ func main() {
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		if err := telegramClient.Configure(ctx, origin, telegramSecret); err != nil {
+		if err := telegramClient.Configure(ctx, origin, telegramSecret, telegramMode); err != nil {
 			slog.Error("Telegram setup failed", "error", err)
 			os.Exit(1)
 		}
@@ -148,7 +153,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	if telegramEnabled {
-		worker := &telegram.Service{Store: store, Client: telegramClient, Origin: origin}
+		worker := &telegram.Service{Store: store, Client: telegramClient, Origin: origin, Polling: telegramMode == "polling"}
 		done := make(chan struct{})
 		go func() { defer close(done); worker.Run(ctx) }()
 		defer func() { stop(); <-done }()

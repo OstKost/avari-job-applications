@@ -26,58 +26,76 @@ type Client struct {
 	HTTP    *http.Client
 }
 
-func (c *Client) Call(ctx context.Context, method string, body any) (int, int, error) {
+type response struct {
+	OK         bool            `json:"ok"`
+	Code       int             `json:"error_code"`
+	Result     json.RawMessage `json:"result"`
+	Parameters struct {
+		Retry int `json:"retry_after"`
+	} `json:"parameters"`
+}
+
+func (c *Client) exchange(ctx context.Context, method string, body any) (response, error) {
+	var result response
 	base := c.BaseURL
 	if base == "" {
 		base = "https://api.telegram.org"
 	}
 	client := c.HTTP
 	if client == nil {
-		client = &http.Client{Timeout: 15 * time.Second}
+		client = &http.Client{Timeout: 30 * time.Second}
 	}
 	raw, e := json.Marshal(body)
 	if e != nil {
-		return 0, 0, e
+		return result, e
 	}
 	req, e := http.NewRequestWithContext(ctx, "POST", base+"/bot"+c.Token+"/"+method, bytes.NewReader(raw))
 	if e != nil {
-		return 0, 0, errors.New("invalid Telegram endpoint")
+		return result, errors.New("invalid Telegram endpoint")
 	}
 	req.Header.Set("Content-Type", "application/json")
 	res, e := client.Do(req)
 	if e != nil {
-		return 0, 0, errors.New("Telegram transport unavailable")
+		return result, errors.New("Telegram transport unavailable")
 	}
 	defer res.Body.Close()
-	var result struct {
-		OK         bool `json:"ok"`
-		Code       int  `json:"error_code"`
-		Parameters struct {
-			Retry int `json:"retry_after"`
-		} `json:"parameters"`
-	}
-	if e = json.NewDecoder(io.LimitReader(res.Body, 1<<20)).Decode(&result); e != nil {
-		return 0, 0, errors.New("invalid Telegram response")
+	if e = json.NewDecoder(io.LimitReader(res.Body, 4<<20)).Decode(&result); e != nil {
+		return result, errors.New("invalid Telegram response")
 	}
 	if result.OK {
-		return 200, 0, nil
+		result.Code = 200
+	} else if result.Code == 0 {
+		result.Code = res.StatusCode
 	}
-	code := result.Code
-	if code == 0 {
-		code = res.StatusCode
-	}
-	return code, result.Parameters.Retry, nil
+	return result, nil
 }
-func (c *Client) Configure(ctx context.Context, origin, secret string) error {
+func (c *Client) Call(ctx context.Context, method string, body any) (int, int, error) {
+	r, e := c.exchange(ctx, method, body)
+	return r.Code, r.Parameters.Retry, e
+}
+func (c *Client) Configure(ctx context.Context, origin, secret string, modes ...string) error {
+	mode := "webhook"
+	if len(modes) > 0 {
+		mode = modes[0]
+	}
+	if mode != "webhook" && mode != "polling" {
+		return errors.New("invalid Telegram delivery mode")
+	}
 	if !strings.HasPrefix(origin, "https://") {
 		return errors.New("Telegram requires an HTTPS origin")
 	}
-	code, _, e := c.Call(ctx, "setWebhook", map[string]any{"url": origin + "/api/v1/telegram/webhook", "secret_token": secret, "allowed_updates": []string{"message", "callback_query"}, "drop_pending_updates": false})
+	method := "setWebhook"
+	body := map[string]any{"url": origin + "/api/v1/telegram/webhook", "secret_token": secret, "allowed_updates": []string{"message", "callback_query"}, "drop_pending_updates": false}
+	if mode == "polling" {
+		method = "deleteWebhook"
+		body = map[string]any{"drop_pending_updates": false}
+	}
+	code, _, e := c.Call(ctx, method, body)
 	if e != nil {
 		return e
 	}
 	if code != 200 {
-		return fmt.Errorf("setWebhook failed: %d", code)
+		return fmt.Errorf("%s failed: %d", method, code)
 	}
 	commands := []map[string]string{}
 	for _, v := range [][2]string{{"start", "Главное меню"}, {"help", "Помощь"}, {"add", "Добавить вакансию"}, {"search", "Журнал и поиск"}, {"today", "Сегодня"}, {"week", "Ближайшие семь дней"}, {"settings", "Настройки"}, {"cancel", "Отмена"}} {
@@ -94,6 +112,7 @@ func (c *Client) Configure(ctx context.Context, origin, secret string) error {
 }
 
 type Service struct {
+	Polling bool
 	Store   *core.Store
 	Client  *Client
 	Origin  string
@@ -204,6 +223,11 @@ func (s *Service) Tick(ctx context.Context) error {
 	return nil
 }
 func (s *Service) Run(ctx context.Context) {
+	if s.Polling {
+		done := make(chan struct{})
+		go func() { defer close(done); s.poll(ctx) }()
+		defer func() { <-done }()
+	}
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	for {

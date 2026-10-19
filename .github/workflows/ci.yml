@@ -142,6 +142,7 @@ jobs:
           IMAGE_DIGEST: ${{ steps.pinned.outputs.digest }}
           GHCR_TOKEN: ${{ github.token }}
           AVARI_TELEGRAM_ENABLED: ${{ vars.AVARI_TELEGRAM_ENABLED || 'false' }}
+          AVARI_TELEGRAM_DELIVERY_MODE: ${{ vars.AVARI_TELEGRAM_DELIVERY_MODE || 'webhook' }}
           AVARI_TELEGRAM_BOT_USERNAME: ${{ vars.AVARI_TELEGRAM_BOT_USERNAME || 'AvariJobsBot' }}
           AVARI_TELEGRAM_BOT_TOKEN: ${{ secrets.AVARI_TELEGRAM_BOT_TOKEN }}
           AVARI_TELEGRAM_WEBHOOK_SECRET: ${{ secrets.AVARI_TELEGRAM_WEBHOOK_SECRET }}
@@ -153,7 +154,7 @@ jobs:
           chmod 600 ~/.ssh/known_hosts
           python3 - <<'PY'
           import json, os, subprocess
-          config = {'enabled': os.environ['AVARI_TELEGRAM_ENABLED'] == 'true', 'token': os.environ['AVARI_TELEGRAM_BOT_TOKEN'], 'username': os.environ['AVARI_TELEGRAM_BOT_USERNAME'], 'webhookSecret': os.environ['AVARI_TELEGRAM_WEBHOOK_SECRET']}
+          config = {'enabled': os.environ['AVARI_TELEGRAM_ENABLED'] == 'true', 'token': os.environ['AVARI_TELEGRAM_BOT_TOKEN'], 'username': os.environ['AVARI_TELEGRAM_BOT_USERNAME'], 'webhookSecret': os.environ['AVARI_TELEGRAM_WEBHOOK_SECRET'], 'deliveryMode': os.environ['AVARI_TELEGRAM_DELIVERY_MODE']}
           subprocess.run(['ssh', '-o', 'StrictHostKeyChecking=yes', 'avari-deploy@176.53.174.118', 'sudo', '-n', '/usr/local/sbin/avari-jobs-deploy', '--telegram-config'], input=json.dumps(config), text=True, check=True)
           PY
           printf '%s' "$GHCR_TOKEN" | ssh -o StrictHostKeyChecking=yes avari-deploy@176.53.174.118 sudo -n /usr/local/sbin/avari-jobs-deploy "$GITHUB_REF_NAME" "$IMAGE_DIGEST" "$GITHUB_ACTOR"
@@ -164,11 +165,12 @@ jobs:
           curl -fsS https://jobs.avari.dev/release.json | python3 -c 'import json,os,sys; assert json.load(sys.stdin)["version"] == os.environ["GITHUB_REF_NAME"][1:]'
           status=$(curl -s -o /dev/null -w "%{http_code}" https://jobs.avari.dev/downloads/avari-extension.zip)
           test "$status" = "404"
-      - name: Verify Telegram webhook and commands
+      - name: Verify Telegram delivery configuration and commands
         if: vars.AVARI_TELEGRAM_ENABLED == 'true'
         env:
           TELEGRAM_TOKEN: ${{ secrets.AVARI_TELEGRAM_BOT_TOKEN }}
           TELEGRAM_USERNAME: ${{ vars.AVARI_TELEGRAM_BOT_USERNAME || 'AvariJobsBot' }}
+          TELEGRAM_DELIVERY_MODE: ${{ vars.AVARI_TELEGRAM_DELIVERY_MODE || 'webhook' }}
         run: |
           python3 - <<'PY'
           import json, os, sys, time, urllib.request
@@ -183,7 +185,8 @@ jobs:
                       if attempt == 2: sys.exit('Telegram API check failed (credentials and request URL redacted)')
                       time.sleep(3)
           assert call('getMe')['username'] == os.environ['TELEGRAM_USERNAME'], 'Unexpected bot identity'
-          assert call('getWebhookInfo')['url'] == 'https://jobs.avari.dev/api/v1/telegram/webhook', 'Unexpected webhook URL'
+          expected_url = '' if os.environ['TELEGRAM_DELIVERY_MODE'] == 'polling' else 'https://jobs.avari.dev/api/v1/telegram/webhook'
+          assert call('getWebhookInfo')['url'] == expected_url, 'Unexpected Telegram delivery configuration'
           required = {'start', 'help', 'add', 'search', 'today', 'week', 'settings', 'cancel'}
           request = urllib.request.Request('https://api.telegram.org/bot' + os.environ['TELEGRAM_TOKEN'] + '/getMyCommands', data=b'{"scope":{"type":"all_private_chats"}}', headers={'Content-Type': 'application/json'})
           try:
@@ -191,7 +194,7 @@ jobs:
               assert commands.get('ok') and required <= {c['command'] for c in commands['result']}
           except Exception:
               sys.exit('Telegram command check failed (credentials and request URL redacted)')
-          print('Telegram identity, production webhook and private-chat commands verified')
+          print('Telegram identity, delivery configuration and private-chat commands verified')
           PY
       - name: Record successful deployment
         env:

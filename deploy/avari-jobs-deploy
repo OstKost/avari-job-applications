@@ -4,7 +4,7 @@ umask 077
 root=/opt/avari-jobs
 compose="$root/compose.production.yaml"
 image_repo=ghcr.io/ostkost/avari-job-applications
-# Only the four Telegram settings may be updated through this privileged entry point.
+# Only Telegram settings may be updated through this privileged entry point.
 # JSON is read on fd 3, keeping secrets out of command arguments and shell output.
 if [[ "${1:-}" == --telegram-config ]]; then
     exec 9>"$root/deploy.lock"
@@ -17,7 +17,7 @@ try:
     if len(raw) > 16384:
         raise ValueError()
     data = json.loads(raw)
-    if not isinstance(data, dict) or set(data) != {'enabled', 'token', 'username', 'webhookSecret'}:
+    if not isinstance(data, dict) or not {'enabled', 'token', 'username', 'webhookSecret'} <= set(data) or set(data) - {'enabled', 'token', 'username', 'webhookSecret', 'deliveryMode'}:
         raise ValueError()
     if type(data['enabled']) is not bool:
         raise ValueError()
@@ -25,10 +25,12 @@ try:
         value = data[name]
         if not isinstance(value, str) or ((data['enabled'] or value) and re.fullmatch(pattern, value) is None):
             raise ValueError()
+    mode = data.get('deliveryMode', 'webhook')
+    if mode not in ('webhook', 'polling'): raise ValueError()
     path = pathlib.Path(sys.argv[1])
     if path.is_symlink():
         raise ValueError()
-    keys = {'AVARI_TELEGRAM_ENABLED': 'true' if data['enabled'] else 'false', 'AVARI_TELEGRAM_BOT_TOKEN': data['token'], 'AVARI_TELEGRAM_BOT_USERNAME': data['username'], 'AVARI_TELEGRAM_WEBHOOK_SECRET': data['webhookSecret']}
+    keys = {'AVARI_TELEGRAM_ENABLED': 'true' if data['enabled'] else 'false', 'AVARI_TELEGRAM_BOT_TOKEN': data['token'], 'AVARI_TELEGRAM_BOT_USERNAME': data['username'], 'AVARI_TELEGRAM_WEBHOOK_SECRET': data['webhookSecret'], 'AVARI_TELEGRAM_DELIVERY_MODE': mode}
     previous = path.read_text().splitlines() if path.exists() else []
     lines = [line for line in previous if not re.match(r'^(?:export\s+)?(?:' + '|'.join(keys) + r')=', line)]
     lines.extend(key + '=' + value for key, value in keys.items())

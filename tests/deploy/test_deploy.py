@@ -83,6 +83,19 @@ if sys.argv[-1].endswith('/release.json'): print(json.dumps({'version': '1.0.1' 
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(env_file.read_bytes(), before)
 
+    def test_telegram_config_validates_optional_delivery_mode(self):
+        data = {"enabled": True, "token": "123456789:" + "a" * 35, "username": "AvariJobsBot", "webhookSecret": "s" * 64, "deliveryMode": "polling"}
+        result = subprocess.run(["bash", str(self.script), "--telegram-config"], input=json.dumps(data), text=True, capture_output=True, env=self.env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        env_file = self.app / ".env"
+        self.assertIn("AVARI_TELEGRAM_DELIVERY_MODE=polling", env_file.read_text().splitlines())
+        self.assertEqual(len(env_file.read_text().splitlines()), 5)
+        before = env_file.read_bytes()
+        data["deliveryMode"] = "unsafe"
+        result = subprocess.run(["bash", str(self.script), "--telegram-config"], input=json.dumps(data), text=True, capture_output=True, env=self.env)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(env_file.read_bytes(), before)
+
     def test_first_deploy_without_backups(self):
         result = self.deploy("v1.0.0", "sha256:" + "a" * 64)
         self.assertEqual(result.returncode, 0, result.stderr)
