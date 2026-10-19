@@ -22,6 +22,11 @@ globalThis.fetch = async (url, options = {}) => {
     if (options.headers['X-CSRFToken'] !== 'fake-csrf' || !options.headers.Cookie.includes('sessionid=fake-session')) throw new Error('Missing CSRF credentials');
     if (!(options.body instanceof FormData)) throw new Error('Expected multipart upload');
   }
+  if (url.includes('/api/developer/package-versions/?')) {
+    if (new URL(url).searchParams.get('package_id') !== '123') throw new Error('Package id must be a query parameter');
+    const data = JSON.parse(options.body);
+    if ('package_id' in data || data.metadata_from !== '1.3.0') throw new Error('Wrong version registration payload');
+  }
   const {status = 200, data = {}} = responses.shift();
   return new Response(JSON.stringify(data), {status, headers: {'Content-Type': 'application/json'}});
 };
@@ -39,10 +44,13 @@ process.on('exit', () => console.log('REQUESTS=' + requests));
             })
 
     def test_multipart_upload_includes_referer_and_csrf_then_submits(self):
-        result = self.run_publish([{}, {}, {}, {}])
+        result = self.run_publish([
+            {"data": {"versions": [{"version": "1.3.0"}]}}, {}, {}, {},
+            {"data": {"versions": [{"version": "1.10.0", "submitted_for_moderation": True}]}},
+        ])
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Successfully submitted 1.10.0", result.stdout)
-        self.assertIn("REQUESTS=4", result.stdout)
+        self.assertIn("REQUESTS=5", result.stdout)
 
     def test_failed_upload_never_registers_or_submits(self):
         result = self.run_publish([{}, {"status": 403, "data": {"detail": "CSRF failed"}}])
@@ -53,3 +61,19 @@ process.on('exit', () => console.log('REQUESTS=' + requests));
         result = self.run_publish([{"data": {"versions": [{"version": "1.10.0", "submitted_for_moderation": True}]}}])
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("REQUESTS=1", result.stdout)
+
+    def test_existing_draft_is_submitted_without_duplicate_upload(self):
+        result = self.run_publish([
+            {"data": {"versions": [{"version": "1.10.0", "submitted_for_moderation": False}]}}, {},
+            {"data": {"versions": [{"version": "1.10.0", "submitted_for_moderation": True}]}},
+        ])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("REQUESTS=3", result.stdout)
+
+    def test_unconfirmed_submission_is_not_reported_as_success(self):
+        result = self.run_publish([
+            {"data": {"versions": [{"version": "1.10.0", "submitted_for_moderation": False}]}}, {},
+            {"data": {"versions": [{"version": "1.10.0", "submitted_for_moderation": False}]}},
+        ])
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("Successfully submitted", result.stdout)
