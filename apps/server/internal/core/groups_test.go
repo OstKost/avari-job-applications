@@ -69,7 +69,7 @@ func TestLegacyGroupsMigrateToTags(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.DB.Exec("DROP TABLE import_origins; DROP TABLE instance_metadata; DELETE FROM schema_migrations WHERE version>=6"); err != nil {
+	if _, err = s.DB.Exec("ALTER TABLE telegram_challenges DROP COLUMN client_kind; DROP TABLE import_origins; DROP TABLE instance_metadata; DELETE FROM schema_migrations WHERE version>=6"); err != nil {
 		t.Fatal(err)
 	}
 	if err = s.migrate(); err != nil {

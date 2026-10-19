@@ -753,3 +753,145 @@ func TestTelegramAnonymousLoginReissueRequiresOriginalBrowserSecret(t *testing.T
 		t.Fatal("original browser failed to replace request", c, e)
 	}
 }
+
+func TestExtensionTelegramLoginIsolationAndSingleUse(t *testing.T) {
+	s := testStore(t)
+	u := testUser(t, s, "extension-telegram@example.com")
+	linkTelegram(t, s, u, 8001)
+	c, botToken, secret, e := s.NewExtensionTelegramLogin("Расширение · Chromium")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if c.ClientKind != "extension" {
+		t.Fatal(c)
+	}
+	if _, e = s.TelegramStart(botToken, 8001, 8001, "tester", "Tester"); e != nil {
+		t.Fatal(e)
+	}
+	if _, _, _, e = s.CompleteExtensionTelegramLogin(c.ID, secret); e == nil {
+		t.Fatal("start issued session")
+	}
+	if e = s.TelegramDecide(c.ID, 8001, true); e != nil {
+		t.Fatal(e)
+	}
+	if _, _, _, e = s.CompleteTelegramLogin(c.ID, secret); e == nil {
+		t.Fatal("extension challenge completed as web")
+	}
+	if _, _, _, e = s.CompleteExtensionTelegramLogin(c.ID, "wrong"); e == nil {
+		t.Fatal("foreign secret")
+	}
+	var wg sync.WaitGroup
+	results := make(chan string, 2)
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			user, session, token, err := s.CompleteExtensionTelegramLogin(c.ID, secret)
+			if err == nil {
+				if user.ID != u.ID || session.Kind != "extension" {
+					t.Error(user, session)
+				}
+				results <- token
+			}
+		}()
+	}
+	wg.Wait()
+	close(results)
+	var tokens []string
+	for token := range results {
+		tokens = append(tokens, token)
+	}
+	if len(tokens) != 1 {
+		t.Fatal("expected exactly one issued session", len(tokens))
+	}
+	if _, session, e := s.Authenticate(tokens[0]); e != nil || session.Kind != "extension" {
+		t.Fatal(session, e)
+	}
+	web, token, webSecret, e := s.NewTelegramChallenge("", "login", "Browser")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = s.TelegramStart(token, 8001, 8001, "tester", "Tester"); e != nil {
+		t.Fatal(e)
+	}
+	if e = s.TelegramDecide(web.ID, 8001, true); e != nil {
+		t.Fatal(e)
+	}
+	if _, _, _, e = s.CompleteExtensionTelegramLogin(web.ID, webSecret); e == nil {
+		t.Fatal("web challenge completed as extension")
+	}
+	if _, session, _, e := s.CompleteTelegramLogin(web.ID, webSecret); e != nil || session.Kind != "web" {
+		t.Fatal(session, e)
+	}
+}
+
+func TestExtensionTelegramLoginInvalidation(t *testing.T) {
+	for _, reason := range []string{"expired", "cancelled", "blocked", "disconnected", "unlinked"} {
+		t.Run(reason, func(t *testing.T) {
+			s := testStore(t)
+			u := testUser(t, s, "extension-invalid@example.com")
+			if reason != "unlinked" {
+				linkTelegram(t, s, u, 8002)
+			}
+			c, token, secret, e := s.NewExtensionTelegramLogin("Extension")
+			if e != nil {
+				t.Fatal(e)
+			}
+			if _, e = s.TelegramStart(token, 8002, 8002, "tester", "Tester"); e != nil {
+				t.Fatal(e)
+			}
+			if reason == "unlinked" {
+				if e = s.TelegramDecide(c.ID, 8002, true); e == nil {
+					t.Fatal("unlinked login approved")
+				}
+			} else if reason == "cancelled" {
+				if e = s.TelegramDecide(c.ID, 8002, false); e != nil {
+					t.Fatal(e)
+				}
+			} else {
+				if e = s.TelegramDecide(c.ID, 8002, true); e != nil {
+					t.Fatal(e)
+				}
+				switch reason {
+				case "expired":
+					s.Now = func() time.Time { return time.Now().Add(6 * time.Minute) }
+				case "blocked":
+					_, e = s.DB.Exec("UPDATE users SET status='blocked' WHERE id=?", u.ID)
+				case "disconnected":
+					e = s.DisconnectTelegram(u.ID)
+				}
+				if e != nil {
+					t.Fatal(e)
+				}
+			}
+			if _, _, _, e = s.CompleteExtensionTelegramLogin(c.ID, secret); e == nil {
+				t.Fatal("invalidated request issued session")
+			}
+		})
+	}
+}
+
+func TestTelegramClientKindUpgrade(t *testing.T) {
+	s := testStore(t)
+	c, _, secret, e := s.NewTelegramChallenge("", "login", "Existing browser")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = s.DB.Exec("ALTER TABLE telegram_challenges DROP COLUMN client_kind; DELETE FROM schema_migrations WHERE version=13"); e != nil {
+		t.Fatal(e)
+	}
+	path := s.Path
+	s.Close()
+	upgraded, e := Open(path)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer upgraded.Close()
+	migrated, e := upgraded.TelegramChallenge(c.ID, secret)
+	if e != nil || migrated.ClientKind != "web" {
+		t.Fatal(migrated, e)
+	}
+	if _, _, _, e = upgraded.NewExtensionTelegramLogin("Extension"); e != nil {
+		t.Fatal(e)
+	}
+}

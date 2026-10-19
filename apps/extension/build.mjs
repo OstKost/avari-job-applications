@@ -1,6 +1,6 @@
 import { build } from "vite";
 import react from "@vitejs/plugin-react";
-import { copyFile, writeFile } from "node:fs/promises";
+import { copyFile, readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 const root = fileURLToPath(new URL(".", import.meta.url));
 let defaultServer =
@@ -20,7 +20,10 @@ if (defaultServer) {
   defaultServer = url.origin;
   process.env.VITE_AVARI_DEFAULT_SERVER = defaultServer;
 }
-const version = process.env.AVARI_VERSION || "1.3.0";
+const { version: packageVersion } = JSON.parse(
+  await readFile(new URL("../../package.json", import.meta.url), "utf8"),
+);
+const version = process.env.AVARI_VERSION || packageVersion;
 if (
   !/^\d{1,5}\.\d{1,5}\.\d{1,5}$/.test(version) ||
   version
@@ -42,7 +45,11 @@ await build({
     outDir: "dist",
     emptyOutDir: true,
     rollupOptions: {
-      input: { panel: root + "index.html", action: root + "action.html" },
+      input: {
+        panel: root + "index.html",
+        action: root + "action.html",
+        auth: root + "auth.html",
+      },
     },
   },
 });
@@ -103,6 +110,7 @@ const manifest = {
         "https://*.hirify.me/account/favorites*",
         "https://*.geekjob.ru/vacancy/*",
         "https://*.career.habr.com/vacancies*",
+        "https://*.huntflow.io/vacancy/*",
       ],
       js: ["content.js"],
       run_at: "document_idle",

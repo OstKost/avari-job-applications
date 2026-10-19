@@ -644,7 +644,7 @@ func TestMigration9To10UpgradeAndAccountIsolation(t *testing.T) {
 	}
 
 	// Roll back migration 10+: drop daily_goal_ledger and decrement schema_migrations to 9
-	if _, err := s.DB.Exec("DROP TABLE IF EXISTS daily_goal_ledger; DELETE FROM schema_migrations WHERE version >= 10"); err != nil {
+	if _, err := s.DB.Exec("ALTER TABLE telegram_challenges DROP COLUMN client_kind; DROP TABLE IF EXISTS daily_goal_ledger; DELETE FROM schema_migrations WHERE version >= 10"); err != nil {
 		t.Fatal(err)
 	}
 	_ = s.Close()

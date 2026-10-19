@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -62,8 +63,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/local/setup", s.localSetup)
 	mux.HandleFunc("POST /api/v1/telegram/webhook", s.telegramWebhook)
 	mux.HandleFunc("GET /api/v1/auth/telegram/config", func(w http.ResponseWriter, r *http.Request) {
-		write(w, 200, map[string]bool{"enabled": s.telegramEnabled()})
+		write(w, 200, map[string]bool{"enabled": s.telegramEnabled(), "extensionLogin": s.telegramEnabled()})
 	})
+	mux.HandleFunc("POST /api/v1/auth/telegram/extension/requests", s.telegramExtensionLogin)
+	mux.HandleFunc("GET /api/v1/auth/telegram/extension/requests/{id}", s.telegramExtensionLogin)
+	mux.HandleFunc("POST /api/v1/auth/telegram/extension/requests/{id}/complete", s.telegramExtensionLogin)
 	mux.HandleFunc("POST /api/v1/auth/telegram/requests", s.telegramLogin)
 	mux.HandleFunc("GET /api/v1/auth/telegram/requests/{id}", s.telegramLogin)
 	mux.HandleFunc("POST /api/v1/auth/telegram/requests/{id}/complete", s.telegramLogin)
@@ -109,10 +113,13 @@ func read(r *http.Request, v any) error {
 	}
 	return nil
 }
+
+var extensionOriginPattern = regexp.MustCompile(`^(chrome-extension://[a-p]{32}|moz-extension://[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$`)
+
 func extensionOrigin(origin string) bool {
-	u, e := url.Parse(origin)
-	return e == nil && u.Scheme == "chrome-extension" && len(u.Host) == 32 && u.Path == ""
+	return extensionOriginPattern.MatchString(origin)
 }
+
 func (s *Server) middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
@@ -134,7 +141,7 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Vary", "Origin")
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-CSRF-Token, Idempotency-Key")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-CSRF-Token, Idempotency-Key, X-Telegram-Login-Secret")
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 		}
 		if r.Method == "OPTIONS" {

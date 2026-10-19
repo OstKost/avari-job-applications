@@ -51,9 +51,11 @@ export function Auth({
   const [success, setSuccess] = useState("");
   return (
     <div className="auth-page">
-      <Link className="auth-home-link" to="/">
-        <ArrowLeft size={16} /> На главную
-      </Link>
+      {!personal && (
+        <Link className="auth-home-link" to="/">
+          <ArrowLeft size={16} /> На главную
+        </Link>
+      )}
       <div className="auth-theme">
         <ThemeButton />
       </div>

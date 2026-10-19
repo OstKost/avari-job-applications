@@ -7133,10 +7133,14 @@
                   "properties": {
                     "enabled": {
                       "type": "boolean"
+                    },
+                    "extensionLogin": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
-                    "enabled"
+                    "enabled",
+                    "extensionLogin"
                   ],
                   "additionalProperties": false
                 }
@@ -7539,6 +7543,330 @@
           }
         },
         "description": "Requires the HttpOnly avari_telegram browser cookie for challenge polling/completion. Mutations require the website Origin; authenticated mutations also require the session CSRF token. Pending accounts may only confirm registration. Telegram data is excluded from journal exports."
+      }
+    },
+    "/auth/telegram/extension/requests": {
+      "post": {
+        "summary": "Create secret-bound extension Telegram login (five minutes)",
+        "operationId": "post__auth_telegram_extension_requests",
+        "security": [],
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramExtensionRequest"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Concurrent edit or confirmation required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "No cookies. If Origin is supplied it must be a chrome-extension or moz-extension origin. Polling and completion require the initiating extension's secret header. Only active accounts with a linked Telegram can log in. Web and extension challenges cannot be exchanged. The secret and issued token must remain in the service worker; never put them in URLs or content scripts."
+      }
+    },
+    "/auth/telegram/extension/requests/{id}": {
+      "get": {
+        "summary": "Poll extension Telegram login without creating a session",
+        "operationId": "get__auth_telegram_extension_requests__id_",
+        "security": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Telegram-Login-Secret",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramChallenge"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Concurrent edit or confirmation required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "No cookies. If Origin is supplied it must be a chrome-extension or moz-extension origin. Polling and completion require the initiating extension's secret header. Only active accounts with a linked Telegram can log in. Web and extension challenges cannot be exchanged. The secret and issued token must remain in the service worker; never put them in URLs or content scripts."
+      }
+    },
+    "/auth/telegram/extension/requests/{id}/complete": {
+      "post": {
+        "summary": "Consume extension login once and issue an extension Bearer token",
+        "operationId": "post__auth_telegram_extension_requests__id__complete",
+        "security": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Telegram-Login-Secret",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "user": {
+                      "$ref": "#/components/schemas/User"
+                    },
+                    "session": {
+                      "$ref": "#/components/schemas/Session"
+                    },
+                    "token": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "user",
+                    "session",
+                    "token"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Concurrent edit or confirmation required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "No cookies. If Origin is supplied it must be a chrome-extension or moz-extension origin. Polling and completion require the initiating extension's secret header. Only active accounts with a linked Telegram can log in. Web and extension challenges cannot be exchanged. The secret and issued token must remain in the service worker; never put them in URLs or content scripts."
       }
     },
     "/telegram/webhook": {
@@ -9508,6 +9836,26 @@
         "required": [
           "morning",
           "evening"
+        ],
+        "additionalProperties": false
+      },
+      "TelegramExtensionRequest": {
+        "type": "object",
+        "properties": {
+          "challenge": {
+            "$ref": "#/components/schemas/TelegramChallenge"
+          },
+          "url": {
+            "type": "string"
+          },
+          "secret": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "challenge",
+          "url",
+          "secret"
         ],
         "additionalProperties": false
       }

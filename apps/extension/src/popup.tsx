@@ -196,7 +196,7 @@ function Popup() {
     try {
       const c = await message<{
         server?: string;
-        token?: string;
+        hasToken?: boolean;
         notifications?: boolean;
       }>({ type: "CONFIG" });
       if (generation !== reloadGeneration.current) return;
@@ -207,7 +207,7 @@ function Popup() {
         setUser(undefined);
         return;
       }
-      if (!c.token) {
+      if (!c.hasToken) {
         setUser(undefined);
         return;
       }
@@ -287,6 +287,15 @@ function Popup() {
   };
   useEffect(() => {
     void reload();
+    const changed = (
+      changes: Record<string, chrome.storage.StorageChange>,
+      area: string,
+    ) => {
+      if (area === "local" && (changes.token || changes.authRevision))
+        void reload();
+    };
+    chrome.storage.onChanged.addListener(changed);
+    return () => chrome.storage.onChanged.removeListener(changed);
   }, []);
   useEffect(() => {
     if (!embedded) return;
@@ -1526,6 +1535,25 @@ function ServerSetup({
 }
 function Login({ server, onLogin }: { server: string; onLogin: () => void }) {
   const settings = useStorageSettings(server);
+  const [telegramAvailable, setTelegramAvailable] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    setTelegramAvailable(false);
+    const timer = window.setTimeout(() => {
+      void message<{ enabled: boolean }>({
+        type: "TELEGRAM_AVAILABLE",
+        server: settings.server,
+      })
+        .then((result) => {
+          if (alive) setTelegramAvailable(result.enabled);
+        })
+        .catch(() => {});
+    }, 250);
+    return () => {
+      alive = false;
+      window.clearTimeout(timer);
+    };
+  }, [settings.server]);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<unknown>();
@@ -1592,6 +1620,34 @@ function Login({ server, onLogin }: { server: string; onLogin: () => void }) {
         Войти <ArrowUpRight size={17} />
         <SubmitShortcutHint />
       </button>
+      {telegramAvailable && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            setError(undefined);
+            try {
+              await connectServer(settings.server, settings);
+              const available = await message<{
+                enabled: boolean;
+                needsPermission?: boolean;
+              }>({ type: "TELEGRAM_AVAILABLE", server: settings.server });
+              if (!available.enabled || available.needsPermission)
+                throw new Error(
+                  "На выбранном сервере вход через Telegram недоступен",
+                );
+              await message({ type: "TELEGRAM_OPEN" });
+            } catch (error) {
+              setError(error);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          Войти через Telegram
+        </button>
+      )}
       <a
         className="registration-link"
         href={registrationServer(

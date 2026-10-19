@@ -193,7 +193,11 @@ func (s *Store) ProcessTelegramUpdate(u TelegramUpdate, origin string, preview *
 				title = "Подтвердить регистрацию " + c.Email + "? Email при этом не подтверждается."
 			}
 			if c.Purpose == "login" {
-				title = fmt.Sprintf("Вход на %s\nБраузер: %s\nВремя: %s\nКод: %s\nПодтвердите, только если вы начали вход и код совпадает.", origin, c.Browser, c.CreatedAt, c.Code)
+				destination := "Вход на " + origin
+				if c.ClientKind == "extension" {
+					destination = "Вход в расширение Avari.Jobs · " + origin
+				}
+				title = fmt.Sprintf("%s\nБраузер: %s\nВремя: %s\nКод: %s\nПодтвердите, только если вы начали вход и код совпадает.", destination, c.Browser, c.CreatedAt, c.Code)
 			}
 			return send(title, []TelegramButton{tgButton("Подтвердить", "auth:"+c.ID), tgButton("Отмена", "deny:"+c.ID)})
 		}

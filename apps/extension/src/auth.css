@@ -1,0 +1,35 @@
+body {
+  margin: 0;
+  min-width: 300px;
+}
+.telegram-auth {
+  max-width: 540px;
+  margin: 8vh auto;
+  padding: 28px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--panel);
+}
+.telegram-auth header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.telegram-auth h1 {
+  font-size: clamp(24px, 5vw, 32px);
+}
+.telegram-auth p {
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+.telegram-code {
+  font-size: 24px;
+  letter-spacing: 0.12em;
+}
+@media (max-width: 600px) {
+  .telegram-auth {
+    margin: 20px 12px;
+    padding: 20px;
+  }
+}

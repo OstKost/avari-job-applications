@@ -14,7 +14,7 @@
 >
 > Расширение анализирует открытую страницу вакансии и открывает форму для проверки и сохранения в журнал Avari.Jobs. На страницах ваших откликов можно сверять информацию с журналом и актуализировать статусы. Мини-окно открывается прямо из панели браузера.
 >
-> Для работы необходим аккаунт Avari.Jobs. По умолчанию расширение подключается к сервису jobs.avari.dev; также поддерживаются локальная версия («Локальное сохранение») и собственный сервер через настройки адресов.
+> Для работы необходим аккаунт Avari.Jobs. Для активного аккаунта с подключённым Telegram доступен вход с подтверждением через бота. Поддерживаются hh.ru, LinkedIn, Getmatch, Hirify, Geekjob, Хабр Карьера и Huntflow. По умолчанию расширение подключается к сервису jobs.avari.dev; также поддерживаются локальная версия («Локальное сохранение») и собственный сервер через настройки адресов.
 >
 > Расширение не отправляет отклики автоматически, не собирает пароли, файлы cookies или личную переписку. Все данные передаются исключительно на выбранный вами сервер Avari.Jobs. Инструкция по установке и началу работы: https://jobs.avari.dev/extension
 
@@ -38,7 +38,7 @@
 - Host permission `https://jobs.avari.dev/*`: подключение production-расширения к серверу журнала без дополнительной настройки адреса.
 - Content scripts: извлечение показанных в DOM данных на поддерживаемых страницах вакансий и откликов. Скрипты не переходят по страницам и не обращаются к закрытым API площадок.
 
-Заполнить раздел Privacy по фактическому поведению: учётные данные входа передаются выбранному серверу; расширение обрабатывает сведения о вакансиях, этапах отклика, задачи, заметки и черновики. Токен хранится локально в Chrome. Данные не продаются и не используются для рекламы. Не отмечать «данные не собираются»: сведения о вакансии и отклике передаются в Avari.Jobs.
+Заполнить раздел Privacy по фактическому поведению: учётные данные входа передаются выбранному серверу; расширение обрабатывает сведения о вакансиях, этапах отклика, задачи, заметки и черновики. Токен и секрет одноразового Telegram-входа хранятся только в доверенных контекстах расширения. Chromium использует ограниченное локальное хранилище; Firefox — хранилище origin фоновой страницы расширения. Данные не продаются и не используются для рекламы. Не отмечать «данные не собираются»: сведения о вакансии и отклике передаются в Avari.Jobs.
 
 ## Действия владельца аккаунта
 
@@ -49,11 +49,19 @@
 
 ## Подключение обновлений через GitHub Actions
 
-1. В Google Cloud включить Chrome Web Store API и IAM Service Account Credentials API. Создать service account, предоставить ему возможность создавать собственный access token (`roles/iam.serviceAccountTokenCreator` на самом service account).
-2. Связать email service account с издателем в Developer Dashboard. Получить publisher ID и extension ID.
-3. В GitHub environment `chrome-web-store` добавить secret `CHROME_SERVICE_ACCOUNT_JSON` и variables `CHROME_SERVICE_ACCOUNT_EMAIL`, `CHROME_PUBLISHER_ID`, `CHROME_EXTENSION_ID`. Ключ не добавлять в репозиторий.
-4. Запустить **Publish Chrome extension**, указать успешно развёрнутый тег `vX.Y.Z`. Workflow скачает существующий архив, проверит SHA256 и отправит его на проверку Google. Он не пересобирает расширение.
-5. После появления публичной карточки добавить repository variable `CHROME_STORE_URL` с её HTTPS-ссылкой. Следующий релиз сайта покажет кнопку магазина.
+1. В environment `chrome-web-store` настроить secrets `CHROME_CLIENT_ID`, `CHROME_CLIENT_SECRET`, `CHROME_REFRESH_TOKEN` и variables `CHROME_PUBLISHER_ID`, `CHROME_EXTENSION_ID`. Используется OAuth refresh token издателя; ключи не добавлять в репозиторий.
+2. После успешного production-деплоя запустить **Publish Chrome extension** с тегом `vX.Y.Z`. Workflow проверяет `deployed.json`, текущую версию сайта, SHA256 и версию manifest, затем отправляет архив из GitHub Release на проверку Google.
+3. Для Opera настроить environment `opera-add-ons`: secrets `OPERA_SESSION_ID`, `OPERA_CSRF_TOKEN`, variable `OPERA_PACKAGE_ID`. Запустить **Publish Opera extension** с тем же тегом. Используется тот же Chromium ZIP; сессия кабинета может требовать обновления владельцем при истечении срока.
+4. Для Firefox настроить environment `firefox-amo`: secrets `AMO_JWT_ISSUER`, `AMO_JWT_SECRET`, variable `FIREFOX_EXTENSION_ID=jobs@avari.dev`. **Publish Firefox add-on** создаёт Firefox-пакет из проверенного ZIP, выполняет `web-ext lint`, прикладывает исходники точного тега, инструкции сборки и release notes, затем отправляет версию в listed-канал AMO. Минимальная версия Firefox — 140, чтобы использовать встроенное согласие на передачу данных.
+5. После появления публичной карточки Chrome добавить repository variable `CHROME_STORE_URL`. Следующий релиз сайта покажет кнопку магазина.
+
+Каждый workflow использует код выбранного тега. Успешная отправка на проверку не означает немедленную доступность в магазине: модерация проходит отдельно. Не заменяйте архив или подписанный установщик уже опубликованной версии.
+
+### Локальная проверка и исходники Firefox
+
+`npm ci && npm run build:extension && node scripts/package-extension.mjs` создаёт Chromium ZIP. `node scripts/package-firefox.mjs` подготавливает `dist/firefox-unpacked` и `dist/avari-extension-firefox.zip`. Проверка: `node scripts/check-firefox.mjs`. Проверка отклоняет ошибки и новые предупреждения; допускаются только два известных предупреждения универсального HTML-рендерера React при отсутствии его использования приложением. Node.js 26 и `package-lock.json` фиксируют зависимости сборки. Вход через Telegram использует отдельную вкладку, поскольку popup закрывается при переходе к боту.
+
+Firefox не поддерживает [`storage.local.setAccessLevel`](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/storage/StorageArea/setAccessLevel); фоновая event page хранит учётные данные в своём extension-origin хранилище. Content scripts не получают токены через сообщения или настройки. Сервер принимает `chrome-extension` и `moz-extension` origin для отдельных Bearer-сессий расширения.
 
 `CHROME_AUTO_PUBLISH=false` уже задан. Для автоматической отправки будущих релизов после успешного деплоя поменять его на `true`. Ошибка магазина не откатывает сайт; модерация Google выполняется отдельно.
 

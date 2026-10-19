@@ -164,7 +164,7 @@
         </a>
         <h1>Политика конфиденциальности / Privacy Policy</h1>
         <div class="meta">
-          Последнее обновление / Last updated: 13 октября 2026 г. / October 13,
+          Последнее обновление / Last updated: 19 октября 2026 г. / October 19,
           2026
         </div>
         <div class="lang-switcher">
@@ -193,7 +193,7 @@
           <li>
             <strong>Сведения об откликах:</strong> статусы откликов, даты и
             этапы найма, отображаемые на поддерживаемых сайтах (hh.ru, LinkedIn,
-            Getmatch, Hirify, Geekjob, Habr Career).
+            Getmatch, Hirify, Geekjob, Habr Career, Huntflow).
           </li>
           <li>
             <strong>Telegram (по выбору пользователя):</strong> при подключении бота
@@ -230,7 +230,7 @@
           <li>
             Расширение внедряет скрипты только на поддерживаемых страницах
             вакансий и откликов (hh.ru, LinkedIn, Getmatch, Hirify, Geekjob,
-            Habr Career) с единственной целью — считать открытые пользователем
+            Habr Career, Huntflow) с единственной целью — считать открытые пользователем
             данные вакансии для подготовки предложений; сохранение в журнал
             выполняется после подтверждения пользователем.
           </li>
@@ -250,7 +250,7 @@
           <li>
             <strong>Локальное хранилище Chrome (chrome.storage):</strong>
             расширение локально сохраняет выбранный адрес сервера (по умолчанию
-            <code>https://jobs.avari.dev</code>) и токен авторизации.
+            <code>https://jobs.avari.dev</code>) и настройки подключения. Токен и одноразовый секрет входа хранятся только в доверенном контексте расширения: в ограниченном хранилище Chromium или хранилище origin расширения Firefox.
           </li>
           <li>
             <strong>Передача данных:</strong> собранная информация о вакансии
@@ -389,7 +389,7 @@
             <strong>Job details:</strong> job title, company name, location,
             compensation range, job posting URL, and description displayed on
             supported job boards (hh.ru, LinkedIn, Getmatch, Hirify, Geekjob,
-            Habr Career).
+            Habr Career, Huntflow).
           </li>
           <li>
             <strong>Telegram (optional):</strong> connecting the bot stores your numeric
@@ -421,7 +421,7 @@
         <ul>
           <li>
             <code>storage</code>: stores the designated Avari.Jobs server URL
-            and authentication token securely on the user's device.
+            on the user's device. Authentication tokens and one-time login secrets remain in trusted extension contexts, using restricted Chromium storage or Firefox extension-origin storage.
           </li>
           <li>
             <code>activeTab</code> and <code>scripting</code>: used solely to

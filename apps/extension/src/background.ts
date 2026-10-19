@@ -1,3 +1,5 @@
+import { privateStorage, restrictStorage } from "./private-storage";
+import { telegramAuth } from "./telegram-auth";
 import {
   type Application,
   type Proposal,
@@ -16,21 +18,22 @@ type Config = {
   notifications?: boolean;
   lastNotification?: string;
 };
-void chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
+void restrictStorage();
 const inFlight = new Map<string, Promise<unknown>>();
 async function config(): Promise<Config> {
   const saved: Config = await chrome.storage.local.get([
     "server",
     "storageMode",
     "serverAddresses",
-    "token",
     "notifications",
     "lastNotification",
   ]);
+  saved.token = (await privateStorage.get("token")).token;
   const defaultServer = import.meta.env.VITE_AVARI_DEFAULT_SERVER;
   if (!saved.server && defaultServer) {
     // Bind credentials to the chosen server, including across future updates.
-    await chrome.storage.local.remove(["token", "lastNotification"]);
+    await privateStorage.remove("token");
+    await chrome.storage.local.remove("lastNotification");
     await chrome.storage.local.set({ server: defaultServer });
     return {
       ...saved,
@@ -107,7 +110,7 @@ async function request(
   });
   if (!response.ok) {
     if (response.status === 401) {
-      await chrome.storage.local.remove("token");
+      await privateStorage.remove("token");
       await chrome.action.setBadgeText({ text: "" });
     }
     if (
@@ -225,12 +228,37 @@ async function processObservation(snapshot: Snapshot) {
     throw error;
   }
 }
+const telegram = telegramAuth(config, updateBadge);
+// Serialize credential changes, including requests that outlive the initiating popup.
+let authQueue: Promise<unknown> = Promise.resolve();
+function serverOrigin(address: string) {
+  const u = new URL(address);
+  if (
+    (u.protocol !== "https:" &&
+      !(
+        u.protocol === "http:" &&
+        ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname)
+      )) ||
+    u.username ||
+    u.password ||
+    u.pathname !== "/" ||
+    u.search ||
+    u.hash
+  )
+    throw new Error(
+      "Укажите HTTPS-адрес сервиса или localhost без пути и параметров",
+    );
+  return u.origin;
+}
 chrome.runtime.onMessage.addListener((message, sender, reply) => {
   const fromPopup =
     sender.id === chrome.runtime.id &&
     ["index.html", "action.html"].some(
       (page) => sender.url?.split("?")[0] === chrome.runtime.getURL(page),
     );
+  const fromAuth =
+    sender.id === chrome.runtime.id &&
+    sender.url === chrome.runtime.getURL("auth.html");
   const fromJobSite = !!sender.tab && !!sender.url && !!jobSite(sender.url);
   const run = async () => {
     if (message?.type === "PAGE_SNAPSHOT" && fromJobSite) {
@@ -249,10 +277,28 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
       }
       return { ok: true };
     }
+    if (
+      message?.type === "TELEGRAM_STATUS" ||
+      message?.type === "TELEGRAM_START"
+    ) {
+      if (!fromAuth) throw new Error("Недопустимый источник");
+      return telegram.state(
+        message.type === "TELEGRAM_START",
+        message.server,
+        message.restart === true,
+      );
+    }
     if (!fromPopup) throw new Error("Недопустимый источник");
     switch (message?.type) {
-      case "CONFIG":
-        return await config();
+      case "TELEGRAM_AVAILABLE":
+        return telegram.available(serverOrigin(message.server));
+      case "TELEGRAM_OPEN":
+        await chrome.tabs.create({ url: chrome.runtime.getURL("auth.html") });
+        return { opened: true };
+      case "CONFIG": {
+        const { token, ...settings } = await config();
+        return { ...settings, hasToken: !!token };
+      }
       case "SAVE_SERVER": {
         const u = new URL(message.server);
         if (
@@ -277,12 +323,14 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
           );
         const previous = await config();
         if (previous.server !== u.origin) {
+          await telegram.clear();
           if (previous.token) {
             try {
               await request("/auth/logout", "POST", {});
             } catch {}
           }
-          await chrome.storage.local.remove(["token", "lastNotification"]);
+          await privateStorage.remove("token");
+          await chrome.storage.local.remove("lastNotification");
         }
         await chrome.storage.local.set({
           server: u.origin,
@@ -311,12 +359,14 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
             user: User;
             session: Session;
           };
-          await chrome.storage.local.set({ token: login.token });
+          await telegram.clear();
+          await privateStorage.set({ token: login.token });
           await updateBadge();
           return { user: login.user, session: login.session };
         }
         if (message.path === "/auth/logout") {
-          await chrome.storage.local.remove("token");
+          await telegram.clear();
+          await privateStorage.remove("token");
           await chrome.action.setBadgeText({ text: "" });
         }
         if (message.path.startsWith("/proposals") && message.method === "POST")
@@ -386,7 +436,13 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
         throw new Error("Неизвестное действие");
     }
   };
-  run()
+  const changesAuth =
+    message?.type?.startsWith("TELEGRAM_") ||
+    message?.type === "SAVE_SERVER" ||
+    (message?.type === "API" && message?.path?.startsWith("/auth/"));
+  const result = changesAuth ? authQueue.then(run) : run();
+  if (changesAuth) authQueue = result.catch(() => {});
+  result
     .then((data) => reply({ ok: true, data }))
     .catch((e) =>
       reply({
@@ -411,5 +467,5 @@ function registerNotifications() {
 registerNotifications();
 chrome.permissions.onAdded.addListener(registerNotifications);
 chrome.runtime.onInstalled.addListener(() => {
-  void chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
+  void restrictStorage();
 });

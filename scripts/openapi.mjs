@@ -945,7 +945,7 @@ operation(
   "/auth/telegram/config",
   "get",
   "Public Telegram login availability",
-  object({ enabled: { type: "boolean" } }),
+  object({ enabled: { type: "boolean" }, extensionLogin: { type: "boolean" } }),
   undefined,
   true,
 );
@@ -974,6 +974,47 @@ operation(
   undefined,
   true,
 );
+schemas.TelegramExtensionRequest = object({
+  challenge: ref("TelegramChallenge"),
+  url: s,
+  secret: s,
+});
+for (const [path, method, summary, result, code] of [
+  [
+    "/auth/telegram/extension/requests",
+    "post",
+    "Create secret-bound extension Telegram login (five minutes)",
+    "TelegramExtensionRequest",
+    "201",
+  ],
+  [
+    "/auth/telegram/extension/requests/{id}",
+    "get",
+    "Poll extension Telegram login without creating a session",
+    "TelegramChallenge",
+    "200",
+  ],
+  [
+    "/auth/telegram/extension/requests/{id}/complete",
+    "post",
+    "Consume extension login once and issue an extension Bearer token",
+    object({ user: ref("User"), session: ref("Session"), token: s }),
+    "200",
+  ],
+]) {
+  operation(path, method, summary, result, undefined, true, code);
+  const op = paths[path][method];
+  op.parameters = op.parameters.filter((p) => p.name !== "X-CSRF-Token");
+  if (path.includes("{id}"))
+    op.parameters.push({
+      name: "X-Telegram-Login-Secret",
+      in: "header",
+      required: true,
+      schema: s,
+    });
+  op.description =
+    "No cookies. If Origin is supplied it must be a chrome-extension or moz-extension origin. Polling and completion require the initiating extension's secret header. Only active accounts with a linked Telegram can log in. Web and extension challenges cannot be exchanged. The secret and issued token must remain in the service worker; never put them in URLs or content scripts.";
+}
 operation(
   "/telegram/webhook",
   "post",

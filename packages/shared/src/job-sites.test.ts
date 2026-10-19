@@ -28,6 +28,14 @@ describe("job identity", () => {
       "https://career.habr.com/vacancies/1000169149?s=search",
       "https://career.habr.com/vacancies/1000169149",
     ],
+    [
+      "https://deeplayhr.huntflow.io/vacancy/rukovoditel-napravleniia-razrabotki-lider-modulia?from=share",
+      "https://deeplayhr.huntflow.io/vacancy/rukovoditel-napravleniia-razrabotki-lider-modulia",
+    ],
+    [
+      "https://saygameshr.global.huntflow.io/vacancy/data-scientist-1/",
+      "https://saygameshr.global.huntflow.io/vacancy/data-scientist-1",
+    ],
   ])("normalizes %s", (raw, canonical) =>
     expect(jobIdentity(raw)?.url).toBe(canonical),
   );
@@ -38,6 +46,7 @@ describe("job identity", () => {
     "https://user@getmatch.ru/vacancies/123",
     "https://hirify.me:444/jobs/123",
     "http://getmatch.ru/vacancies/123",
+    "https://huntflow.ru/vacancy/123",
     "not a url",
   ])("rejects %s", (raw) => expect(jobSite(raw)).toBeUndefined());
   it.each([
@@ -50,6 +59,8 @@ describe("job identity", () => {
     "https://career.habr.com/salaries",
     "https://www.linkedin.com/in/example",
     "https://getmatch.ru/vacancies/123/apply",
+    "https://deeplayhr.huntflow.io/",
+    "https://deeplayhr.huntflow.io/vacancies",
   ])("does not treat unrelated pages as jobs", (raw) =>
     expect(jobIdentity(raw)).toBeUndefined(),
   );

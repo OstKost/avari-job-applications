@@ -368,6 +368,25 @@ describe("additional job sites", () => {
     expect(p.observations).toEqual([]);
     expect(JSON.stringify(p)).not.toContain("private text");
   });
+  it("reads Huntflow public vacancy details and salary", () => {
+    const p = parsePage(
+      doc(
+        `<meta property="og:site_name" content="Вакансии компании deeplay"><meta property="og:title" content="Руководитель направления разработки"><h1 class="_position_3s9cc_26">Руководитель направления разработки</h1><div class="_infoWrapper_3s9cc_31">Удалённо или из офиса в Омске</div><div class="_salary_3s9cc_35">от 200 000 до 300 000 ₽ на руки</div><a class="_link_9i1bm_2"><img class="_logo_9i1bm_5" src="https://api.huntflow.io/logo/test.png" alt="logo"></a><p>private description</p>`,
+      ),
+      "https://deeplayhr.huntflow.io/vacancy/rukovoditel-napravleniia-razrabotki-lider-modulia?from=share",
+    );
+    expect(p.vacancy).toMatchObject({
+      company: "deeplay",
+      position: "Руководитель направления разработки",
+      hhId: "",
+      url: "https://deeplayhr.huntflow.io/vacancy/rukovoditel-napravleniia-razrabotki-lider-modulia",
+      workFormat: "Удалённо или из офиса в Омске",
+      salary: { min: 200000, max: 300000, currency: "RUB", tax: "net" },
+      companyLogo: "https://api.huntflow.io/logo/test.png",
+    });
+    expect(p.observations).toEqual([]);
+    expect(JSON.stringify(p)).not.toContain("private description");
+  });
   it("rejects stale LinkedIn selections during SPA navigation", () => {
     const html = `<ul><li data-job-id="123">Search result</li></ul><div data-job-id="456"><div class="job-details-jobs-unified-top-card__job-title"><h1>Developer</h1><a href="/jobs/view/456">Developer</a></div></div>`;
     expect(

@@ -37,6 +37,7 @@ type TelegramLink struct {
 }
 type TelegramChallenge struct {
 	ID          string `json:"id"`
+	ClientKind  string `json:"-"`
 	Purpose     string `json:"purpose"`
 	Status      string `json:"status"`
 	ExpiresAt   string `json:"expiresAt"`
@@ -68,7 +69,13 @@ func (s *Store) TelegramUser(id int64) (User, error) {
 	return u, e
 }
 func (s *Store) NewTelegramChallenge(user, purpose, browser string, previous ...string) (TelegramChallenge, string, string, error) {
-	c := TelegramChallenge{ID: ID(), UserID: user, Purpose: purpose, Status: "pending", Browser: browser, Code: strings.ToUpper(ID()[:6]), CreatedAt: s.nowTime().UTC().Format(timestampLayout)}
+	return s.newTelegramChallenge(user, purpose, browser, "web", previous...)
+}
+func (s *Store) NewExtensionTelegramLogin(browser string) (TelegramChallenge, string, string, error) {
+	return s.newTelegramChallenge("", "login", browser, "extension")
+}
+func (s *Store) newTelegramChallenge(user, purpose, browser, kind string, previous ...string) (TelegramChallenge, string, string, error) {
+	c := TelegramChallenge{ID: ID(), ClientKind: kind, UserID: user, Purpose: purpose, Status: "pending", Browser: browser, Code: strings.ToUpper(ID()[:6]), CreatedAt: s.nowTime().UTC().Format(timestampLayout)}
 	token, secret := ID(), ID()+ID()
 	ttl := 10 * time.Minute
 	if purpose == "login" {
@@ -101,14 +108,14 @@ func (s *Store) NewTelegramChallenge(user, purpose, browser string, previous ...
 				return e
 			}
 		}
-		_, e := tx.Exec("INSERT INTO telegram_challenges(id,purpose,user_id,token_hash,browser_hash,expires_at,created_at,browser,code) VALUES(?,?,?,?,?,?,?,?,?)", c.ID, purpose, uid, tokenHash(token), tokenHash(secret), c.ExpiresAt, c.CreatedAt, browser, c.Code)
+		_, e := tx.Exec("INSERT INTO telegram_challenges(id,purpose,user_id,token_hash,browser_hash,expires_at,created_at,browser,code,client_kind) VALUES(?,?,?,?,?,?,?,?,?,?)", c.ID, purpose, uid, tokenHash(token), tokenHash(secret), c.ExpiresAt, c.CreatedAt, browser, c.Code, kind)
 		return e
 	})
 	return c, token, secret, e
 }
 func telegramChallenge(q queryer, column, value string) (TelegramChallenge, error) {
 	var c TelegramChallenge
-	e := q.QueryRowContext(context.Background(), `SELECT c.id,c.purpose,c.status,c.expires_at,c.created_at,c.browser,c.code,coalesce(c.user_id,''),coalesce(c.telegram_id,0),coalesce(c.chat_id,0),c.username,c.display_name,coalesce(u.email,'') FROM telegram_challenges c LEFT JOIN users u ON u.id=c.user_id WHERE `+column+`=?`, value).Scan(&c.ID, &c.Purpose, &c.Status, &c.ExpiresAt, &c.CreatedAt, &c.Browser, &c.Code, &c.UserID, &c.TelegramID, &c.ChatID, &c.Username, &c.DisplayName, &c.Email)
+	e := q.QueryRowContext(context.Background(), `SELECT c.id,c.purpose,c.status,c.expires_at,c.created_at,c.browser,c.code,coalesce(c.user_id,''),coalesce(c.telegram_id,0),coalesce(c.chat_id,0),c.username,c.display_name,coalesce(u.email,''),c.client_kind FROM telegram_challenges c LEFT JOIN users u ON u.id=c.user_id WHERE `+column+`=?`, value).Scan(&c.ID, &c.Purpose, &c.Status, &c.ExpiresAt, &c.CreatedAt, &c.Browser, &c.Code, &c.UserID, &c.TelegramID, &c.ChatID, &c.Username, &c.DisplayName, &c.Email, &c.ClientKind)
 	if e == sql.ErrNoRows {
 		return c, Fail(404, "Запрос не найден")
 	}
@@ -266,6 +273,12 @@ func (s *Store) CompleteTelegramLink(id, secret, user string) error {
 	})
 }
 func (s *Store) CompleteTelegramLogin(id, secret string) (User, Session, string, error) {
+	return s.completeTelegramLogin(id, secret, "web")
+}
+func (s *Store) CompleteExtensionTelegramLogin(id, secret string) (User, Session, string, error) {
+	return s.completeTelegramLogin(id, secret, "extension")
+}
+func (s *Store) completeTelegramLogin(id, secret, kind string) (User, Session, string, error) {
 	c, e := s.TelegramChallenge(id, secret)
 	var u User
 	var ss Session
@@ -273,14 +286,14 @@ func (s *Store) CompleteTelegramLogin(id, secret string) (User, Session, string,
 	if e != nil {
 		return u, ss, "", e
 	}
-	if c.Purpose != "login" || c.Status != "approved" {
+	if c.ClientKind != kind || c.Purpose != "login" || c.Status != "approved" {
 		return u, ss, "", Fail(409, "Вход не подтверждён или истёк")
 	}
 	e = s.transaction(func(tx *sql.Tx) error {
-		if e := tx.QueryRow("SELECT u.id,u.email,u.status,u.timezone,u.created_at FROM users u JOIN telegram_links l ON l.user_id=u.id JOIN telegram_challenges c ON c.user_id=u.id WHERE c.id=? AND c.status='approved' AND c.expires_at>? AND c.browser_hash=? AND l.telegram_id=c.telegram_id AND u.status='active'", id, s.nowTime().UTC().Format(timestampLayout), tokenHash(secret)).Scan(&u.ID, &u.Email, &u.Status, &u.Timezone, &u.CreatedAt); e != nil {
+		if e := tx.QueryRow("SELECT u.id,u.email,u.status,u.timezone,u.created_at FROM users u JOIN telegram_links l ON l.user_id=u.id JOIN telegram_challenges c ON c.user_id=u.id WHERE c.id=? AND c.status='approved' AND c.expires_at>? AND c.browser_hash=? AND c.client_kind=? AND l.telegram_id=c.telegram_id AND u.status='active'", id, s.nowTime().UTC().Format(timestampLayout), tokenHash(secret), kind).Scan(&u.ID, &u.Email, &u.Status, &u.Timezone, &u.CreatedAt); e != nil {
 			return Fail(403, "Вход больше недоступен")
 		}
-		ss = Session{ID: ID(), UserID: u.ID, Kind: "web", Name: c.Browser, CreatedAt: s.nowTime().UTC().Format(timestampLayout), ExpiresAt: s.nowTime().Add(30 * 24 * time.Hour).UTC().Format(timestampLayout)}
+		ss = Session{ID: ID(), UserID: u.ID, Kind: kind, Name: c.Browser, CreatedAt: s.nowTime().UTC().Format(timestampLayout), ExpiresAt: s.nowTime().Add(30 * 24 * time.Hour).UTC().Format(timestampLayout)}
 		if _, e := tx.Exec("INSERT INTO sessions(id,user_id,token_hash,kind,name,created_at,expires_at) VALUES(?,?,?,?,?,?,?)", ss.ID, u.ID, tokenHash(token), ss.Kind, ss.Name, ss.CreatedAt, ss.ExpiresAt); e != nil {
 			return e
 		}

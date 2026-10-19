@@ -19,7 +19,9 @@ test("personal first run, extension options and journal merge from settings", as
   await page.goto(local! + "/#setup=browser-setup-secret");
   await page.reload();
   await expect(
-    page.getByRole("heading", { name: "Добро пожаловать в локальный Avari.Jobs" }),
+    page.getByRole("heading", {
+      name: "Добро пожаловать в локальный Avari.Jobs",
+    }),
   ).toBeVisible();
   await expect(page).not.toHaveURL(/setup=/);
   await page.screenshot({
@@ -79,7 +81,17 @@ test("personal first run, extension options and journal merge from settings", as
       }),
     });
   });
+  await expect(
+    page.getByRole("button", { name: "Установить приложение", exact: true }),
+  ).toHaveCount(0);
   await page.getByRole("link", { name: "Настройки", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Push-уведомления", exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: /Офлайн/ })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Подключить Telegram", exact: true }),
+  ).toHaveCount(0);
   await page
     .getByRole("tab", { name: "Импорт и экспорт", exact: true })
     .click();
@@ -119,6 +131,12 @@ test("personal first run, extension options and journal merge from settings", as
   await page.getByRole("button", { name: "Выйти", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Регистрация", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("link", { name: "На главную", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Войти через Telegram", exact: true }),
   ).toHaveCount(0);
   expect(errors).toEqual([]);
 });

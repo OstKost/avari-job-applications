@@ -71,6 +71,11 @@ var sites = map[string]selectors{
 		position: []string{".page-title__title", ".vacancy-header__title h1", "h1"}, company: []string{".company_name a[href*='/companies/']", ".company_name", ".company-name"},
 		location: []string{".vacancy-header .location", ".basic-section .location"}, salary: []string{".vacancy-header__salary .basic-salary", ".basic-salary", ".vacancy-header__salary"},
 	},
+	"huntflow.io": {
+		position: []string{"h1[class*='_position_']", "h1"},
+		company:  []string{"a[class*='_link_'] img[alt='logo']", "img[class*='_logo_']"},
+		salary:   []string{"div[class*='_salary_']", "span[class*='_salary_']", "p[class*='_salary_']"},
+	},
 }
 
 func str(v any) string         { s, _ := v.(string); return bounded(s) }
@@ -318,6 +323,32 @@ func Parse(reader io.Reader, canonical string) (Preview, error) {
 			f.WorkFormat = bounded(strings.Join(formats, ", "))
 		}
 	}
+	if site == "huntflow.io" {
+		if f.Company == "" {
+			if ogSite, exists := doc.Find(`meta[property="og:site_name"]`).Attr("content"); exists {
+				company := clean(ogSite)
+				company = strings.TrimPrefix(company, "Вакансии компании ")
+				company = strings.TrimPrefix(company, "Вакансии ")
+				company = strings.TrimSuffix(company, " Job Openings")
+				company = strings.TrimSuffix(company, " Jobs")
+				f.Company = bounded(company)
+			}
+		}
+		if f.Position == "" {
+			if ogTitle, exists := doc.Find(`meta[property="og:title"]`).Attr("content"); exists {
+				f.Position = bounded(ogTitle)
+			}
+		}
+		// Location and format from infoWrapper
+		rawInfo := text(doc, "div[class*='_infoWrapper_']")
+		if rawInfo != "" {
+			if workFormat.MatchString(rawInfo) && f.WorkFormat == "" {
+				f.WorkFormat = rawInfo
+			} else if f.Location == "" {
+				f.Location = rawInfo
+			}
+		}
+	}
 	if raw := text(doc, sel.salary...); raw != "" {
 		if parsed := salaryText(raw); parsed != nil {
 			if f.Salary == nil {
@@ -350,7 +381,7 @@ func Parse(reader io.Reader, canonical string) (Preview, error) {
 		f.CompanyLogo = ""
 	}
 	if f.CompanyLogo == "" {
-		doc.Find(`[data-qa="vacancy-company-logo"] img, .vacancy-company-logo img, .job-details-jobs-unified-top-card__company-logo img, .topcard__org-name-link img, .b-vacancy-header img, .company-logo img, .company_logo img, .vacancy-header img`).EachWithBreak(func(_ int, img *goquery.Selection) bool {
+		doc.Find(`[data-qa="vacancy-company-logo"] img, .vacancy-company-logo img, .job-details-jobs-unified-top-card__company-logo img, .topcard__org-name-link img, .b-vacancy-header img, .company-logo img, .company_logo img, .vacancy-header img, img[class*='_logo_']`).EachWithBreak(func(_ int, img *goquery.Selection) bool {
 			for _, attr := range []string{"data-src", "data-lazy-src", "data-original", "src"} {
 				if raw, exists := img.Attr(attr); exists && raw != "" {
 					if logo := logoURL(raw, canonical); logo != "" {
@@ -363,7 +394,7 @@ func Parse(reader io.Reader, canonical string) (Preview, error) {
 		})
 	}
 	// Generic login/challenge headings must never be mistaken for a vacancy title.
-	if f.Company == "" && job == nil && (site == "hh.ru" || site == "geekjob.ru" || site == "career.habr.com") && text(doc, sel.position[0]) == "" {
+	if f.Company == "" && job == nil && (site == "hh.ru" || site == "geekjob.ru" || site == "career.habr.com" || site == "huntflow.io") && text(doc, sel.position[0]) == "" {
 		return Preview{}, ErrNoData
 	}
 	if f.Company == "" && f.Position == "" {

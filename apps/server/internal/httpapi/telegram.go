@@ -86,7 +86,7 @@ func (s *Server) telegramLogin(w http.ResponseWriter, r *http.Request) {
 			fail(w, e)
 			return
 		}
-		if c.Purpose != "login" {
+		if c.Purpose != "login" || c.ClientKind != "web" {
 			fail(w, core.Fail(403, "Чужой запрос"))
 			return
 		}
@@ -181,4 +181,54 @@ func (s *Server) telegramAPI(w http.ResponseWriter, r *http.Request, who identit
 		return
 	}
 	write(w, 200, map[string]bool{"ok": true})
+}
+
+// Extension login uses a separate, secret-bound challenge and never sets web cookies.
+func (s *Server) telegramExtensionLogin(w http.ResponseWriter, r *http.Request) {
+	if !s.telegramEnabled() {
+		fail(w, core.Fail(503, "Telegram недоступен"))
+		return
+	}
+	if origin := r.Header.Get("Origin"); origin != "" && !extensionOrigin(origin) {
+		fail(w, core.Fail(403, "Источник не разрешён"))
+		return
+	}
+	if !s.throttle(r) {
+		fail(w, core.Fail(429, "Слишком много запросов"))
+		return
+	}
+	id := r.PathValue("id")
+	if id == "" {
+		c, token, secret, e := s.Store.NewExtensionTelegramLogin("Расширение · " + r.UserAgent())
+		if e != nil {
+			fail(w, e)
+			return
+		}
+		write(w, 201, map[string]any{"challenge": c, "url": "https://t.me/" + s.TelegramUsername + "?start=" + token, "secret": secret})
+		return
+	}
+	secret := r.Header.Get("X-Telegram-Login-Secret")
+	if secret == "" {
+		fail(w, core.Fail(404, "Запрос не найден"))
+		return
+	}
+	c, e := s.Store.TelegramChallenge(id, secret)
+	if e != nil {
+		fail(w, e)
+		return
+	}
+	if c.Purpose != "login" || c.ClientKind != "extension" {
+		fail(w, core.Fail(403, "Чужой запрос"))
+		return
+	}
+	if r.Method == "GET" {
+		write(w, 200, c)
+		return
+	}
+	u, ss, token, e := s.Store.CompleteExtensionTelegramLogin(id, secret)
+	if e != nil {
+		fail(w, e)
+		return
+	}
+	write(w, 200, map[string]any{"user": u, "session": ss, "token": token})
 }

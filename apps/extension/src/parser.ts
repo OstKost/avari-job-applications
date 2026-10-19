@@ -510,6 +510,20 @@ function parseOtherSite(doc: Document, rawURL: string): Snapshot {
       ],
       status: [] as string[],
     },
+    huntflow: {
+      position: ["h1[class*='_position_']", "h1"],
+      company: [
+        "a[class*='_link_'] img[alt='logo']",
+        "img[class*='_logo_']",
+      ],
+      location: [] as string[],
+      salary: [
+        "div[class*='_salary_']",
+        "span[class*='_salary_']",
+        "p[class*='_salary_']",
+      ],
+      status: [] as string[],
+    },
     hh: { position: [], company: [], location: [], salary: [], status: [] },
   }[site];
   vacancy.position =
@@ -539,6 +553,7 @@ function parseOtherSite(doc: Document, rawURL: string): Snapshot {
         ".company-logo img",
         ".company_logo img",
         ".vacancy-header img",
+        "img[class*='_logo_']",
       ],
       rawURL,
     );
@@ -616,6 +631,28 @@ function parseOtherSite(doc: Document, rawURL: string): Snapshot {
       /удален|удалён|гибрид|офис|remote|hybrid/i.test(c),
     );
     if (workFormats.length) vacancy.workFormat = workFormats.join(", ");
+  } else if (site === "huntflow") {
+    if (!vacancy.company) {
+      const ogSite = doc
+        .querySelector('meta[property="og:site_name"]')
+        ?.getAttribute("content");
+      if (ogSite) {
+        let comp = clean(ogSite);
+        comp = comp.replace(/^Вакансии компании\s+/i, "");
+        comp = comp.replace(/^Вакансии\s+/i, "");
+        comp = comp.replace(/\s+Job Openings$/i, "");
+        comp = comp.replace(/\s+Jobs$/i, "");
+        vacancy.company = comp;
+      }
+    }
+    const info = text(doc, ["div[class*='_infoWrapper_']"]);
+    if (info) {
+      if (/удален|удалён|гибрид|офис|remote|hybrid/i.test(info)) {
+        vacancy.workFormat = info;
+      } else {
+        vacancy.location = info;
+      }
+    }
   } else {
     vacancy.location =
       linkedin?.location || text(doc, selectors.location) || vacancy.location;

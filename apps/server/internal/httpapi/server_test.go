@@ -244,10 +244,10 @@ func TestStaticPWAAssetHeaders(t *testing.T) {
 	}
 	defer store.Close()
 	assetsFS := fstest.MapFS{
-		"index.html":            {Data: []byte("<!doctype html><html></html>")},
-		"sw.js":                 {Data: []byte("console.log('sw');")},
+		"index.html":           {Data: []byte("<!doctype html><html></html>")},
+		"sw.js":                {Data: []byte("console.log('sw');")},
 		"manifest.webmanifest": {Data: []byte(`{"name":"Avari.Jobs"}`)},
-		"assets/bundle.js":      {Data: []byte("console.log('bundle');")},
+		"assets/bundle.js":     {Data: []byte("console.log('bundle');")},
 	}
 	api := &Server{Store: store, Assets: assetsFS}
 	server := httptest.NewServer(api.Handler())
@@ -297,5 +297,18 @@ func TestStaticPWAAssetHeaders(t *testing.T) {
 	}
 	if cc := resBundle.Header.Get("Cache-Control"); cc == "no-cache" {
 		t.Errorf("expected normal caching for bundle.js, got %q", cc)
+	}
+}
+
+func TestBrowserExtensionOrigins(t *testing.T) {
+	for _, origin := range []string{"chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "moz-extension://3cbfb703-90a0-418f-97ca-a292e730a338"} {
+		if !extensionOrigin(origin) {
+			t.Fatal("valid extension origin rejected", origin)
+		}
+	}
+	for _, origin := range []string{"", "null", "https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "chrome-extension://zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz", "chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/path", "moz-extension://invalid", "moz-extension://3cbfb703-90a0-418f-97ca-a292e730a338?x=1"} {
+		if extensionOrigin(origin) {
+			t.Fatal("invalid extension origin allowed", origin)
+		}
 	}
 }

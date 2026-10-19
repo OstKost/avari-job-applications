@@ -17,6 +17,8 @@ jobs:
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
       - name: Validate deployed release
         env:
           TAG: ${{ inputs.tag }}

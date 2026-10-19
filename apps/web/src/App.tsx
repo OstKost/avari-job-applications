@@ -592,7 +592,7 @@ function AuthenticatedApp({ personal = false, pendingShare, consumeShare }: {
         }}
       />
     );
-  return <Workspace user={me.data} pendingShare={pendingShare} consumeShare={consumeShare} />;
+  return <Workspace user={me.data} personal={personal} pendingShare={pendingShare} consumeShare={consumeShare} />;
 }
 function AccountStatus({
   user,
@@ -621,9 +621,7 @@ function AccountStatus({
             : "Для восстановления доступа обратитесь к администратору."}
         </p>
         <p>{user.email}</p>
-        {user.status === "pending" && (
-          <TelegramConnect api={api} purpose="registration" onComplete={refresh} />
-        )}
+        {user.status === "pending" && <TelegramConnect api={api} purpose="registration" onComplete={refresh} />}
         <div className="actions">
           <button className="primary" onClick={refresh}>
             Проверить статус
@@ -634,8 +632,9 @@ function AccountStatus({
     </div>
   );
 }
-function Workspace({ user, pendingShare, consumeShare }: {
+function Workspace({ user, personal = false, pendingShare, consumeShare }: {
   user: User;
+  personal?: boolean;
   pendingShare: ParsedShareData | null;
   consumeShare: () => ParsedShareData | null;
 }) {
@@ -892,7 +891,7 @@ function Workspace({ user, pendingShare, consumeShare }: {
               </div>
             ))}
             <div className="sidebar-meta-section">
-              {pwa.isInstallable && (
+              {!personal && pwa.isInstallable && (
                 <div style={{ marginBottom: 8, padding: sidebarCollapsed ? "0" : "0 4px" }}>
                   <PwaInstallPrompt pwa={pwa} />
                 </div>
@@ -2244,7 +2243,9 @@ function Applications({
                 ? "Geekjob"
                 : site === "habr"
                   ? "Хабр Карьера"
-                  : "Вакансия";
+                  : site === "huntflow"
+                    ? "Huntflow"
+                    : "Вакансия";
 
     return (
       <tr
@@ -3752,6 +3753,7 @@ function ApplicationDetail() {
             hirify: "Hirify",
             geekjob: "Geekjob",
             habr: "Хабр Карьера",
+            huntflow: "Huntflow",
           }[site]
         : url.hostname.replace(/^www\./, "");
       if (["https:", "http:"].includes(url.protocol))
@@ -4196,11 +4198,7 @@ function ApplicationDetail() {
                       hour: "2-digit",
                       minute: "2-digit",
                     })}{" "}
-                    · {e.source === "telegram"
-                      ? "Telegram"
-                      : e.source === "extension"
-                        ? "Расширение"
-                        : "Вручную"}
+                    · {e.source === "telegram" ? "Telegram" : e.source === "extension" ? "Расширение" : "Вручную"}
                   </small>
                   {Object.entries(e.changes)
                     .filter(([k]) => k !== "noteId")
@@ -5069,8 +5067,10 @@ function SettingsPage() {
               </section>
 
               <TelegramSettings api={api} />
-              <PushSettings userId={user.id} api={api} />
-              <OfflineSettingsPanel userKey={user.id} user={user} data={data} />
+              {!local.data?.personal && <PushSettings userId={user.id} api={api} />}
+              {!local.data?.personal && (
+                <OfflineSettingsPanel userKey={user.id} user={user} data={data} />
+              )}
             </>
           )}
 

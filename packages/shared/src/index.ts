@@ -15,6 +15,7 @@ export type LocalStatus = components["schemas"]["LocalStatus"];
 export type UpdateStatus = components["schemas"]["UpdateStatus"];
 export type ReleaseNote = components["schemas"]["ReleaseNote"];
 export type LocalSettings = components["schemas"]["LocalSettings"];
+export type TelegramChallenge = components["schemas"]["TelegramChallenge"];
 export type User = components["schemas"]["User"];
 export type Session = components["schemas"]["Session"];
 export type Salary = components["schemas"]["Salary"];

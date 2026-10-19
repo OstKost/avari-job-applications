@@ -18,6 +18,7 @@ func TestAdditionalSitesDedupAndObservations(t *testing.T) {
 		"https://hirify.me/jobs/123-developer?utm_source=x",
 		"https://geekjob.ru/vacancy/6acce1f84f35ccbd760b3413?from=search",
 		"https://career.habr.com/vacancies/1000169149?s=search",
+		"https://deeplayhr.huntflow.io/vacancy/rukovoditel-napravleniia-razrabotki-lider-modulia?from=share",
 	} {
 		t.Run(raw, func(t *testing.T) {
 			a, e := s.SaveApplication(u.ID, Application{Company: "Example", Position: "Developer", URL: raw}, "", "extension")
@@ -73,7 +74,7 @@ func TestAdditionalSitesDedupAndObservations(t *testing.T) {
 		})
 	}
 	apps, e := s.Applications(u.ID)
-	if e != nil || len(apps) != 6 {
+	if e != nil || len(apps) != 7 {
 		t.Fatal(apps, e)
 	}
 }

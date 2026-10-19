@@ -11,6 +11,7 @@ var getmatchPath = regexp.MustCompile(`^/vacancies/(\d+)(?:-[^/]+)?/?$`)
 var hirifyPath = regexp.MustCompile(`^/jobs/(\d+)(?:-[^/]+)?/?$`)
 var geekjobPath = regexp.MustCompile(`^/vacancy/([a-zA-Z0-9]+)/?$`)
 var habrPath = regexp.MustCompile(`^/vacancies/(\d+)/?$`)
+var huntflowPath = regexp.MustCompile(`^/vacancy/([a-zA-Z0-9_-]+)/?$`)
 var linkedinSelectionPath = regexp.MustCompile(`^/jobs/(?:search|search-results|collections)(?:/|$)`)
 
 func jobSiteURL(u *url.URL) string {
@@ -18,7 +19,7 @@ func jobSiteURL(u *url.URL) string {
 		return ""
 	}
 	host := strings.ToLower(u.Hostname())
-	for _, domain := range []string{"hh.ru", "linkedin.com", "getmatch.ru", "hirify.me", "geekjob.ru", "career.habr.com"} {
+	for _, domain := range []string{"hh.ru", "linkedin.com", "getmatch.ru", "hirify.me", "geekjob.ru", "career.habr.com", "huntflow.io"} {
 		if host == domain || strings.HasSuffix(host, "."+domain) {
 			return domain
 		}
@@ -43,6 +44,8 @@ func canonicalJobURL(u *url.URL) (string, string) {
 		pattern, prefix = geekjobPath, "https://geekjob.ru/vacancy/"
 	case "career.habr.com":
 		pattern, prefix = habrPath, "https://career.habr.com/vacancies/"
+	case "huntflow.io":
+		pattern, prefix = huntflowPath, "https://" + strings.ToLower(u.Hostname()) + "/vacancy/"
 	default:
 		return "", ""
 	}

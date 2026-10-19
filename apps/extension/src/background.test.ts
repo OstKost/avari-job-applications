@@ -38,12 +38,21 @@ async function background(
           }
           return { ...initialStorage };
         }),
-        set: vi.fn(),
-        remove: vi.fn(),
+        set: vi.fn(async (values: any) => {
+          Object.assign(initialStorage, values);
+        }),
+        remove: vi.fn(async (keys: string | string[]) => {
+          for (const key of Array.isArray(keys) ? keys : [keys])
+            delete initialStorage[key];
+        }),
       },
     },
-    permissions: { onAdded: { addListener: vi.fn() } },
+    permissions: {
+      contains: vi.fn().mockResolvedValue(true),
+      onAdded: { addListener: vi.fn() },
+    },
     tabs: {
+      create: vi.fn().mockResolvedValue({}),
       query: vi.fn().mockResolvedValue([tab]),
       get: vi.fn().mockResolvedValue(tab),
       sendMessage: vi
@@ -191,7 +200,10 @@ it("enriches existing application companyLogo on revisit without overwriting man
 
   let putCallCount = 0;
   fetchMock.mockImplementation(async (url: string, options: any) => {
-    if (url.endsWith("/api/v1/applications") && (options?.method === "GET" || !options?.method)) {
+    if (
+      url.endsWith("/api/v1/applications") &&
+      (options?.method === "GET" || !options?.method)
+    ) {
       return {
         ok: true,
         status: 200,
@@ -266,7 +278,10 @@ it("enriches existing application companyLogo on revisit without overwriting man
   fetchMock.mockClear();
   let conflictPutCalls = 0;
   fetchMock.mockImplementation(async (url: string, options: any) => {
-    if (url.endsWith("/api/v1/applications") && (options?.method === "GET" || !options?.method)) {
+    if (
+      url.endsWith("/api/v1/applications") &&
+      (options?.method === "GET" || !options?.method)
+    ) {
       return {
         ok: true,
         status: 200,
@@ -287,7 +302,7 @@ it("enriches existing application companyLogo on revisit without overwriting man
     return {
       ok: true,
       status: 200,
-      json: async () => ([]),
+      json: async () => [],
     };
   });
 
@@ -307,13 +322,10 @@ it("strips companyLogo on compatibility retry when server rejects with invalid J
   const fetchMock = vi.fn();
   vi.stubGlobal("fetch", fetchMock);
 
-  const { chromeMock: c, send } = await background(
-    "https://example.com/",
-    {
-      server: "https://avari.example.com",
-      token: "secret-token",
-    },
-  );
+  const { chromeMock: c, send } = await background("https://example.com/", {
+    server: "https://avari.example.com",
+    token: "secret-token",
+  });
 
   let attempts = 0;
   fetchMock.mockImplementation(async (url: string, options: any) => {
@@ -375,3 +387,81 @@ it("strips companyLogo on compatibility retry when server rejects with invalid J
   expect(validationAttempts).toBe(1); // No retry
 });
 
+it("keeps Telegram controls private to the dedicated auth page", async () => {
+  const { send } = await background("https://hh.ru/vacancy/123");
+  const fetch = vi.fn();
+  vi.stubGlobal("fetch", fetch);
+  for (const sender of [
+    { id: "avari", url: "chrome-extension://avari/index.html" },
+    { id: "avari", url: "https://hh.ru/vacancy/123" },
+  ]) {
+    expect(await send({ type: "TELEGRAM_START" }, sender)).toMatchObject({
+      ok: false,
+      error: "Недопустимый источник",
+    });
+  }
+  expect(fetch).not.toHaveBeenCalled();
+});
+
+it("serializes a server switch behind Telegram completion and removes the old token", async () => {
+  const initial: Record<string, any> = {
+    server: "https://old.example.com",
+    telegramLogin: {
+      server: "https://old.example.com",
+      secret: "secret",
+      challenge: { id: "abc" },
+      url: "https://t.me/bot",
+    },
+  };
+  const { send } = await background("https://example.com", initial);
+  let complete!: (value: any) => void;
+  let started!: () => void;
+  const completing = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  const json = (data: any) => ({ ok: true, json: async () => data });
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string) => {
+      if (url.endsWith("/abc")) return json({ id: "abc", status: "approved" });
+      if (url.endsWith("/complete")) {
+        started();
+        return await new Promise((resolve) => {
+          complete = resolve;
+        });
+      }
+      return json([]);
+    }),
+  );
+  const status = send(
+    { type: "TELEGRAM_STATUS" },
+    { id: "avari", url: "chrome-extension://avari/auth.html" },
+  );
+  await completing;
+  const switched = send({
+    type: "SAVE_SERVER",
+    server: "https://new.example.com",
+  });
+  complete(json({ token: "old-server-token", session: { kind: "extension" } }));
+  expect((await status).ok).toBe(true);
+  expect((await switched).ok).toBe(true);
+  expect(initial.server).toBe("https://new.example.com");
+  expect(initial.token).toBeUndefined();
+  expect(initial.telegramLogin).toBeUndefined();
+  expect(
+    await send(
+      { type: "TELEGRAM_STATUS", server: "https://old.example.com" },
+      { id: "avari", url: "chrome-extension://avari/auth.html" },
+    ),
+  ).toMatchObject({ ok: false });
+});
+
+it("returns authentication state without leaking the token in CONFIG", async () => {
+  const { send } = await background("https://example.com", {
+    server: "https://jobs.example.com",
+    token: "private-token",
+  });
+  const result = await send({ type: "CONFIG" });
+  expect(result.data).toMatchObject({ hasToken: true });
+  expect(result.data.token).toBeUndefined();
+});
