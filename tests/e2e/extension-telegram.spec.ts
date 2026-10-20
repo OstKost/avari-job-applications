@@ -11,7 +11,10 @@ test("real MV3 extension: Telegram login survives popup close and browser restar
   const manifest = JSON.parse(
     await readFile(path.join(extension, "manifest.json"), "utf8"),
   );
-  expect(manifest.version).toBe(process.env.AVARI_VERSION || "1.10.0");
+  const { version } = JSON.parse(
+    await readFile(path.resolve("package.json"), "utf8"),
+  );
+  expect(manifest.version).toBe(process.env.AVARI_VERSION || version);
   expect(
     manifest.web_accessible_resources.flatMap((r: any) => r.resources),
   ).not.toContain("auth.html");
