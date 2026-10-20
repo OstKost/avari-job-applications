@@ -263,6 +263,7 @@ test("site: real API, vacancy, note, interview, themes, custom fields and mobile
   await expect(
     page.getByRole("button", { name: "Редактировать", exact: true }),
   ).toBeVisible();
+  await page.getByRole("button", { name: "Открыть меню", exact: true }).click();
   await page.getByRole("link", { name: "Настройки", exact: true }).click();
   await page.getByRole("button", { name: "Выйти", exact: true }).click();
   await page
@@ -278,17 +279,16 @@ test("registration stays pending and unauthorized data is blocked", async ({
   page,
 }) => {
   await page.goto("/login");
-  await page.getByRole("button", { name: "Регистрация", exact: true }).click();
+  await page.getByRole("button", { name: "Нет аккаунта? Создать", exact: true }).click();
   await page
     .getByLabel("Email", { exact: true })
     .fill("pending-browser@example.com");
   await page
     .getByLabel("Пароль", { exact: true })
     .fill("browser-test-password");
-  await page.getByLabel("Подтвердите пароль").fill("browser-test-password");
   await page.getByRole("button", { name: "Создать аккаунт" }).click();
   await expect(
-    page.getByRole("heading", { name: "Заявка отправлена" }),
+    page.getByRole("heading", { name: "Подтвердите аккаунт" }),
   ).toBeVisible();
   const response = await page.request.get("/api/v1/applications");
   expect(response.status()).toBe(403);
@@ -910,7 +910,9 @@ test("pwa share: confirmed intake across login, canonical duplicate, shortcut an
   await expect(page.getByRole("heading", { name: `Shared Confirmed ${unique}`, exact: true })).toBeVisible();
   expect(mutations).toHaveLength(1);
   await page.getByRole("link", { name: "Главная", exact: true }).click();
+  await page.getByRole("button", { name: "Цели", exact: true }).click();
   await expect(page.getByTestId("daily-goal-score")).toHaveText(`${before.total + 1}/10`);
+  await page.getByRole("button", { name: "Закрыть цели", exact: true }).click();
 
   const csrf = (await context.cookies()).find(cookie => cookie.name === "avari_csrf")!.value;
   const company = `Canonical Duplicate ${unique}`;

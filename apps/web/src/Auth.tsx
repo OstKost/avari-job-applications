@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -43,12 +43,41 @@ export function Auth({
       { replace: true },
     );
   };
+  const heading = useRef<HTMLHeadingElement>(null);
+  const previousMode = useRef(mode);
+  const focusedMode = useRef(mode);
+  const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<unknown>();
   const [busy, setBusy] = useState(false);
   const [success, setSuccess] = useState("");
+  useLayoutEffect(() => {
+    // URL-driven transitions also clear secrets; explicit switches clear them
+    // before navigation so a delayed route render cannot erase fresh input.
+    if (previousMode.current !== mode) {
+      setPassword("");
+      setConfirm("");
+      setShowPassword(false);
+      setError(undefined);
+      previousMode.current = mode;
+    }
+    if (focusedMode.current !== mode) {
+      focusedMode.current = mode;
+      heading.current?.focus();
+    }
+  }, [mode]);
+  const switchMode = (next: "login" | "register" | "recovery") => {
+    if (busy) return;
+    previousMode.current = next;
+    setPassword("");
+    setConfirm("");
+    setShowPassword(false);
+    setError(undefined);
+    setSuccess("");
+    setMode(next);
+  };
   return (
     <div className="auth-page">
       {!personal && (
@@ -104,7 +133,7 @@ export function Auth({
         </aside>
         <div className="auth-form-pane">
           <span className="eyebrow">Avari.Jobs</span>
-          <h1>
+          <h1 ref={heading} tabIndex={-1}>
             {mode === "login"
               ? "Вход в Avari.Jobs"
               : mode === "register"
@@ -114,48 +143,23 @@ export function Auth({
           <p>
             {mode === "recovery"
               ? "Укажите email и новый пароль. Администратор одобрит смену вручную."
-              : "Отклики, встречи и следующие шаги — в одном месте."}
+              : mode === "register"
+                ? "После регистрации подтвердите аккаунт через Telegram, если он доступен, или дождитесь одобрения администратора."
+                : "Отклики, встречи и следующие шаги — в одном месте."}
           </p>
-          {!personal && (
-            <div className="auth-tabs">
-              <button
-                type="button"
-                className={mode === "login" ? "active" : ""}
-                onClick={() => {
-                  setMode("login");
-                  setError(undefined);
-                  setSuccess("");
-                }}
-              >
-                Вход
-              </button>
-              <button
-                type="button"
-                className={mode === "register" ? "active" : ""}
-                onClick={() => {
-                  setMode("register");
-                  setError(undefined);
-                  setSuccess("");
-                }}
-              >
-                Регистрация
-              </button>
+          {success && (
+            <div className="success notice" role="status">
+              {success}
             </div>
           )}
-          {!personal && mode === "login" && (
-            <TelegramLogin api={api} onLogin={onLogin} />
-          )}
-          {success && <div className="success notice">{success}</div>}
           <form
             className="form"
             onKeyDown={handleFormSubmitShortcut}
             onSubmit={async (e) => {
               e.preventDefault();
+              if (busy) return;
               setError(undefined);
-              if (
-                (mode === "register" || mode === "recovery") &&
-                password !== confirm
-              ) {
+              if (mode === "recovery" && password !== confirm) {
                 setError(new Error("Пароли не совпадают"));
                 return;
               }
@@ -180,12 +184,12 @@ export function Auth({
                       { email, password, kind: "web" },
                     );
                     onLogin(result.user);
-                  } catch (loginError) {
+                  } catch {
                     setMode("login");
                     setSuccess(
-                      "Аккаунт создан. Войдите, чтобы отслеживать одобрение.",
+                      "Аккаунт создан. Войдите, чтобы подтвердить его.",
                     );
-                    throw loginError;
+                    return;
                   }
                 } else if (mode === "recovery") {
                   await api("/auth/recovery", "POST", {
@@ -216,6 +220,8 @@ export function Auth({
             <FieldInput label="Email">
               <input
                 type="email"
+                name="email"
+                disabled={busy}
                 required
                 autoComplete="email"
                 value={email}
@@ -227,7 +233,9 @@ export function Auth({
               hint={mode !== "login" ? "Не менее 10 символов" : undefined}
             >
               <input
-                type="password"
+                type={showPassword ? "text" : "password"}
+                name="password"
+                disabled={busy}
                 required
                 minLength={mode !== "login" ? 10 : undefined}
                 maxLength={256}
@@ -238,29 +246,29 @@ export function Auth({
                 onChange={(e) => setPassword(e.target.value)}
               />
             </FieldInput>
-            <div
-              className={`auth-field-expand ${mode !== "login" ? "open" : ""}`}
-              aria-hidden={mode === "login"}
+            {mode === "recovery" && (
+              <FieldInput label="Подтвердите новый пароль">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  name="confirm-password"
+                  required
+                  disabled={busy}
+                  maxLength={256}
+                  autoComplete="new-password"
+                  value={confirm}
+                  onChange={(e) => setConfirm(e.target.value)}
+                />
+              </FieldInput>
+            )}
+            <button
+              type="button"
+              className="auth-link-button auth-password-toggle"
+              aria-pressed={showPassword}
+              disabled={busy}
+              onClick={() => setShowPassword((shown) => !shown)}
             >
-              <div className="auth-field-expand-inner">
-                <FieldInput
-                  label={
-                    mode === "recovery"
-                      ? "Подтвердите новый пароль"
-                      : "Подтвердите пароль"
-                  }
-                >
-                  <input
-                    type="password"
-                    required={mode !== "login"}
-                    tabIndex={mode === "login" ? -1 : undefined}
-                    autoComplete="new-password"
-                    value={confirm}
-                    onChange={(e) => setConfirm(e.target.value)}
-                  />
-                </FieldInput>
-              </div>
-            </div>
+              {showPassword ? "Скрыть пароль" : "Показать пароль"}
+            </button>
             <div className="form-actions">
               <button className="primary" disabled={busy}>
                 {busy
@@ -274,41 +282,54 @@ export function Auth({
               </button>
             </div>
           </form>
-          <div className="auth-footer-nav">
-            {mode === "login" && !personal && (
-              <button
-                type="button"
-                className="auth-link-button"
-                onClick={() => {
-                  setMode("recovery");
-                  setError(undefined);
-                  setSuccess("");
-                }}
-              >
-                Забыли пароль?
-              </button>
-            )}
-            {mode === "recovery" && (
-              <button
-                type="button"
-                className="auth-link-button"
-                onClick={() => {
-                  setMode("login");
-                  setError(undefined);
-                  setSuccess("");
-                }}
-              >
-                ← Вернуться ко входу
-              </button>
-            )}
-          </div>
-          <p className="auth-footnote">
-            {mode === "register"
-              ? "Регистрацию можно подтвердить через Telegram, если он доступен, или дождаться ручного одобрения администратором."
-              : mode === "recovery"
-                ? "Новый пароль начнёт действовать после одобрения администратором."
-                : "Войдите, чтобы открыть свой журнал."}
-          </p>
+          {!personal && mode === "login" && (
+            <TelegramLogin
+              api={api}
+              onLogin={onLogin}
+              busy={busy}
+              onBusyChange={setBusy}
+            />
+          )}
+          {!personal && (
+            <div className="auth-footer-nav">
+              {mode === "login" ? (
+                <>
+                  <button
+                    type="button"
+                    className="auth-link-button"
+                    disabled={busy}
+                    onClick={() => switchMode("recovery")}
+                  >
+                    Забыли пароль?
+                  </button>
+                  <button
+                    type="button"
+                    className="auth-link-button"
+                    disabled={busy}
+                    onClick={() => switchMode("register")}
+                  >
+                    Нет аккаунта? Создать
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className="auth-link-button"
+                  disabled={busy}
+                  onClick={() => switchMode("login")}
+                >
+                  {mode === "register"
+                    ? "Уже есть аккаунт? Войти"
+                    : "← Вернуться ко входу"}
+                </button>
+              )}
+            </div>
+          )}
+          {mode === "recovery" && (
+            <p className="auth-footnote">
+              Новый пароль начнёт действовать после одобрения администратором.
+            </p>
+          )}
           <p className="auth-footnote">
             <a href="/extension">Расширение для браузера</a> ·{" "}
             <a href="/privacy">Конфиденциальность</a>

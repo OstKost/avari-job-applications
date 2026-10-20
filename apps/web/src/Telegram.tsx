@@ -35,18 +35,23 @@ export function TelegramConnect({
   const [state, setState] = useState<Challenge>();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [enabled, setEnabled] = useState(false);
+  const [availability, setAvailability] = useState<
+    "loading" | "enabled" | "disabled" | "error"
+  >("loading");
+  const [availabilityAttempt, setAvailabilityAttempt] = useState(0);
   useEffect(() => {
     let alive = true;
     void api<Status>("/telegram")
       .then((s) => {
-        if (alive) setEnabled(s.enabled);
+        if (alive) setAvailability(s.enabled ? "enabled" : "disabled");
       })
-      .catch(() => {});
+      .catch(() => {
+        if (alive) setAvailability("error");
+      });
     return () => {
       alive = false;
     };
-  }, [api]);
+  }, [api, availabilityAttempt]);
   useEffect(() => {
     if (!request) return;
     let alive = true;
@@ -57,14 +62,19 @@ export function TelegramConnect({
         );
         if (!alive) return;
         setState(c);
+        setError("");
         if (["completed", "cancelled", "expired"].includes(c.status))
           window.clearInterval(timer);
         if (c.status === "completed") onComplete?.();
       } catch (e) {
         if (alive) {
           setError(String(e));
-          if (e instanceof APIError && [404, 409, 410].includes(e.status))
+          if (e instanceof APIError && [404, 409, 410].includes(e.status)) {
             window.clearInterval(timer);
+            setState((current) =>
+              current ? { ...current, status: "expired" } : current,
+            );
+          }
         }
       }
     }, 6000);
@@ -73,12 +83,31 @@ export function TelegramConnect({
       window.clearInterval(timer);
     };
   }, [request, api, onComplete]);
-  if (!enabled) return null;
+  if (availability === "loading")
+    return <p role="status">Проверяем доступность Telegram…</p>;
+  if (availability === "disabled") return null;
+  if (availability === "error")
+    return (
+      <div role="status">
+        <p>Не удалось проверить доступность Telegram.</p>
+        <button
+          type="button"
+          onClick={() => {
+            setAvailability("loading");
+            setAvailabilityAttempt((n) => n + 1);
+          }}
+        >
+          Повторить проверку
+        </button>
+      </div>
+    );
+  const waiting = !!state && ["pending", "approved"].includes(state.status);
   return (
     <div className="telegram-connect">
       <button
         type="button"
-        disabled={busy}
+        disabled={busy || waiting}
+        className={purpose === "registration" ? "primary" : undefined}
         onClick={async () => {
           setBusy(true);
           setError("");
@@ -95,16 +124,23 @@ export function TelegramConnect({
           }
         }}
       >
-        {purpose === "registration"
-          ? "Подтвердить через Telegram"
-          : "Подключить Telegram"}
+        {state && ["cancelled", "expired"].includes(state.status)
+          ? "Начать заново"
+          : purpose === "registration"
+            ? "Подтвердить через Telegram"
+            : "Подключить Telegram"}
       </button>
       {request && state && ["pending", "approved"].includes(state.status) && (
         <p>
           <a href={request.url} target="_blank" rel="noreferrer">
-            Открыть бота и подтвердить
+            {purpose === "registration"
+              ? "Открыть Telegram"
+              : "Открыть бота и подтвердить"}
           </a>{" "}
           · до {new Date(state.expiresAt).toLocaleTimeString()}
+          {purpose === "registration" && (
+            <span role="status"> · Ожидаем подтверждение в боте.</span>
+          )}
         </p>
       )}
       {state?.status === "approved" && purpose === "link" && (
@@ -152,11 +188,18 @@ export function TelegramConnect({
 export function TelegramLogin({
   api,
   onLogin,
+  onBusyChange,
+  busy: formBusy = false,
 }: {
   api: Transport;
   onLogin: (user: User) => void;
+  busy?: boolean;
+  onBusyChange?: (busy: boolean) => void;
 }) {
-  const [enabled, setEnabled] = useState(false);
+  const [availability, setAvailability] = useState<
+    "loading" | "enabled" | "disabled" | "error"
+  >("loading");
+  const [availabilityAttempt, setAvailabilityAttempt] = useState(0);
   const [request, setRequest] = useState<Request>();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -164,13 +207,15 @@ export function TelegramLogin({
     let alive = true;
     void api<{ enabled: boolean }>("/auth/telegram/config")
       .then((s) => {
-        if (alive) setEnabled(s.enabled);
+        if (alive) setAvailability(s.enabled ? "enabled" : "disabled");
       })
-      .catch(() => {});
+      .catch(() => {
+        if (alive) setAvailability("error");
+      });
     return () => {
       alive = false;
     };
-  }, [api]);
+  }, [api, availabilityAttempt]);
   useEffect(() => {
     if (!request) return;
     let alive = true;
@@ -182,6 +227,7 @@ export function TelegramLogin({
         if (!alive) return;
         if (c.status === "approved") {
           window.clearInterval(timer);
+          onBusyChange?.(true);
           const result = await api<{ user: User }>(
             `/auth/telegram/requests/${c.id}/complete`,
             "POST",
@@ -194,6 +240,7 @@ export function TelegramLogin({
           setRequest(undefined);
         }
       } catch (e) {
+        onBusyChange?.(false);
         if (alive) {
           window.clearInterval(timer);
           setError(String(e));
@@ -204,15 +251,36 @@ export function TelegramLogin({
       alive = false;
       window.clearInterval(timer);
     };
-  }, [request, api, onLogin]);
-  if (!enabled) return null;
+  }, [request, api, onLogin, onBusyChange]);
+  const enabled = availability === "enabled";
+  if (availability === "disabled" || availability === "loading") return null;
+  if (availability === "error")
+    return (
+      <div className="telegram-availability" role="status">
+        <p>
+          Не удалось проверить доступность Telegram. Можно войти через email.
+        </p>
+        <button
+          type="button"
+          className="auth-link-button"
+          disabled={formBusy}
+          onClick={() => {
+            setAvailability("loading");
+            setAvailabilityAttempt((n) => n + 1);
+          }}
+        >
+          Повторить проверку
+        </button>
+      </div>
+    );
   return (
     <div className="telegram-login">
       <button
         type="button"
-        disabled={busy}
+        disabled={busy || formBusy || !enabled}
         onClick={async () => {
           setBusy(true);
+          onBusyChange?.(true);
           setError("");
           try {
             setRequest(
@@ -222,11 +290,15 @@ export function TelegramLogin({
             setError(String(e));
           } finally {
             setBusy(false);
+            onBusyChange?.(false);
           }
         }}
       >
         Войти через Telegram
       </button>
+      {enabled && (
+        <p className="muted">Если Telegram уже подключён к аккаунту.</p>
+      )}
       {request && (
         <div role="status">
           <p>

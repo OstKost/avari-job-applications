@@ -141,7 +141,67 @@
         border-color: var(--accent);
         font-weight: 600;
       }
-      hr.divider {
+      .header-nav {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 20px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid var(--border);
+      }
+      .back-nav-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: transparent;
+        border: 1px solid var(--border);
+        color: var(--text);
+        padding: 8px 16px;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 550;
+        cursor: pointer;
+        text-decoration: none;
+        transition: all 0.15s ease;
+      }
+      .back-nav-btn:hover {
+        border-color: var(--accent);
+        color: var(--accent);
+        background: rgba(56, 189, 248, 0.08);
+        text-decoration: none;
+      }
+      .header-links {
+        display: inline-flex;
+        align-items: center;
+        gap: 16px;
+        font-size: 14px;
+      }
+      .principles-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 14px;
+        margin: 24px 0 28px;
+      }
+      .principle-box {
+        padding: 16px 18px;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid var(--border);
+      }
+      .principle-box h3 {
+        font-size: 14px;
+        font-weight: 600;
+        margin-bottom: 8px;
+        color: var(--accent);
+      }
+      .principle-box p {
+        font-size: 13px;
+        line-height: 1.5;
+        color: var(--text-muted);
+        margin-bottom: 0;
+      }
+      .divider {
         border: 0;
         border-top: 1px solid var(--border);
         margin: 40px 0;
@@ -157,6 +217,17 @@
   </head>
   <body>
     <div class="container">
+      <div class="header-nav">
+        <a href="javascript:if(window.history.length>1){window.history.back();}else{window.location.href='/';}" class="back-nav-btn" aria-label="Вернуться назад / Go back">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+          <span>Назад / Back</span>
+        </a>
+        <div class="header-links">
+          <a href="/">Avari.Jobs</a>
+          <span>·</span>
+          <a href="/login">Вход / Log in</a>
+        </div>
+      </div>
       <header>
         <a href="/" class="logo-link">
           <img src="/brand/icon-128.png" alt="Avari.Jobs" />
@@ -164,7 +235,7 @@
         </a>
         <h1>Политика конфиденциальности / Privacy Policy</h1>
         <div class="meta">
-          Последнее обновление / Last updated: 19 октября 2026 г. / October 19,
+          Последнее обновление / Last updated: 20 октября 2026 г. / October 20,
           2026
         </div>
         <div class="lang-switcher">
@@ -174,16 +245,47 @@
       </header>
 
       <section id="ru">
-        <h2>Политика конфиденциальности расширения и сервиса Avari.Jobs</h2>
+        <div class="principles-grid">
+          <div class="principle-box">
+            <h3>Минимизация данных</h3>
+            <p>Не собираем ничего лишнего. Обрабатываются только те записи, которые вы вносите сами для ведения поиска работы.</p>
+          </div>
+          <div class="principle-box">
+            <h3>Без доступа к паролям</h3>
+            <p>Расширение не считывает пароли сайтов поиска работы, cookies сессий, банковские данные и историю посещения страниц.</p>
+          </div>
+          <div class="principle-box">
+            <h3>Никакой продажи и рекламы</h3>
+            <p>Ваши отклики, вакансии и заметки не передаются брокерам данных, аналитическим трекерам или рекламным сетям.</p>
+          </div>
+        </div>
+
+        <h2>Политика конфиденциальности и обработки персональных данных Avari.Jobs</h2>
         <p>
-          Настоящая Политика конфиденциальности описывает, как браузерное
-          расширение <strong>«Avari.Jobs — журнал откликов»</strong> и
-          веб-сервис <strong>Avari.Jobs</strong> (доступные по адресу
-          <code>https://jobs.avari.dev</code>) обрабатывают данные
-          пользователей.
+          Настоящая Политика определяет порядок обработки и защиты персональных данных
+          пользователей сервиса <strong>Avari.Jobs</strong> (доступного по адресу
+          <code>https://jobs.avari.dev</code> и на персональных серверах пользователей) и
+          браузерного расширения <strong>«Avari.Jobs — журнал откликов»</strong> в
+          соответствии с требованиями Федерального закона РФ от 27.07.2006 № 152-ФЗ
+          «О персональных данных» и международными стандартами приватности.
         </p>
 
-        <h2>1. Какую информацию обрабатывает расширение</h2>
+        <h2>1. Правовые основания и принцип минимизации данных</h2>
+        <p>
+          Обработка персональных данных осуществляется на основании согласия пользователя,
+          выражаемого при регистрации и использовании сервиса (п. 1 ч. 1 ст. 6 152-ФЗ),
+          а также для исполнения соглашения об использовании функционала сервиса.
+        </p>
+        <p>
+          <strong>Мы строго придерживаемся принципа не собирать ничего лишнего (data minimization):</strong>
+        </p>
+        <ul>
+          <li>Сервис не требует предоставления паспортных данных, адресов регистрации, финансовых реквизитов или избыточных сведений.</li>
+          <li>Расширение и сервис не сканируют вкладки браузера, кроме страницы конкретной вакансии или отклика, открытой пользователем на поддерживаемых ресурсах.</li>
+          <li>Любые данные сохраняются в журнал только после явного подтверждения или прямого ввода пользователем.</li>
+        </ul>
+
+        <h2>2. Состав обрабатываемой информации</h2>
         <ul>
           <li>
             <strong>Сведения о вакансиях:</strong> название должности,
@@ -369,17 +471,46 @@
       <hr class="divider" />
 
       <section id="en">
+        <div class="principles-grid">
+          <div class="principle-box">
+            <h3>Data Minimization</h3>
+            <p>We do not collect unnecessary data. Only the jobs, notes, and tasks you explicitly add to organize your job search are processed.</p>
+          </div>
+          <div class="principle-box">
+            <h3>Zero Password Access</h3>
+            <p>The extension never accesses or reads job site passwords, session cookies, payment info, or general tab browsing history.</p>
+          </div>
+          <div class="principle-box">
+            <h3>No Sale or Ads</h3>
+            <p>Your job applications and private notes are never sold, monetized, or shared with data brokers or ad networks.</p>
+          </div>
+        </div>
+
         <h2>Privacy Policy for Avari.Jobs Chrome Extension, PWA & Service</h2>
         <p>
           This Privacy Policy explains how the browser extension
           <strong>"Avari.Jobs — журнал откликов"</strong> (Avari.Jobs
           Application Tracker), the Progressive Web App (PWA), and the
           <strong>Avari.Jobs</strong> web platform (available at
-          <code>https://jobs.avari.dev</code>) collect, handle, and store user
-          data.
+          <code>https://jobs.avari.dev</code> and personal user instances) collect, handle, and store user
+          data in full compliance with data protection laws and strict privacy principles.
         </p>
 
-        <h2>1. Data Collection & Handling</h2>
+        <h2>1. Legal Basis & Data Minimization Principle</h2>
+        <p>
+          Personal data processing is based on explicit user consent provided when registering and utilizing
+          the service, as well as the necessity to fulfill the application tracking service agreement.
+        </p>
+        <p>
+          <strong>We strictly adhere to the principle of collecting only what is strictly necessary:</strong>
+        </p>
+        <ul>
+          <li>We never request sensitive personal identity numbers, financial information, or unnecessary credentials.</li>
+          <li>Content scripts and the web application never inspect browser tabs outside of the specific job posting or negotiation page actively viewed and confirmed by the user.</li>
+          <li>Records are committed to your journal only following your explicit review and confirmation.</li>
+        </ul>
+
+        <h2>2. Data Collection & Handling</h2>
         <p>
           The extension collects only the information necessary to perform its
           core functionality — tracking and logging job applications:

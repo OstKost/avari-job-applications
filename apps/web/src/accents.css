@@ -88,35 +88,35 @@
 }
 
 /* Navigation gets a quiet colored icon; the selected destination carries its tint. */
-:root .sidebar nav a[data-tone] svg {
+:root .sidebar nav .sidebar-desktop-nav a[data-tone] svg {
   color: color-mix(in srgb, var(--tone) 78%, var(--muted));
   filter: none;
 }
-:root .sidebar nav a[data-tone].active {
+:root .sidebar nav .sidebar-desktop-nav a[data-tone].active {
   color: var(--text);
   background: color-mix(in srgb, var(--tone) 13%, var(--panel));
   border-color: color-mix(in srgb, var(--tone) 35%, var(--line));
   box-shadow: inset 3px 0 var(--tone);
 }
-:root .sidebar nav a[data-tone].active svg {
+:root .sidebar nav .sidebar-desktop-nav a[data-tone].active svg {
   color: var(--tone);
 }
-:root .sidebar nav a[data-tone].active::before {
+:root .sidebar nav .sidebar-desktop-nav a[data-tone].active::before {
   background: radial-gradient(
     ellipse at 40% 45%,
     color-mix(in srgb, var(--tone) 18%, transparent),
     transparent 70%
   );
 }
-:root .sidebar nav a[data-tone].active::after {
+:root .sidebar nav .sidebar-desktop-nav a[data-tone].active::after {
   background: none;
 }
 @media (hover: hover) and (pointer: fine) {
-  :root .sidebar nav a[data-tone]:hover {
+  :root .sidebar nav .sidebar-desktop-nav a[data-tone]:hover {
     border-color: color-mix(in srgb, var(--tone) 35%, var(--line));
     background: color-mix(in srgb, var(--tone) 10%, var(--panel));
   }
-  :root .sidebar nav a[data-tone].active:hover {
+  :root .sidebar nav .sidebar-desktop-nav a[data-tone].active:hover {
     box-shadow: inset 3px 0 var(--tone);
   }
 }

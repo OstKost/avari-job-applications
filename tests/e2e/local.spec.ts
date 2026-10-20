@@ -130,7 +130,7 @@ test("personal first run, extension options and journal merge from settings", as
   await page.getByRole("tab", { name: "Общие", exact: true }).click();
   await page.getByRole("button", { name: "Выйти", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: "Регистрация", exact: true }),
+    page.getByRole("button", { name: "Нет аккаунта? Создать", exact: true }),
   ).toHaveCount(0);
   await expect(
     page.getByRole("link", { name: "На главную", exact: true }),

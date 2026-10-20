@@ -9,6 +9,7 @@ from PIL import Image
 
 ROOT = Path(__file__).resolve().parent.parent
 OUTPUT = ROOT / "apps/web/public/landing"
+EXTENSION_SOURCES = ["extension-overview", "extension-edit", "extension-saved", "extension-update"]
 SOURCES = {
     "journal": "table-grouped",
     "calendar": "calendar-dark",
@@ -23,6 +24,7 @@ def main():
     # Check all inputs before replacing any existing artifact.
     paths = {name: ROOT / f"test-results/design-{source}.png"
              for name, source in SOURCES.items()}
+    paths.update({name: ROOT / f"test-results/{name}.png" for name in EXTENSION_SOURCES})
     for source in paths.values():
         if not source.is_file():
             raise SystemExit(f"Missing demo capture: {source}. Run workspace design E2E first.")
@@ -30,7 +32,8 @@ def main():
     for name, source in paths.items():
         with Image.open(source) as original:
             image = original.convert("RGB")
-            height = 844 if name.endswith("-mobile") else 1000
+            height = (image.height if name in EXTENSION_SOURCES else
+                      844 if name.endswith("-mobile") else 1000)
             image = image.crop((0, 0, image.width, min(image.height, height)))
             image.save(OUTPUT / f"{name}.webp", "WEBP", quality=86, method=6)
 

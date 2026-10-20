@@ -232,12 +232,14 @@ test("real MV3 extension: login, DOM capture, save, dedup, proposal confirmation
         name: /Редактировать перед сохранением/,
       }),
     ).toBeVisible();
+    await popup.locator(".popup").screenshot({ path: "test-results/extension-overview.png" });
     await popup
       .getByRole("button", {
         name: /Редактировать перед сохранением/,
       })
       .click();
     await expect(popup.getByLabel("Компания *")).toHaveValue("Бета Компания");
+    await popup.locator(".popup").screenshot({ path: "test-results/extension-edit.png" });
     await popup.getByLabel("Контакт рекрутера").fill("Draft survives closure");
     await popup.close();
     popup = await context.newPage();
@@ -254,6 +256,7 @@ test("real MV3 extension: login, DOM capture, save, dedup, proposal confirmation
     await expect(
       popup.getByRole("button", { name: "Изменить этап", exact: true }),
     ).toBeVisible();
+    await popup.locator(".popup").screenshot({ path: "test-results/extension-saved.png" });
     await hh.locator('[data-qa="vacancy-response-link-top"]').evaluate((el) => {
       el.textContent = "Вы откликнулись";
     });
@@ -266,6 +269,7 @@ test("real MV3 extension: login, DOM capture, save, dedup, proposal confirmation
     await expect(
       popup.getByRole("button", { name: "Применить", exact: true }),
     ).toBeVisible();
+    await popup.locator(".popup").screenshot({ path: "test-results/extension-update.png" });
     await popup.screenshot({
       path: "test-results/extension-proposal-dark.png",
       fullPage: true,

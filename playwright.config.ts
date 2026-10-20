@@ -1,6 +1,7 @@
 import { defineConfig } from "@playwright/test";
 export default defineConfig({
   testDir: "./tests/e2e",
+  outputDir: process.env.AVARI_E2E_OUTPUT_DIR || "test-results",
   grep: process.env.AVARI_E2E_GREP ? new RegExp(process.env.AVARI_E2E_GREP) : undefined,
   timeout: 45000,
   expect: { timeout: 8000 },

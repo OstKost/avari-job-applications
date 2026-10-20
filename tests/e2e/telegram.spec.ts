@@ -34,24 +34,21 @@ test("telegram registration activates the pending account", async ({
   page,
 }) => {
   await page.goto("/login");
-  await page.getByRole("button", { name: "Регистрация", exact: true }).click();
+  await page.getByRole("button", { name: "Нет аккаунта? Создать", exact: true }).click();
   await page
     .getByLabel("Email", { exact: true })
     .fill(`telegram-registration-${Date.now()}@example.com`);
   await page
     .getByLabel("Пароль", { exact: true })
     .fill("browser-test-password");
-  await page
-    .getByLabel("Подтвердите пароль", { exact: true })
-    .fill("browser-test-password");
   await page.getByRole("button", { name: /Создать аккаунт/ }).click();
   await expect(
-    page.getByRole("heading", { name: "Заявка отправлена" }),
+    page.getByRole("heading", { name: "Подтвердите аккаунт" }),
   ).toBeVisible();
   await page
     .getByRole("button", { name: "Подтвердить через Telegram" })
     .click();
-  const token = await tokenFromLink(page, "Открыть бота и подтвердить");
+  const token = await tokenFromLink(page, "Открыть Telegram");
   await bot(page, token, 7002);
   await expect(
     page.getByRole("heading", { name: "Главная", exact: true }),

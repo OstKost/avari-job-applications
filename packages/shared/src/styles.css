@@ -1746,13 +1746,7 @@ code {
   }
 }
 
-.mobile-theme {
-  display: none;
-}
 @media (max-width: 800px) {
-  .mobile-theme {
-    display: inline-flex;
-  }
   .page-header .actions {
     flex-wrap: nowrap;
   }

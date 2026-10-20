@@ -484,21 +484,27 @@ test.describe("Approved Features E2E Acceptance", () => {
     await loginDedicated(page);
     await page.setViewportSize({ width: 390, height: 844 });
 
-    // Navigate to /settings
-    await page.locator("#workspace-navigation a[href='/settings']").scrollIntoViewIfNeeded();
-    await page.locator("#workspace-navigation a[href='/settings']").click();
+    const openDrawerIfNeeded = async () => {
+      const moreBtn = page.locator(".sidebar-more-tab, .mobile-burger-btn").first();
+      if (await moreBtn.isVisible()) {
+        await moreBtn.click();
+      }
+    };
+
+    // Navigate to /settings via mobile menu drawer
+    await openDrawerIfNeeded();
+    await page.locator(".mobile-drawer-link[href='/settings']").click();
     await expect(page.getByRole("heading", { name: "Настройки", exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
 
-    // Navigate to /favorites
-    await page.locator("#workspace-navigation a[href='/favorites']").scrollIntoViewIfNeeded();
-    await page.locator("#workspace-navigation a[href='/favorites']").click();
+    // Navigate to /favorites (bottom tab)
+    await page.locator(".sidebar-mobile-tab[href='/favorites']").click();
     await expect(page.getByRole("heading", { name: "Избранные вакансии", exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
 
-    // Navigate to /resumes
-    await page.locator("#workspace-navigation a[href='/resumes']").scrollIntoViewIfNeeded();
-    await page.locator("#workspace-navigation a[href='/resumes']").click();
+    // Navigate to /resumes via mobile menu drawer
+    await openDrawerIfNeeded();
+    await page.locator(".mobile-drawer-link[href='/resumes']").click();
     await expect(page.getByRole("button", { name: "Загрузить новое резюме", exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
   });

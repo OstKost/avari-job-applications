@@ -4,7 +4,8 @@ import { Landing } from "./Landing";
 import { TelegramConnect, TelegramSettings } from "./Telegram";
 import { jobIdentity } from "@avari/shared";
 import { PushSettings, disableDevicePushOnLogout } from "./pwa/PushSettings";
-import { DailyGoal, getDailySummaryQueryKey } from "./pwa/DailyGoal";
+import { getDailySummaryQueryKey } from "./pwa/DailyGoal";
+import { GoalsMenu } from "./pwa/GoalsMenu";
 import type { ParsedShareData } from "./pwa/share-target";
 import { createWebAPI } from "./offline/policy";
 import { readVacancyClipboard } from "@avari/shared";
@@ -82,6 +83,7 @@ import {
   Layers,
   Tag,
   ShieldCheck,
+  Lock,
   Compass,
   RotateCcw,
   Star,
@@ -89,6 +91,7 @@ import {
   FileText,
   Copy,
   RefreshCw,
+  Menu,
 } from "lucide-react";
 import {
   APIError,
@@ -205,6 +208,7 @@ type Actions = {
   editApplication: (a?: Application) => void;
   editTask: (t?: Partial<Task>) => void;
   addNote: (id: string, note?: Note) => void;
+  openMobileMenu: () => void;
 };
 const Context = createContext<Actions>(null!);
 const useApp = () => useContext(Context);
@@ -362,6 +366,7 @@ function NotFoundPage({
 }
 
 function PublicPage({ privacy }: { privacy: boolean }) {
+  const navigate = useNavigate();
   const [version, setVersion] = useState("");
   const chromeStore = import.meta.env.VITE_CHROME_STORE_URL || "";
   useEffect(() => {
@@ -370,44 +375,112 @@ function PublicPage({ privacy }: { privacy: boolean }) {
       .then((data) => setVersion(data.version))
       .catch(() => {});
   }, []);
+  const handleBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+    } else {
+      navigate("/");
+    }
+  };
   return (
     <div className="auth-page">
       <section className="auth-card public-card">
+        <div className="public-top-nav">
+          <button
+            type="button"
+            className="public-back-btn"
+            onClick={handleBack}
+            aria-label="Вернуться назад"
+          >
+            <ArrowLeft size={16} />
+            <span>Назад</span>
+          </button>
+          <div className="public-top-nav-links">
+            <Link to="/">На главную</Link>
+            <span>·</span>
+            <Link to="/login">Вход</Link>
+          </div>
+        </div>
         <Brand />
         {privacy ? (
           <>
             <h1>Конфиденциальность</h1>
+            <div className="public-principles">
+              <div className="public-principle-card">
+                <h3>
+                  <ShieldCheck size={16} />
+                  Минимум данных
+                </h3>
+                <p>
+                  Не собираем лишнего: сохраняются только те вакансии, заметки и
+                  задачи, которые вы вносите сами для поиска работы.
+                </p>
+              </div>
+              <div className="public-principle-card">
+                <h3>
+                  <Lock size={16} />
+                  Без слежки и паролей
+                </h3>
+                <p>
+                  Расширение никогда не запрашивает и не читает пароли сайтов,
+                  cookies сессий, переписку и историю вкладок.
+                </p>
+              </div>
+              <div className="public-principle-card">
+                <h3>
+                  <Check size={16} />
+                  Никакой рекламы
+                </h3>
+                <p>
+                  Данные журнала не продаются и не передаются рекламным сетям
+                  или аналитическим брокерам.
+                </p>
+              </div>
+            </div>
             <p>
               Avari.Jobs хранит введённые вами вакансии, задачи, заметки и
-              учётные данные на выбранном вами сервере. Доступ к журналу требует
-              входа; новые аккаунты одобряет администратор сервера.
+              учётные данные на выбранном вами сервере (по умолчанию
+              jobs.avari.dev либо на вашем личном сервере). Доступ к журналу
+              требует входа; новые аккаунты одобряет администратор сервера либо
+              подтверждаются владельцем.
+            </p>
+            <p>
+              <strong>Принцип минимизации данных:</strong> Мы обрабатываем строго
+              тот объём информации, который необходим для ведения личного учёта
+              поиска работы (152-ФЗ, ст. 5). Мы не собираем избыточные сведения,
+              не сканируем содержимое нерелевантных страниц и не запрашиваем
+              доступ к сторонним учетным записям.
             </p>
             <p>
               Расширение читает открытую вами страницу вакансии или список
-              откликов на hh.ru, LinkedIn, Getmatch, Hirify, Geekjob и Habr
-              Career. Оно извлекает сведения о вакансиях и откликах и отправляет
-              их только в настроенный вами Avari.Jobs. Пароли, cookies и
-              переписку площадок расширение не собирает.
+              откликов на hh.ru, LinkedIn, Getmatch, Hirify, Geekjob, Habr
+              Career и Huntflow исключительно в момент вашего взаимодействия.
+              Оно извлекает сведения о вакансиях (должность, компания, зарплата,
+              город, описание) и откликах и отправляет их только в настроенный
+              вами Avari.Jobs. Пароли, cookies и личную переписку на площадках
+              расширение не собирает.
             </p>
             <p>
-              Токен входа расширения хранится локально в Chrome. Для работы на
-              jobs.avari.dev расширение получает доступ при установке; для
-              другого сервера разрешение запрашивается отдельно; системные
-              уведомления включаются отдельно. Данные журнала не передаются
-              рекламным сервисам.
+              Токен входа расширения хранится локально в хранилище, доступном
+              только доверенному контексту расширения. Для работы на jobs.avari.dev расширение получает доступ
+              при установке; для другого сервера разрешение запрашивается
+              отдельно; системные уведомления включаются отдельно. Данные журнала
+              не передаются рекламным сервисам.
             </p>
             <p>
               При включённой Google Analytics сайт передаёт Google сведения о
               посещениях страниц, браузере и устройстве. Расширение не содержит
-              Google Analytics. Полная политика:{" "}
+              Google Analytics. Полная юридическая политика с подробным
+              описанием прав и регламентов обработки:{" "}
               <a href="/privacy.html">
                 Политика конфиденциальности / Privacy Policy
               </a>
               .
             </p>
             <p>
-              Удалить записи можно в приложении, а для удаления аккаунта и
-              данных обратитесь к администратору вашего сервера.
+              Удалить записи можно в приложении в любой момент, а для полного
+              удаления аккаунта и данных обратитесь к администратору вашего
+              сервера (web@ostkost.ru).
             </p>
             <p>
               Для отображения аватара сайт обращается к Gravatar. В адресе
@@ -559,7 +632,8 @@ function AuthenticatedApp({ personal = false, pendingShare, consumeShare }: {
   const requestedReturn = params.get("returnTo");
   // Resolve only same-origin application paths; never follow external login redirects.
   const returnTo = safeReturnPath(requestedReturn);
-  if (me.error || !me.data) {
+  if (!me.data || (me.error && (me.data.status !== "pending" ||
+    (me.error instanceof APIError && [401, 403].includes(me.error.status))))) {
     const unauthorized = (!me.data && !me.error) ||
       (me.error instanceof APIError && [401, 403].includes(me.error.status));
     if (me.error && !unauthorized && !isNetworkError(me.error)) {
@@ -581,6 +655,8 @@ function AuthenticatedApp({ personal = false, pendingShare, consumeShare }: {
       <AccountStatus
         user={me.data}
         refresh={() => me.refetch()}
+        checking={me.isFetching}
+        error={me.error}
         logout={async () => {
           try {
             await disableDevicePushOnLogout(api);
@@ -598,10 +674,14 @@ function AccountStatus({
   user,
   refresh,
   logout,
+  checking,
+  error,
 }: {
   user: User;
   refresh: () => void;
   logout: () => void;
+  checking: boolean;
+  error: unknown;
 }) {
   return (
     <div className="auth-page">
@@ -612,19 +692,23 @@ function AccountStatus({
         <Brand />
         <h1>
           {user.status === "pending"
-            ? "Заявка отправлена"
+            ? "Подтвердите аккаунт"
             : "Аккаунт заблокирован"}
         </h1>
         <p>
           {user.status === "pending"
-            ? "Администратор проверит регистрацию и откроет доступ. Статус обновляется автоматически."
+            ? "Аккаунт создан. Чтобы открыть журнал, подтвердите регистрацию одним из доступных способов."
             : "Для восстановления доступа обратитесь к администратору."}
         </p>
         <p>{user.email}</p>
         {user.status === "pending" && <TelegramConnect api={api} purpose="registration" onComplete={refresh} />}
+        {user.status === "pending" && <p className="muted">
+          Можно дождаться одобрения администратора. Статус обновится автоматически.
+        </p>}
+        <ErrorBox error={error} retry={refresh} />
         <div className="actions">
-          <button className="primary" onClick={refresh}>
-            Проверить статус
+          <button disabled={checking} onClick={refresh}>
+            {checking ? "Проверяем…" : "Проверить статус"}
           </button>
           <button onClick={logout}>Выйти</button>
         </div>
@@ -640,6 +724,8 @@ function Workspace({ user, personal = false, pendingShare, consumeShare }: {
 }) {
   const client = useQueryClient();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [form, setForm] = useState<{
     kind: "application" | "task" | "note";
     value?: Application | Partial<Task> | Note | string;
@@ -667,6 +753,9 @@ function Workspace({ user, personal = false, pendingShare, consumeShare }: {
       return next;
     });
   };
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [location.pathname]);
   const { hydrated, lastUpdated } = useOfflineHydration(client, user.id);
   const pwa = usePwa({
     onFlushDirtyDrafts: async () => {
@@ -796,6 +885,7 @@ function Workspace({ user, personal = false, pendingShare, consumeShare }: {
         value: { date: dateToday(user.timezone), ...t },
       }),
     addNote: (id, note) => setForm({ kind: "note", value: note ?? id }),
+    openMobileMenu: () => setMobileMenuOpen(true),
   };
   return (
     <Context.Provider value={context}>
@@ -810,108 +900,299 @@ function Workspace({ user, personal = false, pendingShare, consumeShare }: {
             карьерный шаг
           </div>
           <nav id="workspace-navigation" aria-label="Основное меню">
-            {[
-              {
-                title: "Рабочее пространство",
-                links: [
-                  { path: "/", label: "Главная", icon: LayoutDashboard },
-                  {
-                    path: "/applications",
-                    label: "Отклики",
-                    icon: BriefcaseBusiness,
-                  },
-                  {
-                    path: "/favorites",
-                    label: "Избранные",
-                    icon: Star,
-                  },
-                  { path: "/calendar", label: "Календарь", icon: CalendarDays },
-                  {
-                    path: "/statistics",
-                    label: "Статистика",
-                    icon: ChartNoAxesCombined,
-                  },
-                ],
-              },
-              {
-                title: "Управление",
-                links: [
-                  {
-                    path: "/resumes",
-                    label: "Резюме",
-                    icon: FileText,
-                  },
-                  {
-                    path: "/proposals",
-                    label: "Предложения",
-                    icon: GitCompareArrows,
-                  },
-                  { path: "/settings", label: "Настройки", icon: Settings },
-                  { path: "/whats-new", label: "Что нового", icon: Sparkles },
-                ],
-              },
-            ].map(({ title, links }) => (
-              <div className="nav-section" key={title}>
-                <div className="nav-heading">{title}</div>
-                {links.map(({ path, label, icon: Icon }) => (
-                  <RowActionHint
-                    key={path}
-                    label={label}
-                    placement="right"
-                    className="sidebar-nav-hint"
-                    enabled={sidebarCollapsed}
-                  >
-                    <NavLink
-                      to={path}
-                      end={path === "/"}
-                      aria-label={label}
-                      data-tone={
-                        ({
-                          "/": "blue",
-                          "/applications": "blue",
-                          "/favorites": "amber",
-                          "/calendar": "violet",
-                          "/statistics": "mint",
-                          "/resumes": "violet",
-                          "/proposals": "amber",
-                          "/settings": "blue",
-                        } as Record<string, string>)[path]
-                      }
+            <div className="sidebar-desktop-nav">
+              {[
+                {
+                  title: "Рабочее пространство",
+                  links: [
+                    { path: "/", label: "Главная", icon: LayoutDashboard },
+                    {
+                      path: "/applications",
+                      label: "Отклики",
+                      icon: BriefcaseBusiness,
+                    },
+                    {
+                      path: "/favorites",
+                      label: "Избранные",
+                      icon: Star,
+                    },
+                    { path: "/calendar", label: "Календарь", icon: CalendarDays },
+                    {
+                      path: "/statistics",
+                      label: "Статистика",
+                      icon: ChartNoAxesCombined,
+                    },
+                  ],
+                },
+                {
+                  title: "Управление",
+                  links: [
+                    {
+                      path: "/resumes",
+                      label: "Резюме",
+                      icon: FileText,
+                    },
+                    {
+                      path: "/proposals",
+                      label: "Предложения",
+                      icon: GitCompareArrows,
+                    },
+                    { path: "/settings", label: "Настройки", icon: Settings },
+                  ],
+                },
+              ].map(({ title, links }) => (
+                <div className="nav-section" key={title}>
+                  <div className="nav-heading">{title}</div>
+                  {links.map(({ path, label, icon: Icon }) => (
+                    <RowActionHint
+                      key={path}
+                      label={label}
+                      placement="right"
+                      className="sidebar-nav-hint"
+                      enabled={sidebarCollapsed}
                     >
-                      <Icon size={18} />
-                      <span>
-                        {path === "/whats-new" ? <WhatsNewLabel userId={user.id} /> : label}
-                      </span>
-                      {path === "/proposals" && pending.length > 0 && (
-                        <span className="nav-count">{pending.length}</span>
-                      )}
-                    </NavLink>
-                  </RowActionHint>
-                ))}
-              </div>
-            ))}
-            <div className="sidebar-meta-section">
-              {!personal && pwa.isInstallable && (
-                <div style={{ marginBottom: 8, padding: sidebarCollapsed ? "0" : "0 4px" }}>
-                  <PwaInstallPrompt pwa={pwa} />
+                      <NavLink
+                        to={path}
+                        end={path === "/"}
+                        aria-label={label}
+                        data-tone={
+                          ({
+                            "/": "blue",
+                            "/applications": "blue",
+                            "/favorites": "amber",
+                            "/calendar": "violet",
+                            "/statistics": "mint",
+                            "/resumes": "violet",
+                            "/proposals": "amber",
+                            "/settings": "blue",
+                          } as Record<string, string>)[path]
+                        }
+                      >
+                        <Icon size={18} />
+                        <span>{label}</span>
+                        {path === "/proposals" && pending.length > 0 && (
+                          <span className="nav-count">{pending.length}</span>
+                        )}
+                      </NavLink>
+                    </RowActionHint>
+                  ))}
+                  {title === "Рабочее пространство" && (
+                    <GoalsMenu userId={user.id} api={api} collapsed={sidebarCollapsed} />
+                  )}
                 </div>
-              )}
-              <RowActionHint
-                label="Конфиденциальность"
-                placement="right"
-                className="sidebar-nav-hint"
-                enabled={sidebarCollapsed}
-              >
-                <Link
-                  to="/privacy"
-                  className="sidebar-privacy-link"
-                  aria-label="Конфиденциальность"
+              ))}
+              <div className="sidebar-meta-section">
+                {!personal && pwa.isInstallable && (
+                  <div style={{ marginBottom: 8, padding: sidebarCollapsed ? "0" : "0 4px" }}>
+                    <PwaInstallPrompt pwa={pwa} />
+                  </div>
+                )}
+                <RowActionHint
+                  label="Что нового"
+                  placement="right"
+                  className="sidebar-nav-hint"
+                  enabled={sidebarCollapsed}
                 >
-                  <ShieldCheck size={14} />
-                  <span>Конфиденциальность</span>
-                </Link>
-              </RowActionHint>
+                  <NavLink
+                    to="/whats-new"
+                    className="sidebar-privacy-link"
+                    aria-label="Что нового"
+                  >
+                    <Sparkles size={14} />
+                    <span>
+                      <WhatsNewLabel userId={user.id} />
+                    </span>
+                  </NavLink>
+                </RowActionHint>
+                <RowActionHint
+                  label="Конфиденциальность"
+                  placement="right"
+                  className="sidebar-nav-hint"
+                  enabled={sidebarCollapsed}
+                >
+                  <Link
+                    to="/privacy"
+                    className="sidebar-privacy-link"
+                    aria-label="Конфиденциальность"
+                  >
+                    <ShieldCheck size={14} />
+                    <span>Конфиденциальность</span>
+                  </Link>
+                </RowActionHint>
+              </div>
             </div>
+
+            <div className="sidebar-mobile-bar" role="navigation" aria-label="Быстрая навигация">
+              <NavLink
+                to="/"
+                end
+                className="sidebar-mobile-tab"
+                aria-label="Главная"
+                data-tone="blue"
+              >
+                <LayoutDashboard size={20} />
+                <span>Главная</span>
+              </NavLink>
+              <NavLink
+                to="/applications"
+                className="sidebar-mobile-tab"
+                aria-label="Отклики"
+                data-tone="blue"
+              >
+                <BriefcaseBusiness size={20} />
+                <span>Отклики</span>
+              </NavLink>
+              <NavLink
+                to="/favorites"
+                className="sidebar-mobile-tab"
+                aria-label="Избранные"
+                data-tone="amber"
+              >
+                <Star size={20} />
+                <span>Избранные</span>
+              </NavLink>
+              <NavLink
+                to="/calendar"
+                className="sidebar-mobile-tab"
+                aria-label="Календарь"
+                data-tone="violet"
+              >
+                <CalendarDays size={20} />
+                <span>Календарь</span>
+              </NavLink>
+              <button
+                type="button"
+                className={`sidebar-mobile-tab sidebar-more-tab${mobileMenuOpen ? " active" : ""}`}
+                aria-label="Меню"
+                aria-expanded={mobileMenuOpen}
+                onClick={() => setMobileMenuOpen((open) => !open)}
+              >
+                <Menu size={20} />
+                <span>Меню</span>
+                {pending.length > 0 && <span className="nav-count">{pending.length}</span>}
+              </button>
+            </div>
+
+            {mobileMenuOpen &&
+              createPortal(
+                <div className="mobile-drawer-portal">
+                  <div
+                    className="mobile-drawer-backdrop"
+                    onClick={() => setMobileMenuOpen(false)}
+                    aria-hidden="true"
+                  />
+                  <div
+                    className="mobile-drawer-sheet"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label="Меню приложения"
+                  >
+                    <div className="mobile-drawer-header">
+                      <div className="mobile-drawer-user">
+                        <UserAvatar email={user.email} size={36} />
+                        <div className="mobile-drawer-user-info">
+                          <span className="mobile-drawer-email">{user.email}</span>
+                          <span className="mobile-drawer-caption">Учётная запись</span>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="icon-button mobile-drawer-close"
+                        aria-label="Закрыть меню"
+                        onClick={() => setMobileMenuOpen(false)}
+                      >
+                        <X size={20} />
+                      </button>
+                    </div>
+
+                    <div className="mobile-drawer-nav">
+                      <GoalsMenu userId={user.id} api={api} mobile />
+                      <NavLink
+                        to="/statistics"
+                        className="mobile-drawer-link"
+                        onClick={() => setMobileMenuOpen(false)}
+                        data-tone="mint"
+                      >
+                        <ChartNoAxesCombined size={20} />
+                        <span>Статистика</span>
+                      </NavLink>
+                      <NavLink
+                        to="/resumes"
+                        className="mobile-drawer-link"
+                        onClick={() => setMobileMenuOpen(false)}
+                        data-tone="violet"
+                      >
+                        <FileText size={20} />
+                        <span>Резюме</span>
+                      </NavLink>
+                      <NavLink
+                        to="/proposals"
+                        className="mobile-drawer-link"
+                        onClick={() => setMobileMenuOpen(false)}
+                        data-tone="amber"
+                      >
+                        <GitCompareArrows size={20} />
+                        <span>Предложения</span>
+                        {pending.length > 0 && (
+                          <span className="nav-count">{pending.length}</span>
+                        )}
+                      </NavLink>
+                      <NavLink
+                        to="/settings"
+                        className="mobile-drawer-link"
+                        onClick={() => setMobileMenuOpen(false)}
+                        data-tone="blue"
+                      >
+                        <Settings size={20} />
+                        <span>Настройки</span>
+                      </NavLink>
+                      <NavLink
+                        to="/whats-new"
+                        className="mobile-drawer-link"
+                        onClick={() => setMobileMenuOpen(false)}
+                      >
+                        <Sparkles size={20} />
+                        <span>
+                          <WhatsNewLabel userId={user.id} />
+                        </span>
+                      </NavLink>
+                      <Link
+                        to="/privacy"
+                        className="mobile-drawer-link"
+                        onClick={() => setMobileMenuOpen(false)}
+                      >
+                        <ShieldCheck size={20} />
+                        <span>Конфиденциальность</span>
+                      </Link>
+                    </div>
+
+                    {!personal && pwa.isInstallable && (
+                      <div className="mobile-drawer-pwa">
+                        <PwaInstallPrompt pwa={pwa} />
+                      </div>
+                    )}
+
+                    <div className="mobile-drawer-footer">
+                      <div className="mobile-drawer-theme-row">
+                        <span>Тема оформления</span>
+                        <ThemeButton />
+                      </div>
+                      <button
+                        type="button"
+                        className="mobile-drawer-logout-btn"
+                        onClick={() => {
+                          setMobileMenuOpen(false);
+                          setConfirmLogout(true);
+                        }}
+                      >
+                        <LogOut size={16} />
+                        <span>Выйти из аккаунта</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>,
+                document.body,
+              )}
           </nav>
           <div className="sidebar-footer">
             <RowActionHint
@@ -1160,6 +1441,8 @@ function PageHeader({
   logo?: ReactNode;
   children?: ReactNode;
 }) {
+  const { openMobileMenu, data } = useApp();
+  const pendingCount = data?.proposals?.filter((p) => p.status === "pending").length ?? 0;
   return (
     <header className="page-header">
       <div className={logo ? "page-header-with-logo" : undefined}>
@@ -1171,9 +1454,16 @@ function PageHeader({
         </div>
       </div>
       <div className="actions">
-        <span className="mobile-theme">
-          <ThemeButton />
-        </span>
+        <button
+          type="button"
+          className="icon-button mobile-burger-btn"
+          onClick={openMobileMenu}
+          aria-label="Открыть меню"
+          title="Открыть меню"
+        >
+          <Menu size={18} />
+          {pendingCount > 0 && <span className="nav-count">{pendingCount}</span>}
+        </button>
         {children}
       </div>
     </header>
@@ -1322,7 +1612,6 @@ function Dashboard() {
           <small>{user.timezone}</small>
         </div>
       </section>
-      <DailyGoal userId={user.id} api={api} />
       <section className="panel quick-access">
         <h2>Быстрый доступ</h2>
         <div className="quick-links">
@@ -2708,13 +2997,14 @@ function Applications({
           )}
           {listState.conflictApp && (
             <div
-              className="conflict"
+              className="conflict conflict-row"
               style={{
                 marginBottom: 16,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
                 gap: 12,
+                flexWrap: "wrap",
               }}
             >
               <div>
@@ -3787,7 +4077,7 @@ function ApplicationDetail() {
           />
         }
       >
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <div className="detail-header-actions">
           {isApplicationStale(a) && (
             <button
               type="button"
@@ -3802,7 +4092,7 @@ function ApplicationDetail() {
           )}
           <button
             type="button"
-            className={`favorite-toggle-btn ${a.favorite ? "active" : ""}`}
+            className={`favorite-toggle-btn ${a.favorite ? "is-favorite active" : ""}`}
             aria-label={a.favorite ? "Удалить из избранного" : "Добавить в избранное"}
             title={a.favorite ? "Удалить из избранного" : "Добавить в избранное"}
             onClick={handleDetailToggleFavorite}
@@ -3819,13 +4109,14 @@ function ApplicationDetail() {
       )}
       {detailConflict && (
         <div
-          className="conflict"
+          className="conflict conflict-row"
           style={{
             marginBottom: 16,
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
             gap: 12,
+            flexWrap: "wrap",
           }}
         >
           <div>

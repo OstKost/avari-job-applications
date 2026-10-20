@@ -50,6 +50,17 @@ test("landing: real previews, navigation, mobile and independent palette", async
   await expect(
     page.getByRole("heading", { name: "Следующие шаги перед глазами" }),
   ).toBeVisible();
+  await page.getByRole("button", { name: "Следующий скриншот", exact: true }).click();
+  await expect(page.getByRole("tabpanel")).toHaveAttribute("id", "preview-panel-extension-save");
+  await expect(page.getByRole("tabpanel").locator("img")).toHaveCount(2);
+  await page.getByRole("button", { name: "Следующий скриншот", exact: true }).click();
+  await expect(page.getByRole("tabpanel")).toHaveAttribute("id", "preview-panel-extension-track");
+  await expect(page.getByRole("tabpanel").locator("img")).toHaveCount(2);
+  await page.getByRole("button", { name: "Следующий скриншот", exact: true }).click();
+  await expect(journal).toHaveAttribute("aria-selected", "true");
+  await page.getByRole("tab", { name: "План дня", exact: true }).click();
+  await expect(page.getByRole("tabpanel")).toHaveAttribute("id", "preview-panel-dashboard");
+  await expect(page.getByRole("link", { name: "Открыть бота" })).toHaveAttribute("href", "https://t.me/AvariJobsBot");
   await page.screenshot({
     path: "test-results/landing-desktop.png",
     fullPage: true,
@@ -91,8 +102,8 @@ test("landing: real previews, navigation, mobile and independent palette", async
   ).toBeVisible();
   await expect(
     page.getByLabel("Подтвердите пароль", { exact: true }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Вход", exact: true }).click();
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Уже есть аккаунт? Войти", exact: true }).click();
   await page
     .getByRole("button", { name: "Забыли пароль?", exact: true })
     .click();
@@ -144,7 +155,7 @@ test("landing: direct login reload, reduced motion and registration mode", async
   await expect(
     page.getByRole("heading", { name: "Создать аккаунт", exact: true }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Вход", exact: true }).click();
+  await page.getByRole("button", { name: "Уже есть аккаунт? Войти", exact: true }).click();
   await expect(page).toHaveURL(/\/login$/);
   await expect(
     page.getByRole("heading", { name: "Вход в Avari.Jobs", exact: true }),
@@ -176,6 +187,16 @@ test("landing: direct login reload, reduced motion and registration mode", async
     "animation-name",
     "landing-screen-in",
   );
+
+  // Verify that the tab countdown timer progresses and switches tab after 7 seconds
+  await expect(page.locator(".landing-tab-timer")).toBeVisible();
+  const activeTabInitial = page.locator('.landing-preview-tabs button[aria-selected="true"]');
+  await expect(activeTabInitial).toHaveAttribute("id", "preview-tab-journal");
+  // Fast forward or wait for the automatic switch to the second tab (calendar)
+  await expect(
+    page.locator('.landing-preview-tabs button[aria-selected="true"]'),
+  ).toHaveAttribute("id", "preview-tab-calendar", { timeout: 10000 });
+
   await page.goto("/extension");
   await page
     .getByRole("link", { name: "Войти в Avari.Jobs", exact: true })
