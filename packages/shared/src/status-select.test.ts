@@ -115,6 +115,31 @@ describe("colored status select", () => {
 });
 
 describe("BadgeDropdown", () => {
+  it("selects a group and clears it using custom items", async () => {
+    const { BadgeDropdown } = await import("./ui");
+    const div = document.createElement("div");
+    document.body.append(div);
+    const testRoot = createRoot(div);
+    const onChange = vi.fn();
+    act(() => testRoot.render(createElement(BadgeDropdown, {
+      value: "IT", items: { "": "Без группы", IT: "IT", Remote: "Удалёнка" },
+      "aria-label": "Группа", onChange,
+    })));
+    const trigger = div.querySelector<HTMLButtonElement>("button")!;
+    expect(trigger.textContent).toBe("IT");
+    act(() => trigger.click());
+    const choose = (value: string) => document.querySelector<HTMLButtonElement>(
+      `[role="menuitemradio"][data-value="${value}"]`,
+    )!;
+    act(() => choose("Remote").click());
+    expect(onChange).toHaveBeenLastCalledWith("Remote");
+    act(() => trigger.click());
+    act(() => choose("").click());
+    expect(onChange).toHaveBeenLastCalledWith("");
+    act(() => testRoot.unmount());
+    div.remove();
+  });
+
   it("renders resting badge without permanent arrow and opens on click", async () => {
     const { BadgeDropdown } = await import("./ui");
     const div = document.createElement("div");

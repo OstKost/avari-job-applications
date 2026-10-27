@@ -2425,11 +2425,7 @@ function SpotlightFilterDropdown({
   );
 }
 
-function Applications({
-  favoriteOnly = false,
-}: {
-  favoriteOnly?: boolean;
-}) {
+function Applications({ favoriteOnly = false }: { favoriteOnly?: boolean }) {
   const { user, data, refresh, editApplication } = useApp();
   const listState = useApplicationList({
     user,
@@ -2516,6 +2512,19 @@ function Applications({
     groupOptions.find((opt) => opt.value === listState.grouping) ??
     groupOptions[0];
 
+  const renderGroup = (a: Application) => (
+    <BadgeDropdown
+      value={a.groups?.[0] ?? ""}
+      items={Object.fromEntries([
+        ["", "Без группы"],
+        ...listState.vacancyGroups.map((group) => [group, group]),
+      ])}
+      aria-label={"Группа: " + a.company}
+      disabled={listState.savingIds.has(a.id)}
+      onChange={(value) => listState.handleGroupChange(a, value)}
+    />
+  );
+
   const renderRow = (a: Application) => {
     const task = listState.next(a.id);
     const site = a.url ? jobSite(a.url) : undefined;
@@ -2574,13 +2583,9 @@ function Applications({
             <span className="company-salary" title={salaryLabel(a)}>
               {salaryLabel(a).split(" в ")[0].split(" за ")[0] || "—"}
             </span>
-            {!!(a.groups?.length || a.tags?.length) && (
+            {
               <div className="company-taxonomy">
-                {!!a.groups?.length && (
-                  <span title={a.groups.join(" · ")}>
-                    {a.groups.join(" · ")}
-                  </span>
-                )}
+                {renderGroup(a)}
                 {!!a.tags?.length && (
                   <span
                     className="company-tags"
@@ -2594,7 +2599,7 @@ function Applications({
                   </span>
                 )}
               </div>
-            )}
+            }
           </div>
         </td>
         <td>
@@ -2765,11 +2770,9 @@ function Applications({
           {[a.location, a.workFormat].filter(Boolean).join(" · ") ||
             "Локация не указана"}
         </div>
-        {!!(a.groups?.length || a.tags?.length) && (
+        {
           <div className="company-taxonomy">
-            {!!a.groups?.length && (
-              <span title={a.groups.join(" · ")}>{a.groups.join(" · ")}</span>
-            )}
+            {renderGroup(a)}
             {!!a.tags?.length && (
               <span
                 className="company-tags"
@@ -2783,7 +2786,7 @@ function Applications({
               </span>
             )}
           </div>
-        )}
+        }
         <div className="application-card-task">
           <small>Ближайшее действие</small>
           <span>{task ? task.title : "Не запланировано"}</span>

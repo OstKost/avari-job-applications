@@ -487,12 +487,14 @@ export function StaleActionModal({
 export function BadgeDropdown({
   value,
   kind = "stage",
+  items: customItems,
   onChange,
   disabled = false,
   "aria-label": ariaLabel,
 }: {
   value: string;
   kind?: "stage" | "state";
+  items?: Record<string, string>;
   onChange: (nextValue: string) => void;
   disabled?: boolean;
   "aria-label"?: string;
@@ -501,12 +503,14 @@ export function BadgeDropdown({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const menuId = useId();
-  const items = kind === "state" ? states : stages;
+  const items = customItems ?? (kind === "state" ? states : stages);
   const options = Object.entries(items);
 
-  const [coords, setCoords] = useState<{ top: number; left: number; maxHeight: number } | null>(
-    null,
-  );
+  const [coords, setCoords] = useState<{
+    top: number;
+    left: number;
+    maxHeight: number;
+  } | null>(null);
 
   const updateCoords = () => {
     if (!triggerRef.current) return;
@@ -516,7 +520,11 @@ export function BadgeDropdown({
 
     // Measure actual menu dimensions if mounted, else estimate defaults
     const menuEl = menuRef.current;
-    const menuHeight = menuEl ? menuEl.offsetHeight : (kind === "stage" ? 220 : 130);
+    const menuHeight = menuEl
+      ? menuEl.offsetHeight
+      : kind === "stage"
+        ? 220
+        : 130;
     const menuWidth = menuEl ? menuEl.offsetWidth : 180;
 
     const spaceBelow = viewportHeight - rect.bottom - 8;
@@ -527,7 +535,10 @@ export function BadgeDropdown({
 
     const top = placeAbove
       ? Math.max(8, rect.top - Math.min(menuHeight, maxHeight) - 4)
-      : Math.min(viewportHeight - Math.min(menuHeight, maxHeight) - 8, rect.bottom + 4);
+      : Math.min(
+          viewportHeight - Math.min(menuHeight, maxHeight) - 8,
+          rect.bottom + 4,
+        );
 
     const left = Math.max(
       8,
@@ -616,7 +627,11 @@ export function BadgeDropdown({
           }
         }}
       >
-        <Badge value={value} kind={kind} />
+        {customItems ? (
+          <span className="badge">{items[value] ?? value}</span>
+        ) : (
+          <Badge value={value} kind={kind} />
+        )}
       </button>
 
       {open &&
@@ -691,7 +706,11 @@ export function BadgeDropdown({
                     close();
                   }}
                 >
-                  <Badge value={k} kind={kind} />
+                  {customItems ? (
+                    <span className="badge">{label}</span>
+                  ) : (
+                    <Badge value={k} kind={kind} />
+                  )}
                   {isSelected && <Check size={16} />}
                 </button>
               );

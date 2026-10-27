@@ -10,6 +10,8 @@ permissions:
   contents: read
 jobs:
   publish:
+    # Temporarily paused: do not submit browser extensions, including manual runs.
+    if: ${{ false }}
     runs-on: ubuntu-latest
     environment: firefox-amo
     concurrency:

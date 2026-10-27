@@ -56,7 +56,6 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:
-      actions: write
       contents: write
       packages: write
     environment: production
@@ -207,8 +206,3 @@ jobs:
               json.dump({'tag': os.environ['GITHUB_REF_NAME'], 'commit': os.environ['GITHUB_SHA'], 'digest': os.environ['IMAGE_DIGEST']}, output)
           PY
           gh release upload "$GITHUB_REF_NAME" dist/deployed.json --clobber
-      - name: Queue Chrome submission when enabled
-        if: vars.CHROME_AUTO_PUBLISH == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh workflow run chrome-publish.yml --ref main -f tag="$GITHUB_REF_NAME"

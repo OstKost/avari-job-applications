@@ -543,6 +543,46 @@ describe("useApplicationList hook integration", () => {
     );
   });
 
+  it("changes and clears groups, retrying only the group after a conflict", async () => {
+    const original = mockApps[0];
+    const server = {
+      ...original,
+      version: 3,
+      company: "Concurrent company",
+      stage: "offer",
+    };
+    const apiMock = vi
+      .fn()
+      .mockRejectedValueOnce(new APIError(409, "Conflict", server));
+    renderHook({ api: apiMock, applications: [original] });
+    await act(async () => {
+      await hookResult.handleGroupChange(original, "Remote");
+    });
+    apiMock.mockResolvedValue({});
+    await act(async () => {
+      await hookResult.retryConflict();
+    });
+    expect(apiMock).toHaveBeenLastCalledWith(
+      "/applications/" + original.id,
+      "PUT",
+      {
+        ...server,
+        groups: ["Remote"],
+      },
+    );
+    await act(async () => {
+      await hookResult.handleGroupChange(original, "");
+    });
+    expect(apiMock).toHaveBeenLastCalledWith(
+      "/applications/" + original.id,
+      "PUT",
+      {
+        ...original,
+        groups: [],
+      },
+    );
+  });
+
   it("sparse retry for favorite preserves server version and concurrent changes", async () => {
     const originalApp = { ...mockApps[0], favorite: false, version: 1 };
     const serverApp: Application = {

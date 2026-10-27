@@ -455,20 +455,24 @@ export function useApplicationList({
     local: Application;
     server: Application;
     patch?: {
-      type: "stage" | "state" | "favorite";
+      type: "stage" | "state" | "favorite" | "groups";
+      groups?: string[];
       stage?: string;
       state?: string;
       outcome?: string;
       favorite?: boolean;
     };
   } | null>(null);
-  const [outcomeModalApp, setOutcomeModalApp] = useState<Application | null>(null);
+  const [outcomeModalApp, setOutcomeModalApp] = useState<Application | null>(
+    null,
+  );
   const [staleModalApp, setStaleModalApp] = useState<Application | null>(null);
 
   const saveApplication = async (
     updated: Application,
     patchIntent?: {
-      type: "stage" | "state" | "favorite";
+      type: "stage" | "state" | "favorite" | "groups";
+      groups?: string[];
       stage?: string;
       state?: string;
       outcome?: string;
@@ -488,7 +492,11 @@ export function useApplicationList({
         // Retain server version, do not blindly overwrite, refresh queries
         const serverApp = err.current as Application | undefined;
         if (serverApp) {
-          setConflictApp({ local: updated, server: serverApp, patch: patchIntent });
+          setConflictApp({
+            local: updated,
+            server: serverApp,
+            patch: patchIntent,
+          });
           setOutcomeModalApp((current) =>
             current && current.id === serverApp.id ? serverApp : current,
           );
@@ -515,6 +523,20 @@ export function useApplicationList({
         { ...a, stage: newStage, appliedDate },
         { type: "stage", stage: newStage },
       );
+    } catch {
+      /* error captured in saveError state */
+    }
+  };
+
+  const handleGroupChange = async (a: Application, group: string) => {
+    const groups = group ? [group] : [];
+    if (
+      JSON.stringify(a.groups ?? []) === JSON.stringify(groups) ||
+      savingIdsRef.current.has(a.id)
+    )
+      return;
+    try {
+      await saveApplication({ ...a, groups }, { type: "groups", groups });
     } catch {
       /* error captured in saveError state */
     }
@@ -587,7 +609,11 @@ export function useApplicationList({
 
   const creatingTaskRef = useRef(false);
 
-  const handleStaleCreateTask = async (task: { title: string; date: string; time: string }) => {
+  const handleStaleCreateTask = async (task: {
+    title: string;
+    date: string;
+    time: string;
+  }) => {
     if (!staleModalApp || creatingTaskRef.current) return;
     creatingTaskRef.current = true;
     const app = staleModalApp;
@@ -692,8 +718,9 @@ export function useApplicationList({
         // Sparse stage update: preserve concurrent server changes to favorite, state, outcome, contact, salary, etc.
         // appliedDate auto-fill is derived: preserve latest nonempty server appliedDate; fill only if current still empty
         const appliedDate =
-          (serverApp.stage === "saved" || !serverApp.appliedDate) && patch.stage !== "saved"
-            ? (serverApp.appliedDate || dateToday(user.timezone))
+          (serverApp.stage === "saved" || !serverApp.appliedDate) &&
+          patch.stage !== "saved"
+            ? serverApp.appliedDate || dateToday(user.timezone)
             : serverApp.appliedDate;
         patchFields = {
           stage: patch.stage,
@@ -705,6 +732,8 @@ export function useApplicationList({
           state: patch.state,
           outcome: patch.outcome ?? (patch.state === "closed" ? conflictApp.local.outcome : ""),
         };
+      } else if (patch.type === "groups" && patch.groups !== undefined) {
+        patchFields = { groups: patch.groups };
       } else if (patch.type === "favorite" && patch.favorite !== undefined) {
         // Sparse favorite update
         patchFields = {
@@ -732,6 +761,7 @@ export function useApplicationList({
     staleModalApp,
     setStaleModalApp,
     handleStageChange,
+    handleGroupChange,
     handleStateChange,
     handleConfirmOutcome,
     handleCancelOutcome,
