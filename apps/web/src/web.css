@@ -332,6 +332,16 @@ h2 {
   background: color-mix(in srgb, #f87171 13%, transparent);
   border: 1px solid color-mix(in srgb, #f87171 28%, transparent);
 }
+/* Groups (Группы) */
+.badge-group {
+  background: color-mix(in srgb, currentColor 13%, transparent);
+  border: 1px solid color-mix(in srgb, currentColor 28%, transparent);
+}
+.badge-group-none {
+  color: var(--muted);
+  background: color-mix(in srgb, var(--muted) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+}
 
 /* Stages (Этапы) */
 .badge-saved {
@@ -412,6 +422,15 @@ h2 {
   color: #15803d;
   background: #dcfce7;
   border-color: #bbf7d0;
+}
+:root[data-theme="light"] .badge-group {
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  border-color: color-mix(in srgb, currentColor 30%, transparent);
+}
+:root[data-theme="light"] .badge-group-none {
+  color: var(--muted);
+  background: color-mix(in srgb, var(--muted) 8%, transparent);
+  border-color: var(--line);
 }
 @keyframes hero-pulse-glow {
   0%,
@@ -3392,9 +3411,12 @@ i.interview {
     color 160ms ease;
 }
 @media (hover: hover) and (pointer: fine) {
-  .main button:hover:not(:disabled),
+  .main button:hover:not(:disabled):not(.badge-dropdown-trigger),
   .group-chips button:hover {
     transform: translateY(-1px);
+  }
+  .main .badge-dropdown-trigger:hover {
+    transform: none !important;
   }
   .main .metric-card:hover,
   .main .application-card:hover,
@@ -3408,9 +3430,12 @@ i.interview {
     color 150ms ease,
     filter 150ms ease;
 }
-.main button:active:not(:disabled),
+.main button:active:not(:disabled):not(.badge-dropdown-trigger),
 .group-chips button:active {
   transform: scale(0.98);
+}
+.main .badge-dropdown-trigger:active {
+  transform: none !important;
 }
 @media (prefers-reduced-motion: reduce) {
   .page-transition {

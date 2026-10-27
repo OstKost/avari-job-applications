@@ -118,6 +118,7 @@ import {
   jobSite,
   jobSitesLabel,
   tagColorIndex,
+  groupColorIndex,
   tagLabel,
   pluralTasks,
   pluralApplications,
@@ -2516,6 +2517,7 @@ function Applications({ favoriteOnly = false }: { favoriteOnly?: boolean }) {
   const renderGroup = (a: Application) => (
     <BadgeDropdown
       value={a.groups?.[0] ?? ""}
+      kind="group"
       items={Object.fromEntries([
         ["", "Без группы"],
         ...listState.vacancyGroups.map((group) => [group, group]),
@@ -4189,7 +4191,10 @@ function ApplicationDetail() {
       <div className="detail-meta-row">
         <div className="detail-badges">
           {(a.groups ?? []).map((group) => (
-            <span className="count-chip" key={group}>
+            <span
+              className={`count-chip badge-group tag-color-${groupColorIndex(group)}`}
+              key={group}
+            >
               {group}
             </span>
           ))}

@@ -117,6 +117,7 @@ describe("colored status select", () => {
 describe("BadgeDropdown", () => {
   it("selects a group and clears it using custom items", async () => {
     const { BadgeDropdown } = await import("./ui");
+    const { groupColorIndex } = await import("./index");
     const div = document.createElement("div");
     document.body.append(div);
     const testRoot = createRoot(div);
@@ -127,10 +128,13 @@ describe("BadgeDropdown", () => {
     })));
     const trigger = div.querySelector<HTMLButtonElement>("button")!;
     expect(trigger.textContent).toBe("IT");
+    expect(trigger.querySelector(`.badge-group.tag-color-${groupColorIndex("IT")}`)).not.toBeNull();
     act(() => trigger.click());
     const choose = (value: string) => document.querySelector<HTMLButtonElement>(
       `[role="menuitemradio"][data-value="${value}"]`,
     )!;
+    expect(choose("Remote").querySelector(`.badge-group.tag-color-${groupColorIndex("Remote")}`)).not.toBeNull();
+    expect(choose("").querySelector(".badge-group-none")).not.toBeNull();
     act(() => choose("Remote").click());
     expect(onChange).toHaveBeenLastCalledWith("Remote");
     act(() => trigger.click());
@@ -182,6 +186,14 @@ describe("BadgeDropdown", () => {
 
     act(() => testRoot.unmount());
     div.remove();
+  });
+
+  it("computes stable color index from group name hash", async () => {
+    const { groupColorIndex } = await import("./index");
+    expect(groupColorIndex("")).toBe(0);
+    expect(groupColorIndex("IT")).toBe(groupColorIndex("it"));
+    expect(groupColorIndex("Frontend")).toBeGreaterThanOrEqual(0);
+    expect(groupColorIndex("Frontend")).toBeLessThan(16);
   });
 });
 

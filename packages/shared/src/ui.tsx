@@ -44,6 +44,7 @@ import {
   dateLabel,
   sortTasks,
   companyColorIndex,
+  groupColorIndex,
   tagColorIndex,
   tagLabel,
   companyInitials,
@@ -175,6 +176,16 @@ export function Badge({
   value: string;
   kind?: string;
 }) {
+  if (kind === "group") {
+    if (!value) {
+      return <span className="badge badge-group-none">Без группы</span>;
+    }
+    return (
+      <span className={`badge badge-group tag-color-${groupColorIndex(value)}`}>
+        {value}
+      </span>
+    );
+  }
   return (
     <span className={`badge badge-${kind} badge-${value}`}>
       {displayValue(kind, value)}
@@ -493,7 +504,7 @@ export function BadgeDropdown({
   "aria-label": ariaLabel,
 }: {
   value: string;
-  kind?: "stage" | "state";
+  kind?: "stage" | "state" | "group";
   items?: Record<string, string>;
   onChange: (nextValue: string) => void;
   disabled?: boolean;
@@ -628,7 +639,17 @@ export function BadgeDropdown({
         }}
       >
         {customItems ? (
-          <span className="badge">{items[value] ?? value}</span>
+          value ? (
+            <span
+              className={`badge badge-group tag-color-${groupColorIndex(value)}`}
+            >
+              {items[value] ?? value}
+            </span>
+          ) : (
+            <span className="badge badge-group-none">
+              {items[value] ?? "Без группы"}
+            </span>
+          )
         ) : (
           <Badge value={value} kind={kind} />
         )}
@@ -710,7 +731,15 @@ export function BadgeDropdown({
                   }}
                 >
                   {customItems ? (
-                    <span className="badge">{label}</span>
+                    k ? (
+                      <span
+                        className={`badge badge-group tag-color-${groupColorIndex(k)}`}
+                      >
+                        {label}
+                      </span>
+                    ) : (
+                      <span className="badge badge-group-none">{label}</span>
+                    )
                   ) : (
                     <Badge value={k} kind={kind} />
                   )}

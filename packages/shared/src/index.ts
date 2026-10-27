@@ -365,6 +365,11 @@ export function tagColorIndex(tag: string): number {
   return companyColorIndex(tag.trim().replace(/^#+/, "").normalize("NFC"), 16);
 }
 
+/** Stable palette index for vacancy groups based on name hash. */
+export function groupColorIndex(group: string): number {
+  return companyColorIndex((group || "").trim().normalize("NFC"), 16);
+}
+
 export function tagLabel(tag: string): string {
   return "#" + tag.trim().replace(/^#+/, "");
 }
