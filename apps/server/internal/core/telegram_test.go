@@ -877,7 +877,7 @@ func TestTelegramClientKindUpgrade(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if _, e = s.DB.Exec("ALTER TABLE telegram_challenges DROP COLUMN client_kind; DELETE FROM schema_migrations WHERE version=13"); e != nil {
+	if _, e = s.DB.Exec("ALTER TABLE telegram_challenges DROP COLUMN client_kind; DELETE FROM schema_migrations WHERE version>=13"); e != nil {
 		t.Fatal(e)
 	}
 	path := s.Path

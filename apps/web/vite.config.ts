@@ -117,6 +117,7 @@ export default defineConfig({
   ],
   server: {
     proxy: {
+      "/mcp": { target: "http://127.0.0.1:47831", changeOrigin: true, headers: { Host: "localhost:47831", Origin: "http://localhost:47831" } },
       "/api": {
         target: "http://127.0.0.1:47831",
         changeOrigin: true,

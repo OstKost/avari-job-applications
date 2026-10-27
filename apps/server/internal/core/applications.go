@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-func sourceOK(source string) bool { return oneOf(source, "manual", "extension", "telegram") }
+func sourceOK(source string) bool { return oneOf(source, "manual", "extension", "telegram", "mcp") }
 func (s *Store) SaveApplication(user string, a Application, idempotency, source string) (Application, error) {
 	var result Application
 	e := s.transaction(func(tx *sql.Tx) error {

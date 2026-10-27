@@ -274,6 +274,9 @@ func (s *Store) Admin(action, user, password string) error {
 			}
 		}
 		if oneOf(action, "block", "reset_password") {
+			if _, e := tx.Exec("DELETE FROM mcp_tokens WHERE user_id=?", user); e != nil {
+				return e
+			}
 			if _, e := tx.Exec("DELETE FROM calendar_subscriptions WHERE user_id=?", user); e != nil {
 				return e
 			}
@@ -328,6 +331,9 @@ func (s *Store) ChangePassword(userID, currentPassword, newPassword, currentSess
 			if _, e := tx.Exec("DELETE FROM sessions WHERE user_id=? AND id!=?", userID, currentSessionID); e != nil {
 				return e
 			}
+		}
+		if _, e := tx.Exec("DELETE FROM mcp_tokens WHERE user_id=?", userID); e != nil {
+			return e
 		}
 		return audit(tx, "change_password", userID, "Пароль изменён пользователем")
 	})
@@ -401,6 +407,9 @@ func (s *Store) ApprovePasswordReset(requestID string) error {
 			return e
 		}
 		if _, e := tx.Exec("DELETE FROM sessions WHERE user_id=?", userID); e != nil {
+			return e
+		}
+		if _, e := tx.Exec("DELETE FROM mcp_tokens WHERE user_id=?", userID); e != nil {
 			return e
 		}
 		if _, e := tx.Exec("DELETE FROM calendar_subscriptions WHERE user_id=?", userID); e != nil {

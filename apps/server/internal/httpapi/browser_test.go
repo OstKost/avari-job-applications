@@ -24,7 +24,7 @@ func TestBrowser(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer store.Close()
-	for _, email := range []string{"browser@example.com", "extension@example.com", "features@example.com", "statistics@example.com", "autofill@example.com", "telegram@example.com", "telegram-login@example.com"} {
+	for _, email := range []string{"mcp-browser@example.com", "browser@example.com", "extension@example.com", "features@example.com", "statistics@example.com", "autofill@example.com", "telegram@example.com", "telegram-login@example.com"} {
 		u, e := store.Register(email, "browser-test-password", "Europe/Moscow")
 		if e != nil {
 			t.Fatal(e)

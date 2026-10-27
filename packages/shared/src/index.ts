@@ -17,6 +17,7 @@ export type ReleaseNote = components["schemas"]["ReleaseNote"];
 export type LocalSettings = components["schemas"]["LocalSettings"];
 export type TelegramChallenge = components["schemas"]["TelegramChallenge"];
 export type User = components["schemas"]["User"];
+export type MCPToken = components["schemas"]["MCPToken"];
 export type Session = components["schemas"]["Session"];
 export type Salary = components["schemas"]["Salary"];
 export type Application = Omit<

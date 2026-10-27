@@ -76,6 +76,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/auth/recovery", s.recovery)
 	mux.HandleFunc("GET /api/v1/calendar/feed/{token}", s.calendarFeed)
 	mux.HandleFunc("GET /api/v1/extension/download/{token}/avari-extension.zip", s.extensionDownload)
+	mux.Handle("/mcp", s.mcpHandler())
 	mux.Handle("/api/v1/", s.auth(http.HandlerFunc(s.api)))
 	if s.Assets != nil {
 		mux.Handle("/", http.HandlerFunc(s.static))

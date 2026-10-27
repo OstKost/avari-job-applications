@@ -33,6 +33,8 @@ func (s *Server) api(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	switch {
+	case p == "mcp/tokens" || strings.HasPrefix(p, "mcp/tokens/"):
+		s.mcpTokensAPI(w, r, who)
 	case p == "telegram" || strings.HasPrefix(p, "telegram/"):
 		s.telegramAPI(w, r, who)
 	case p == "vacancies/preview" && method == "POST":

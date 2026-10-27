@@ -6544,3 +6544,11 @@ button.goals-menu-trigger.mobile-drawer-link.active { background: var(--panel-2)
 .sidebar-desktop-nav > .nav-section:nth-of-type(2) {
   margin-top: 20px;
 }
+
+/* MCP connection setup follows the settings panel layout. */
+.mcp-settings h3 { margin: 24px 0 12px; }
+.mcp-token-form { display: grid; gap: 12px; margin: 18px 0; }
+.mcp-token-form button { justify-self: start; }
+.mcp-settings pre { padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); white-space: pre; }
+.mcp-settings .session > div { min-width: 0; overflow-wrap: anywhere; }
+.mcp-settings .session button { flex-shrink: 0; }

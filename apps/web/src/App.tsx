@@ -1,3 +1,4 @@
+import { MCPSettings } from "./MCPSettings";
 import { Auth } from "./Auth";
 import { Brand } from "./Brand";
 import { Landing } from "./Landing";
@@ -4492,7 +4493,7 @@ function ApplicationDetail() {
                       hour: "2-digit",
                       minute: "2-digit",
                     })}{" "}
-                    · {e.source === "telegram" ? "Telegram" : e.source === "extension" ? "Расширение" : "Вручную"}
+                    · {e.source === "mcp" ? "MCP" : e.source === "telegram" ? "Telegram" : e.source === "extension" ? "Расширение" : "Вручную"}
                   </small>
                   {Object.entries(e.changes)
                     .filter(([k]) => k !== "noteId")
@@ -5112,7 +5113,7 @@ function SettingsPage() {
     }
   };
   const [activeTab, setActiveTab] = useState<
-    "general" | "calendar" | "fields" | "extension" | "transfer"
+    "general" | "calendar" | "fields" | "extension" | "transfer" | "mcp"
   >("general");
   useEffect(() => {
     if (settingsLocation.hash === "#updates") setActiveTab("general");
@@ -5186,6 +5187,9 @@ function SettingsPage() {
           <Download size={15} />
           Импорт и экспорт
         </button>
+        <button type="button" role="tab" aria-selected={activeTab === "mcp"} className={activeTab === "mcp" ? "active" : ""} onClick={() => setActiveTab("mcp")}>
+          <Monitor size={15} /> MCP / Codex
+        </button>
       </div>
       <div className="settings">
         <ErrorBox error={error} />
@@ -5195,6 +5199,7 @@ function SettingsPage() {
           </div>
         )}
         <div key={activeTab} className="settings-tab-pane">
+          {activeTab === "mcp" && <MCPSettings api={api} />}
           {activeTab === "transfer" && (
             <TransferPanel
               user={user}

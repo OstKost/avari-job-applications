@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-const SchemaVersion = 13
+const SchemaVersion = 14
 
 type Store struct {
 	DB   *sql.DB
@@ -224,7 +224,7 @@ CREATE TABLE IF NOT EXISTS push_outbox(
   UNIQUE(subscription_id, local_date, digest_type)
 );
 CREATE INDEX IF NOT EXISTS push_outbox_claim ON push_outbox(status, next_attempt_at, leased_until);
-CREATE INDEX IF NOT EXISTS push_outbox_user ON push_outbox(user_id);`, telegramMigration, `ALTER TABLE telegram_challenges ADD COLUMN client_kind TEXT NOT NULL DEFAULT 'web' CHECK(client_kind IN ('web','extension'));`}
+CREATE INDEX IF NOT EXISTS push_outbox_user ON push_outbox(user_id);`, telegramMigration, `ALTER TABLE telegram_challenges ADD COLUMN client_kind TEXT NOT NULL DEFAULT 'web' CHECK(client_kind IN ('web','extension'));`, mcpMigration}
 	for i, migration := range migrations {
 		if i+1 <= version {
 			continue

@@ -589,6 +589,42 @@ operation(
 operation("/me", "get", "Account, including pending/blocked status", "User");
 schemas.Timezone = object({ timezone: s });
 operation("/me", "put", "Set calendar timezone", "User", "Timezone");
+schemas.MCPToken = object({
+  id: s,
+  name: s,
+  createdAt: stamp,
+  expiresAt: stamp,
+  lastUsedAt: s,
+});
+schemas.MCPTokenRequest = object({
+  name: { ...s, minLength: 1, maxLength: 200 },
+});
+schemas.MCPTokenCreated = object({ token: ref("MCPToken"), secret: s });
+operation(
+  "/mcp/tokens",
+  "get",
+  "List own MCP tokens (website only)",
+  array(ref("MCPToken")),
+);
+operation(
+  "/mcp/tokens",
+  "post",
+  "Create a 90-day MCP token (secret shown once)",
+  "MCPTokenCreated",
+  "MCPTokenRequest",
+  false,
+  "201",
+);
+operation(
+  "/mcp/tokens/{id}",
+  "delete",
+  "Revoke own MCP token (website only)",
+  "Success",
+);
+for (const path of ["/mcp/tokens", "/mcp/tokens/{id}"]) {
+  for (const op of Object.values(paths[path]))
+    op.security = [{ cookieAuth: [] }];
+}
 operation("/sessions", "get", "List own sessions", array(ref("Session")));
 operation("/sessions/{id}", "delete", "Revoke own session", "Success");
 operation(
