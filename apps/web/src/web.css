@@ -3788,7 +3788,8 @@ button.primary:disabled::after {
   background: color-mix(in srgb, var(--bg) 30%, var(--panel));
   overflow-x: auto;
   scrollbar-width: thin;
-  max-width: 850px;
+  scrollbar-color: color-mix(in srgb, var(--accent) 70%, var(--line))
+    color-mix(in srgb, var(--line) 40%, transparent);
 }
 .settings-tabs-bar button {
   flex-shrink: 0;
@@ -4398,24 +4399,25 @@ button.primary:disabled::after {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
-:is(.group-dropdown-menu, .status-select-menu) {
+:is(.group-dropdown-menu, .status-select-menu, .settings-tabs-bar) {
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--accent) 70%, var(--line))
     color-mix(in srgb, var(--line) 40%, transparent);
 }
-:is(.group-dropdown-menu, .status-select-menu)::-webkit-scrollbar {
+:is(.group-dropdown-menu, .status-select-menu, .settings-tabs-bar)::-webkit-scrollbar {
   width: 5px;
+  height: 5px;
 }
-:is(.group-dropdown-menu, .status-select-menu)::-webkit-scrollbar-track {
+:is(.group-dropdown-menu, .status-select-menu, .settings-tabs-bar)::-webkit-scrollbar-track {
   background: color-mix(in srgb, var(--line) 40%, transparent);
   border-radius: 999px;
 }
-:is(.group-dropdown-menu, .status-select-menu)::-webkit-scrollbar-thumb {
+:is(.group-dropdown-menu, .status-select-menu, .settings-tabs-bar)::-webkit-scrollbar-thumb {
   background: color-mix(in srgb, var(--accent) 70%, var(--line));
   border-radius: 999px;
   box-shadow: 0 0 6px color-mix(in srgb, var(--accent) 40%, transparent);
 }
-:is(.group-dropdown-menu, .status-select-menu)::-webkit-scrollbar-thumb:hover {
+:is(.group-dropdown-menu, .status-select-menu, .settings-tabs-bar)::-webkit-scrollbar-thumb:hover {
   background: var(--accent);
 }
 .spotlight-footer {

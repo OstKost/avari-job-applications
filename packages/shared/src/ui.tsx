@@ -525,7 +525,7 @@ export function BadgeDropdown({
       : kind === "stage"
         ? 220
         : 130;
-    const menuWidth = menuEl ? menuEl.offsetWidth : 180;
+    const menuWidth = menuEl ? menuEl.offsetWidth : 120;
 
     const spaceBelow = viewportHeight - rect.bottom - 8;
     const spaceAbove = rect.top - 8;
@@ -648,7 +648,10 @@ export function BadgeDropdown({
               position: "fixed",
               top: `${coords.top}px`,
               left: `${coords.left}px`,
-              minWidth: 160,
+              right: "auto",
+              width: "max-content",
+              minWidth: "unset",
+              maxWidth: "calc(100vw - 16px)",
               maxHeight: `${coords.maxHeight}px`,
               overflowY: "auto",
               zIndex: 99999,

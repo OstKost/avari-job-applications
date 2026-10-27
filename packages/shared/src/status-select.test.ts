@@ -165,9 +165,12 @@ describe("BadgeDropdown", () => {
     expect(trigger.querySelector("svg")).toBeNull();
 
     act(() => trigger.click());
-    // Portal menu opened in document.body
-    const menu = document.querySelector(".badge-dropdown-menu-portal");
+    // Portal menu opened in document.body with content-fitting styles
+    const menu = document.querySelector<HTMLElement>(".badge-dropdown-menu-portal");
     expect(menu).not.toBeNull();
+    expect(menu!.style.width).toBe("max-content");
+    expect(menu!.style.right).toBe("auto");
+    expect(menu!.style.minWidth).toBe("unset");
 
     // Select next stage
     const hrBtn = Array.from(menu!.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')).find(

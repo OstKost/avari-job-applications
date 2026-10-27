@@ -1269,7 +1269,7 @@ tr:hover td {
   min-height: 34px;
 }
 .settings {
-  max-width: 850px;
+  width: 100%;
 }
 .calendar-subscription p {
   margin: 0;
@@ -2035,10 +2035,12 @@ code {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   width: 100%;
   padding: 7px 9px;
   background: transparent;
   border: 1px solid transparent;
+  border-radius: 7px;
   text-align: left;
 }
 .status-select-option:hover,
@@ -2272,6 +2274,13 @@ code {
 }
 .badge-dropdown-menu-portal {
   box-sizing: border-box;
+  right: auto;
+  width: max-content;
+  min-width: unset;
+  max-width: calc(100vw - 16px);
+}
+.badge-dropdown-menu-portal .status-select-option {
+  white-space: nowrap;
 }
 
 /* Stale application indicator */
