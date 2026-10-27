@@ -166,8 +166,21 @@ test.describe("Approved Features E2E Acceptance", () => {
     const row = page.locator("tr.application-data-row", { hasText: testApp.company });
     await expect(row).toBeVisible();
 
+    // Group changes use the same inline menu and persist through the API.
+    await createApiApp(page, "GROUP_SOURCE", { groups: ["Удалёнка"] });
+    await page.reload();
+    const groupTrigger = row.getByRole("button", { name: "Группа: " + testApp.company, exact: true });
+    await groupTrigger.click();
+    await page.getByRole("menuitemradio", { name: "Удалёнка", exact: true }).click();
+    await expect(groupTrigger).toContainText("Удалёнка");
+    const grouped = await (await page.request.get(`/api/v1/applications/${testApp.id}`)).json();
+    expect(grouped.application.groups).toEqual(["Удалёнка"]);
+    await groupTrigger.click();
+    await page.getByRole("menuitemradio", { name: "Без группы", exact: true }).click();
+    await expect(groupTrigger).toContainText("Без группы");
+
     // 1. Stage change to 'applied' sets appliedDate in account timezone (Europe/Moscow)
-    const stageTrigger = row.locator("button.badge-dropdown-trigger").first();
+    const stageTrigger = row.getByRole("button", { name: "Этап", exact: true });
     await stageTrigger.click();
     const stageMenu = page.getByRole("menu");
     await expect(stageMenu).toBeVisible();
@@ -175,14 +188,14 @@ test.describe("Approved Features E2E Acceptance", () => {
     await stageMenu.getByRole("menuitemradio", { name: /Отклик/ }).click();
 
     // Verify row now shows 'Отклик' and date
-    await expect(row.locator("button.badge-dropdown-trigger").first()).toContainText("Отклик");
+    await expect(row.getByRole("button", { name: "Этап", exact: true })).toContainText("Отклик");
     const dateCell = row.locator("td.date-cell");
     await expect(dateCell).toContainText("Отклик");
     const applied = await (await page.request.get(`/api/v1/applications/${testApp.id}`)).json();
     expect(applied.application.appliedDate).toBe(moscowDate());
 
     // 2. State change to 'closed' triggers OutcomeModal
-    const stateTrigger = row.locator("button.badge-dropdown-trigger").nth(1);
+    const stateTrigger = row.getByRole("button", { name: "Состояние", exact: true });
     await stateTrigger.click();
     const stateMenu = page.locator("[role='menu']");
     await expect(stateMenu).toBeVisible();
@@ -195,7 +208,7 @@ test.describe("Approved Features E2E Acceptance", () => {
     // Cancel outcome modal: must be a no-op, state must remain active
     await outcomeModal.getByRole("button", { name: "Отмена", exact: true }).click();
     await expect(outcomeModal).toHaveCount(0);
-    await expect(row.locator("button.badge-dropdown-trigger").nth(1)).toContainText("Активен");
+    await expect(row.getByRole("button", { name: "Состояние", exact: true })).toContainText("Активен");
 
     // Open again, select outcome, and confirm
     await stateTrigger.click();
@@ -206,7 +219,7 @@ test.describe("Approved Features E2E Acceptance", () => {
     await expect(outcomeModal).toHaveCount(0);
 
     // Verify row state is now 'Закрыт'
-    await expect(row.locator("button.badge-dropdown-trigger").nth(1)).toContainText("Закрыт");
+    await expect(row.getByRole("button", { name: "Состояние", exact: true })).toContainText("Закрыт");
   });
 
   test("4. Favorite toggle from table row, card, and detail page into /favorites and removal", async ({
@@ -518,7 +531,7 @@ test.describe("Approved Features E2E Acceptance", () => {
     const row = page.locator("tr.application-data-row", { hasText: testApp.company });
     await expect(row).toBeVisible();
 
-    const trigger = row.locator("button.badge-dropdown-trigger").first();
+    const trigger = row.getByRole("button", { name: "Этап", exact: true });
     await trigger.focus();
     await page.keyboard.press("ArrowDown");
 
