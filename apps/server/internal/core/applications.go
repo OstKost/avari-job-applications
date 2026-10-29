@@ -66,7 +66,7 @@ func (s *Store) saveApplicationTx(tx *sql.Tx, user string, a Application, idempo
 			if a.Version != old.Version {
 				return &Error{Status: 409, Message: "Запись изменилась. Сравните актуальные значения", Current: old}
 			}
-			if a.CompanyLogo == "" && old.CompanyLogo != "" {
+			if source != "mcp" && a.CompanyLogo == "" && old.CompanyLogo != "" {
 				a.CompanyLogo = old.CompanyLogo
 			}
 			a.CreatedAt = old.CreatedAt

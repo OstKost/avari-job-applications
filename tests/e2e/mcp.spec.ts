@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { submitLogin } from "./auth";
 
-test("MCP token lifecycle and vacancy creation", async ({ page }) => {
+test("MCP token lifecycle, search and vacancy editing", async ({ page }) => {
   await page.goto("/login");
   await page
     .getByLabel("Email", { exact: true })
@@ -56,6 +56,25 @@ test("MCP token lifecycle and vacancy creation", async ({ page }) => {
   const saved = await call("save_vacancy", args);
   expect(saved.status).toBe("created");
   expect((await call("save_vacancy", args)).status).toBe("already_exists");
+  const found = await call("search_vacancies", {
+    query: "browser",
+    filters: { stage: "saved", state: "active" },
+  });
+  expect(found.total).toBe(1);
+  expect(found.applications[0].id).toBe(saved.application.id);
+  const card = await call("get_vacancy", { id: saved.application.id });
+  const updated = await call("update_vacancy", {
+    id: card.id,
+    version: card.version,
+    fields: {
+      position: "Senior Go engineer",
+      favorite: true,
+      tags: ["MCP edited"],
+    },
+  });
+  expect(updated.version).toBe(card.version + 1);
+  expect(updated.company).toBe("MCP Browser Corp");
+  expect(updated.favorite).toBe(true);
   await page.getByRole("button", { name: "Скрыть токен" }).click();
   await expect(input).not.toBeVisible();
   await page.screenshot({
@@ -86,5 +105,12 @@ test("MCP token lifecycle and vacancy creation", async ({ page }) => {
   expect(denied.status()).toBe(401);
   await page.goto(saved.application.link);
   await expect(page.getByText("MCP Browser Corp").first()).toBeVisible();
-  await expect(page.getByText(/· MCP/)).toBeVisible();
+  await expect(page.getByText("Senior Go engineer").first()).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Теги вакансии" }),
+  ).toContainText("#MCP edited");
+  await expect(
+    page.getByRole("button", { name: "Удалить из избранного" }),
+  ).toBeVisible();
+  await expect(page.getByText(/· MCP/).first()).toBeVisible();
 });

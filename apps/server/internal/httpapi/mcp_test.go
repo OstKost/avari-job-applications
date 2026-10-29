@@ -70,7 +70,7 @@ func TestMCPToolsOverHTTP(t *testing.T) {
 		t.Fatal("missing workflow instructions", init)
 	}
 	tools := rpc(t, server, secret, "tools/list", map[string]any{})["tools"].([]any)
-	if len(tools) != 2 {
+	if len(tools) != 6 {
 		t.Fatal(tools)
 	}
 	for _, entry := range tools {
@@ -142,7 +142,7 @@ func TestMCPClientConnection(t *testing.T) {
 	}
 	defer session.Close()
 	tools, err := session.ListTools(t.Context(), nil)
-	if err != nil || len(tools.Tools) != 2 {
+	if err != nil || len(tools.Tools) != 6 {
 		t.Fatal(tools, err)
 	}
 	result, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: "prepare_vacancy", Arguments: map[string]string{"url": "https://example.com/jobs/sdk"}})
@@ -152,6 +152,28 @@ func TestMCPClientConnection(t *testing.T) {
 	raw, _ := json.Marshal(result.StructuredContent)
 	if !strings.Contains(string(raw), "needsAgentExtraction") {
 		t.Fatal(string(raw))
+	}
+	for _, name := range []string{"search_vacancies", "get_vacancy_metadata"} {
+		result, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: name, Arguments: map[string]any{}})
+		if err != nil || result.IsError {
+			t.Fatal(name, result, err)
+		}
+	}
+	card, err := store.SaveApplication(u.ID, core.Application{Company: "SDK", Position: "Go"}, "", "manual")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name string
+		args map[string]any
+	}{
+		{"get_vacancy", map[string]any{"id": card.ID}},
+		{"update_vacancy", map[string]any{"id": card.ID, "version": card.Version, "fields": map[string]any{"position": "Senior Go"}}},
+	} {
+		result, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: tc.name, Arguments: tc.args})
+		if err != nil || result.IsError {
+			t.Fatal(tc.name, result, err)
+		}
 	}
 }
 
