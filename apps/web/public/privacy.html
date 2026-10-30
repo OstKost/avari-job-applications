@@ -295,7 +295,7 @@
           <li>
             <strong>Сведения об откликах:</strong> статусы откликов, даты и
             этапы найма, отображаемые на поддерживаемых сайтах (hh.ru, LinkedIn,
-            Getmatch, Hirify, Geekjob, Habr Career, Huntflow).
+            Getmatch, Hirify, Geekjob, Habr Career, Huntflow, HireHi).
           </li>
           <li>
             <strong>Telegram (по выбору пользователя):</strong> при подключении бота
@@ -332,7 +332,7 @@
           <li>
             Расширение внедряет скрипты только на поддерживаемых страницах
             вакансий и откликов (hh.ru, LinkedIn, Getmatch, Hirify, Geekjob,
-            Habr Career, Huntflow) с единственной целью — считать открытые пользователем
+            Habr Career, Huntflow, HireHi) с единственной целью — считать открытые пользователем
             данные вакансии для подготовки предложений; сохранение в журнал
             выполняется после подтверждения пользователем.
           </li>
@@ -520,7 +520,7 @@
             <strong>Job details:</strong> job title, company name, location,
             compensation range, job posting URL, and description displayed on
             supported job boards (hh.ru, LinkedIn, Getmatch, Hirify, Geekjob,
-            Habr Career, Huntflow).
+            Habr Career, Huntflow, HireHi).
           </li>
           <li>
             <strong>Telegram (optional):</strong> connecting the bot stores your numeric
@@ -682,5 +682,6 @@
         <p><a href="/">Вернуться на главную / Back to Avari.Jobs</a></p>
       </footer>
     </div>
-  </body>
+  <section class="container"><h2>Обработка вакансий через ИИ</h2><p>Расширение сохраняет текст публичного описания вакансии вместе с её реквизитами. По явному запуску пользователя сервер отправляет текст вакансии выбранному API OpenAI, Anthropic, Google Gemini или указанному пользователем совместимому сервису. Для целевых профилей передаются выжимки выбранных вакансий, навыки, самооценка и введённые опыт и цели. Условия обработки у получателя определяются выбранным провайдером. Личная переписка на сайтах вакансий не собирается.</p><p>API-ключ хранится зашифрованным, не включается в экспорт журнала и офлайн-кэш. Краткие описания, навыки и профили сохраняются в аккаунте и включаются в экспорт. Автоматической отправки новых вакансий провайдеру ИИ нет.</p></section>
+</body>
 </html>

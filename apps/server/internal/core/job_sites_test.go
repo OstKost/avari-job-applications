@@ -16,6 +16,7 @@ func TestAdditionalSitesDedupAndObservations(t *testing.T) {
 		"https://ru.linkedin.com/jobs/view/developer-at-example-123/?trackingId=x",
 		"https://getmatch.ru/vacancies/123-developer?s=offers",
 		"https://hirify.me/jobs/123-developer?utm_source=x",
+		"https://hirehi.ru/development/python-razrabotchik-188571?from=search",
 		"https://geekjob.ru/vacancy/6acce1f84f35ccbd760b3413?from=search",
 		"https://career.habr.com/vacancies/1000169149?s=search",
 		"https://deeplayhr.huntflow.io/vacancy/rukovoditel-napravleniia-razrabotki-lider-modulia?from=share",
@@ -74,7 +75,7 @@ func TestAdditionalSitesDedupAndObservations(t *testing.T) {
 		})
 	}
 	apps, e := s.Applications(u.ID)
-	if e != nil || len(apps) != 7 {
+	if e != nil || len(apps) != 8 {
 		t.Fatal(apps, e)
 	}
 }

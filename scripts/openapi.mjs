@@ -272,7 +272,7 @@ schemas.JournalSettings = object(
 );
 schemas.Journal = object({
   format: enumeration("avari-journal"),
-  version: { type: "integer", enum: [1] },
+  version: { type: "integer", enum: [1, 2] },
   exportedAt: stamp,
   settings: ref("JournalSettings"),
   applications: array(ref("Application")),
@@ -1098,6 +1098,182 @@ for (const [path, methods] of Object.entries(paths)) {
         .concat([{ name: "Origin", in: "header", required: true, schema: s }]);
   }
 }
+schemas.SkillRef = object({
+  id: s,
+  name: s,
+  category: enumeration("hard", "soft", "language"),
+});
+schemas.Skill = object({
+  ...schemas.SkillRef.properties,
+  aliases: array(s),
+  level: { type: ["integer", "null"], minimum: 0, maximum: 10 },
+  base: { type: "boolean" },
+});
+schemas.AIFields = object({
+  text: { ...s, maxLength: 100000 },
+  summary: { ...s, maxLength: 400 },
+  skills: array(ref("SkillRef")),
+  source: s,
+  processedAt: s,
+  provider: s,
+  model: s,
+  textHash: s,
+  stale: { type: "boolean" },
+});
+schemas.Application.properties.ai = ref("AIFields");
+schemas.ApplicationInput.properties.ai = ref("AIFields");
+schemas.VacancyPreviewFields.properties.vacancyText = s;
+schemas.AISettings = object({
+  provider: s,
+  model: s,
+  baseUrl: s,
+  hasKey: { type: "boolean" },
+});
+schemas.AISettingsInput = object(
+  {
+    provider: enumeration("openai", "anthropic", "gemini"),
+    model: s,
+    baseUrl: s,
+    apiKey: s,
+    hasKey: { type: "boolean" },
+  },
+  ["provider", "model"],
+);
+schemas.AIJob = object({
+  id: s,
+  kind: enumeration("extract", "directions", "profile", "test"),
+  targetId: s,
+  status: enumeration("queued", "running", "ready", "awaiting", "error"),
+  inputHash: s,
+  result: s,
+  error: s,
+  provider: s,
+  model: s,
+  createdAt: stamp,
+  updatedAt: stamp,
+});
+schemas.AIJobInput = object(
+  {
+    kind: enumeration("extract", "directions", "profile", "test"),
+    targetId: s,
+  },
+  ["kind"],
+);
+schemas.Profile = object({
+  id: s,
+  title: s,
+  applicationIds: { ...array(s), maxItems: 15 },
+  content: s,
+  version: integer,
+  generatedAt: s,
+  updatedAt: s,
+});
+schemas.CandidateContext = object({ text: { ...s, maxLength: 10000 } });
+schemas.SkillMerge = object({
+  source: s,
+  target: s,
+  level: { type: ["integer", "null"], minimum: 0, maximum: 10 },
+});
+schemas.SkillStatistics = object({
+  total: integer,
+  processed: integer,
+  skills: array(
+    object({
+      ...schemas.Skill.properties,
+      count: integer,
+      share: { type: "number" },
+    }),
+  ),
+});
+schemas.AIJobs = array(ref("AIJob"));
+schemas.Skills = array(ref("Skill"));
+schemas.Profiles = array(ref("Profile"));
+schemas.AIArchive = object({
+  skills: array(ref("Skill")),
+  profiles: array(ref("Profile")),
+  context: s,
+});
+schemas.Journal.properties.ai = ref("AIArchive");
+schemas.AIOK = object({ ok: { type: "boolean" } });
+operation(
+  "/ai/settings",
+  "get",
+  "Read AI connection without its key",
+  "AISettings",
+);
+operation(
+  "/ai/settings",
+  "put",
+  "Save encrypted AI connection",
+  "AISettings",
+  "AISettingsInput",
+);
+operation("/ai/settings", "delete", "Delete AI connection", "AIOK");
+operation("/ai/jobs", "get", "List AI jobs", "AIJobs");
+operation("/ai/jobs", "post", "Queue a manual AI job", "AIJob", "AIJobInput");
+operation("/ai/jobs/{id}", "get", "Read AI job", "AIJob");
+operation(
+  "/ai/jobs/{id}/apply",
+  "post",
+  "Apply AI proposal with conflict protection",
+  "AIOK",
+);
+operation("/ai/skills", "get", "List canonical and personal skills", "Skills");
+operation(
+  "/ai/skills",
+  "put",
+  "Edit skill, aliases and self assessment",
+  "Skill",
+  "Skill",
+);
+operation(
+  "/ai/skills/merge",
+  "post",
+  "Merge skill references for current account",
+  "AIOK",
+  "SkillMerge",
+);
+operation(
+  "/ai/skills/statistics",
+  "get",
+  "Skill frequency and processing coverage",
+  "SkillStatistics",
+);
+paths["/ai/skills/statistics"].get.parameters.push(
+  ...["group", "state", "from", "to", "category"].map((name) => ({
+    name,
+    in: "query",
+    schema: s,
+  })),
+);
+operation(
+  "/ai/profiles",
+  "get",
+  "List up to three target profiles",
+  "Profiles",
+);
+operation(
+  "/ai/profiles",
+  "put",
+  "Create or edit a target profile",
+  "Profile",
+  "Profile",
+);
+operation("/ai/profiles/{id}", "delete", "Delete target profile", "AIOK");
+operation(
+  "/ai/context",
+  "get",
+  "Read experience and goals",
+  "CandidateContext",
+);
+operation(
+  "/ai/context",
+  "put",
+  "Save experience and goals",
+  "AIOK",
+  "CandidateContext",
+);
+
 const spec = {
   openapi: "3.1.0",
   info: {

@@ -11,16 +11,24 @@ import (
 	_ "modernc.org/sqlite"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 )
 
-const SchemaVersion = 14
+const SchemaVersion = 15
 
 type Store struct {
-	DB   *sql.DB
-	Path string
-	lock *os.File
-	Now  func() time.Time
+	DB         *sql.DB
+	Path       string
+	lock       *os.File
+	Now        func() time.Time
+	aiMu       *sync.Mutex
+	aiWake     chan struct{}
+	aiStop     chan struct{}
+	aiDone     chan struct{}
+	aiKey      []byte
+	aiLock     *os.File
+	AIGenerate func(context.Context, AISettings, string, map[string]any) (string, error)
 }
 
 func (s *Store) nowTime() time.Time {
@@ -88,7 +96,7 @@ func Open(path string) (*Store, error) {
 		return nil, e
 	}
 	db.SetMaxOpenConns(1)
-	s := &Store{DB: db, Path: path, lock: lock}
+	s := &Store{DB: db, Path: path, lock: lock, aiMu: &sync.Mutex{}}
 	// Back up existing databases before applying a newer schema.
 	var exists int
 	if e = db.QueryRow("SELECT count(*) FROM sqlite_master WHERE name='schema_migrations'").Scan(&exists); e != nil {
@@ -112,10 +120,12 @@ func Open(path string) (*Store, error) {
 		s.Close()
 		return nil, e
 	}
+
 	_ = os.Chmod(path, 0600)
 	return s, nil
 }
 func (s *Store) Close() error {
+	s.stopAI()
 	e := s.DB.Close()
 	if s.lock != nil {
 		_ = unlockFile(s.lock)
@@ -224,7 +234,7 @@ CREATE TABLE IF NOT EXISTS push_outbox(
   UNIQUE(subscription_id, local_date, digest_type)
 );
 CREATE INDEX IF NOT EXISTS push_outbox_claim ON push_outbox(status, next_attempt_at, leased_until);
-CREATE INDEX IF NOT EXISTS push_outbox_user ON push_outbox(user_id);`, telegramMigration, `ALTER TABLE telegram_challenges ADD COLUMN client_kind TEXT NOT NULL DEFAULT 'web' CHECK(client_kind IN ('web','extension'));`, mcpMigration}
+CREATE INDEX IF NOT EXISTS push_outbox_user ON push_outbox(user_id);`, telegramMigration, `ALTER TABLE telegram_challenges ADD COLUMN client_kind TEXT NOT NULL DEFAULT 'web' CHECK(client_kind IN ('web','extension'));`, mcpMigration, aiMigration}
 	for i, migration := range migrations {
 		if i+1 <= version {
 			continue

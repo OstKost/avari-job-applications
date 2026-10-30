@@ -10,6 +10,11 @@ import (
 func sourceOK(source string) bool { return oneOf(source, "manual", "extension", "telegram", "mcp") }
 func (s *Store) SaveApplication(user string, a Application, idempotency, source string) (Application, error) {
 	var result Application
+	if a.AI != nil {
+		copyAI := *a.AI
+		copyAI.Skills = append([]SkillRef{}, a.AI.Skills...)
+		a.AI = &copyAI
+	}
 	e := s.transaction(func(tx *sql.Tx) error {
 		var e error
 		result, e = s.saveApplicationTx(tx, user, a, idempotency, source)
@@ -63,6 +68,17 @@ func (s *Store) saveApplicationTx(tx *sql.Tx, user string, a Application, idempo
 				return e
 			}
 			old = v
+			if a.AI == nil && old.AI != nil {
+				copyAI := *old.AI
+				copyAI.Skills = append([]SkillRef{}, old.AI.Skills...)
+				a.AI = &copyAI
+			}
+			if a.AI != nil && old.AI != nil {
+				a.AI.ProcessedAt = old.AI.ProcessedAt
+				a.AI.Provider = old.AI.Provider
+				a.AI.Model = old.AI.Model
+				a.AI.TextHash = old.AI.TextHash
+			}
 			if a.Version != old.Version {
 				return &Error{Status: 409, Message: "Запись изменилась. Сравните актуальные значения", Current: old}
 			}
@@ -117,6 +133,14 @@ func (s *Store) saveApplicationTx(tx *sql.Tx, user string, a Application, idempo
 		a.UpdatedAt = now()
 		if e = put(tx, user, "application", a.ID, a); e != nil {
 			return e
+		}
+		if a.AI != nil {
+			if e = syncApplicationSkills(tx, user, &a); e != nil {
+				return e
+			}
+			if e = put(tx, user, "application", a.ID, a); e != nil {
+				return e
+			}
 		}
 		kind := "updated"
 		if isNew {

@@ -39,6 +39,7 @@ type Salary struct {
 	Tax      string   `json:"tax"`
 }
 type Application struct {
+	AI             *AIFields      `json:"ai,omitempty"`
 	Favorite       bool           `json:"favorite"`
 	Groups         []string       `json:"groups"`
 	Tags           []string       `json:"tags"`
@@ -193,6 +194,12 @@ func NormalizeURL(raw string) (string, string, error) {
 	return raw, "", nil
 }
 func (a *Application) Validate() error {
+	if a.AI != nil {
+		if textLength(a.AI.Text) > 100000 || textLength(a.AI.Summary) > 400 || len(a.AI.Skills) > 100 {
+			return Fail(400, "Текст: до 100000 символов; описание: до 400; навыки: до 100")
+		}
+		a.AI.Stale = a.AI.TextHash != "" && a.AI.TextHash != digest(a.AI.Text)
+	}
 	if len(a.Groups) > 1 {
 		return Fail(400, "Можно выбрать только одну группу")
 	}

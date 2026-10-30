@@ -24,6 +24,7 @@ type TableSettings struct {
 	Statistics bool   `json:"statistics"`
 }
 type Journal struct {
+	AI           *AIArchive      `json:"ai,omitempty"`
 	Format       string          `json:"format"`
 	Version      int             `json:"version"`
 	ExportedAt   string          `json:"exportedAt"`
@@ -98,7 +99,19 @@ func exportJournal(tx *sql.Tx, user string) (Journal, error) {
 	if err = tx.QueryRow("SELECT value FROM instance_metadata WHERE key='transfer_source'").Scan(&source); err != nil {
 		return out, err
 	}
+	out.AI, err = exportAITx(tx, user)
+	if err != nil {
+		return out, err
+	}
+	if out.AI != nil {
+		out.Version = 2
+	}
 	ids := map[string][]string{}
+	if out.AI != nil {
+		for _, p := range out.AI.Profiles {
+			ids["profile"] = append(ids["profile"], p.ID)
+		}
+	}
 	for _, a := range out.Applications {
 		ids["application"] = append(ids["application"], a.ID)
 	}
@@ -138,8 +151,11 @@ func exportJournal(tx *sql.Tx, user string) (Journal, error) {
 }
 
 func validateJournal(j Journal) error {
-	if j.Format != "avari-journal" || j.Version != 1 {
+	if j.Format != "avari-journal" || (j.Version != 1 && j.Version != 2) {
 		return Fail(400, "Неподдерживаемый формат или версия файла")
+	}
+	if e := validateAIArchive(j); e != nil {
+		return e
 	}
 	if len(j.Applications) > 1000 || len(j.Fields) > 5 || len(j.Tasks)+len(j.Notes) > 50000 || len(j.Events) > 100000 {
 		return Fail(400, "Файл превышает допустимые лимиты журнала")
@@ -628,9 +644,27 @@ func (s *Store) ImportJournal(user string, req ImportRequest, apply bool) (Impor
 				return err
 			}
 		}
+		// Preview AI additions in a savepoint; preview must remain read-only.
+		if _, err = tx.Exec("SAVEPOINT ai_import_preview"); err != nil {
+			return err
+		}
+		if err = importAITx(tx, user, req.Journal, appMap, &report); err != nil {
+			return err
+		}
+		if _, err = tx.Exec("ROLLBACK TO ai_import_preview"); err != nil {
+			return err
+		}
+		if _, err = tx.Exec("RELEASE ai_import_preview"); err != nil {
+			return err
+		}
 		report.Ready = true
 		if !apply {
 			return nil
+		}
+		// The same conflicts were already included by the read-only preview above.
+		aiReport := ImportReport{}
+		if err = importAITx(tx, user, req.Journal, appMap, &aiReport); err != nil {
+			return err
 		}
 		for _, w := range writes {
 			if err = put(tx, user, w.kind, w.id, w.value); err != nil {
@@ -638,6 +672,14 @@ func (s *Store) ImportJournal(user string, req ImportRequest, apply bool) (Impor
 			}
 			if w.kind == "application" {
 				appMap, _ := w.value.(Application)
+				if appMap.AI != nil {
+					if err = syncApplicationSkills(tx, user, &appMap); err != nil {
+						return err
+					}
+					if err = put(tx, user, "application", appMap.ID, appMap); err != nil {
+						return err
+					}
+				}
 				localToday := s.localDate(tx, user)
 				_ = s.recordGoalAction(tx, user, w.id, "created", localToday, 0, now())
 				if appMap.Stage != "saved" || appMap.AppliedDate != "" {

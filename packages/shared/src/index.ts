@@ -99,6 +99,7 @@ export const fieldLabels: Record<string, string> = {
   workFormat: "Формат работы",
   recruiter: "Контакт рекрутера",
   companyLogo: "Логотип компании",
+  ai: "Описание и навыки",
   externalStatus: "Состояние на сайте",
   custom: "Дополнительные поля",
   title: "Задача",
@@ -115,6 +116,14 @@ export function displayValue(
   applications: Application[] = [],
 ): string {
   if (value == null || value === "") return "—";
+  if (key === "ai" && typeof value === "object") {
+    const ai = value as Partial<AIFields>;
+    const parts = [
+      ai.summary,
+      ...(ai.skills ?? []).map((s) => "#" + s.name),
+    ].filter(Boolean);
+    return parts.join(" · ") || (ai.text ? "Текст вакансии сохранён" : "—");
+  }
   if (key === "favorite") return value ? "Да" : "Нет";
   if (key === "stage") return stages[String(value)] ?? String(value);
   if (key === "state")
@@ -450,7 +459,8 @@ export async function gravatarUrl(
 export function isApplicationStale(a: Application): boolean {
   if (a.state !== "active") return false;
   if (typeof a.stale === "boolean") return a.stale;
-  const activity = a.lastActivityAt || a.appliedDate || a.savedDate || a.createdAt;
+  const activity =
+    a.lastActivityAt || a.appliedDate || a.savedDate || a.createdAt;
   if (!activity) return false;
   const timestamp = new Date(activity).getTime();
   if (isNaN(timestamp)) return false;
@@ -459,3 +469,28 @@ export function isApplicationStale(a: Application): boolean {
 }
 
 export { readVacancyClipboard } from "./vacancy-preview";
+
+export type AIFields = components["schemas"]["AIFields"];
+export type AISettings = components["schemas"]["AISettings"];
+export type AIJob = components["schemas"]["AIJob"];
+export type SkillRef = components["schemas"]["SkillRef"];
+export type Skill = components["schemas"]["Skill"];
+export type SkillStatistics = components["schemas"]["SkillStatistics"];
+export type Profile = components["schemas"]["Profile"];
+export type CandidateContext = components["schemas"]["CandidateContext"];
+export function emptyAIFields(): AIFields {
+  return {
+    text: "",
+    summary: "",
+    skills: [],
+    source: "manual",
+    processedAt: "",
+    provider: "",
+    model: "",
+    textHash: "",
+    stale: false,
+  };
+}
+export function isAIReady(a: Application): boolean {
+  return !!a.ai?.processedAt && !a.ai.stale && !!a.ai.summary;
+}

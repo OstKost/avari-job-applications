@@ -54,6 +54,9 @@ export function mergeVacancyPreview(
       Object.assign(next.salary, { [key]: value });
     }
   }
-  if (current.url === baseline.url) next.url = preview.url;
+  if (preview.fields.vacancyText && current.ai?.text === baseline.ai?.text) {
+ next.ai = {...(current.ai ?? {text:"",summary:"",skills:[],source:"",processedAt:"",provider:"",model:"",textHash:"",stale:false}),text:preview.fields.vacancyText,source:"url",stale:!!current.ai?.processedAt};
+ }
+ if (current.url === baseline.url) next.url = preview.url;
   return next;
 }

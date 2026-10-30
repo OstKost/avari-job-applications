@@ -22,6 +22,7 @@ var ErrUnavailable = errors.New("Не удалось получить данны
 var ErrNoData = errors.New("На странице не найдены данные вакансии. Заполните поля вручную.")
 
 type Fields struct {
+	VacancyText string  `json:"vacancyText,omitempty"`
 	Company     string  `json:"company,omitempty"`
 	Position    string  `json:"position,omitempty"`
 	Location    string  `json:"location,omitempty"`

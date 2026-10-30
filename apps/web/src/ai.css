@@ -1,0 +1,110 @@
+.ai-panel {
+  margin-block: 1.2rem;
+  min-width: 0;
+}
+.ai-panel h2,
+.ai-panel h3 {
+  margin-top: 0.5rem;
+}
+.ai-panel textarea {
+  width: 100%;
+  resize: vertical;
+  box-sizing: border-box;
+}
+.ai-panel details {
+  margin-block: 1rem;
+}
+.ai-panel summary {
+  cursor: pointer;
+  padding-block: 0.6rem;
+}
+.ai-actions,
+.ai-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+  margin-block: 0.8rem;
+}
+.ai-actions input {
+  flex: 1;
+  min-width: 180px;
+}
+.ai-tags {
+  gap: 0.35rem;
+}
+.ai-tags .count-chip {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.ai-job {
+  padding: 0.8rem;
+  border: 1px solid var(--border, #9995);
+  border-radius: 10px;
+  margin-block: 0.75rem;
+}
+.ai-job small {
+  opacity: 0.7;
+}
+.ai-prose {
+  white-space: pre-wrap;
+  font: inherit;
+  overflow-wrap: anywhere;
+  max-height: 32rem;
+  overflow: auto;
+}
+.ai-picker {
+  max-height: 24rem;
+  overflow: auto;
+  border: 1px solid var(--border, #9995);
+  border-radius: 8px;
+}
+.ai-picker label {
+  display: flex;
+  align-items: start;
+  gap: 0.7rem;
+  padding: 0.7rem;
+  border-bottom: 1px solid var(--border, #9993);
+  cursor: pointer;
+}
+.ai-picker input {
+  flex: 0;
+  width: auto;
+  margin-top: 0.2rem;
+}
+.ai-picker small,
+.ai-skill-list small {
+  display: block;
+  opacity: 0.7;
+}
+.ai-skill-list article {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  padding: 0.8rem 0;
+  border-bottom: 1px solid var(--border, #9994);
+}
+.ai-skill-list article > div:first-child {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.ai-suggestions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+.ai-suggestions .panel {
+  margin-block: 1rem;
+}
+.ai-panel input,
+.ai-panel select {
+  max-width: 100%;
+}
+@media (max-width: 600px) {
+  .ai-skill-list article {
+    flex-wrap: wrap;
+  }
+  .ai-panel .form-grid {
+    grid-template-columns: 1fr;
+  }
+}

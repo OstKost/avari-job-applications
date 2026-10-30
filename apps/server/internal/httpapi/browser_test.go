@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"github.com/OstKost/avari-job-applications/apps/server/assets"
 	"github.com/OstKost/avari-job-applications/apps/server/internal/core"
@@ -24,7 +25,17 @@ func TestBrowser(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer store.Close()
-	for _, email := range []string{"mcp-browser@example.com", "browser@example.com", "extension@example.com", "features@example.com", "statistics@example.com", "autofill@example.com", "telegram@example.com", "telegram-login@example.com"} {
+	store.AIGenerate = func(_ context.Context, _ core.AISettings, _ string, schema map[string]any) (string, error) {
+		props, _ := schema["properties"].(map[string]any)
+		if _, ok := props["summary"]; ok {
+			return `{"summary":"Разработка интерфейсов на React и SQL","skills":[{"id":"","name":"React.js","category":"hard"},{"id":"","name":"SQL","category":"hard"}]}`, nil
+		}
+		if _, ok := props["directions"]; ok {
+			return `{"directions":[{"title":"Frontend Engineer","description":"Разработка интерфейсов"},{"title":"Fullstack Engineer","description":"Разработка приложений"},{"title":"Web Engineer","description":"Веб-разработка"}]}`, nil
+		}
+		return `{"content":"Описание направления: разработка интерфейсов. Требования: React и SQL. Опыт кандидата не подтверждён. Рекомендации: оценить владение навыками."}`, nil
+	}
+	for _, email := range []string{"ai-browser@example.com", "mcp-browser@example.com", "browser@example.com", "extension@example.com", "features@example.com", "statistics@example.com", "autofill@example.com", "telegram@example.com", "telegram-login@example.com"} {
 		u, e := store.Register(email, "browser-test-password", "Europe/Moscow")
 		if e != nil {
 			t.Fatal(e)

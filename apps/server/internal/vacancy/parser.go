@@ -71,6 +71,7 @@ var sites = map[string]selectors{
 		position: []string{".page-title__title", ".vacancy-header__title h1", "h1"}, company: []string{".company_name a[href*='/companies/']", ".company_name", ".company-name"},
 		location: []string{".vacancy-header .location", ".basic-section .location"}, salary: []string{".vacancy-header__salary .basic-salary", ".basic-salary", ".vacancy-header__salary"},
 	},
+	"hirehi.ru": {position: []string{".vacancy-title"}, company: []string{".vacancy-header .vacancy-company-name"}},
 	"huntflow.io": {
 		position: []string{"h1[class*='_position_']", "h1"},
 		company:  []string{"a[class*='_link_'] img[alt='logo']", "img[class*='_logo_']"},
@@ -233,6 +234,13 @@ func salaryText(raw string) *Salary {
 	return s
 }
 
+func descriptionText(selection *goquery.Selection) string {
+	copy := selection.Clone()
+	copy.Find("script,style,noscript,[hidden],[aria-hidden='true']").Remove()
+	copy.Find("p,div,li,br,h1,h2,h3,h4,section,article").Each(func(_ int, node *goquery.Selection) { node.BeforeHtml(" "); node.AfterHtml(" ") })
+	return clean(copy.Text())
+}
+
 func Parse(reader io.Reader, canonical string) (Preview, error) {
 	_, site := core.VacancyPreviewURL(canonical)
 	sel, ok := sites[site]
@@ -245,7 +253,28 @@ func Parse(reader io.Reader, canonical string) (Preview, error) {
 	}
 	job := structured(doc, canonical)
 	org := obj(job["hiringOrganization"])
-	f := Fields{Company: text(doc, sel.company...), Position: text(doc, sel.position...), Location: text(doc, sel.location...), WorkFormat: text(doc, sel.format...), Salary: structuredSalary(job)}
+	description, _ := job["description"].(string)
+	if description != "" {
+		if fragment, e := goquery.NewDocumentFromReader(strings.NewReader(description)); e == nil {
+			description = descriptionText(fragment.Selection)
+		}
+	}
+	if description == "" {
+		for _, selector := range []string{`[data-qa="vacancy-description"]`, ".vacancy-description", ".description__text", ".show-more-less-html__markup", ".vacancy__description", ".b-vacancy-description", ".vacancy-description__text", ".job-description", ".vacancy .description"} {
+			selection := doc.Find(selector).First()
+			if selection.Length() == 0 || selection.Closest("[hidden],[aria-hidden='true']").Length() > 0 {
+				continue
+			}
+			description = descriptionText(selection)
+			if description != "" {
+				break
+			}
+		}
+	}
+	if len([]rune(description)) > 100000 {
+		description = string([]rune(description)[:100000])
+	}
+	f := Fields{VacancyText: description, Company: text(doc, sel.company...), Position: text(doc, sel.position...), Location: text(doc, sel.location...), WorkFormat: text(doc, sel.format...), Salary: structuredSalary(job)}
 	if f.Company == "" {
 		f.Company = str(org["name"])
 	}
@@ -394,7 +423,7 @@ func Parse(reader io.Reader, canonical string) (Preview, error) {
 		})
 	}
 	// Generic login/challenge headings must never be mistaken for a vacancy title.
-	if f.Company == "" && job == nil && (site == "hh.ru" || site == "geekjob.ru" || site == "career.habr.com" || site == "huntflow.io") && text(doc, sel.position[0]) == "" {
+	if f.Company == "" && job == nil && (site == "hh.ru" || site == "geekjob.ru" || site == "career.habr.com" || site == "huntflow.io" || site == "hirehi.ru") && text(doc, sel.position[0]) == "" {
 		return Preview{}, ErrNoData
 	}
 	if f.Company == "" && f.Position == "" {

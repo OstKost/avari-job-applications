@@ -22,6 +22,7 @@ func TestSiteMetadata(t *testing.T) {
 		min, max                                       float64
 		currency, period, tax                          string
 	}{
+		{"https://hirehi.ru/development/python-188571", `<h1 class="vacancy-title">Python Developer</h1><div class="vacancy-header"><span class="vacancy-company-name">Сбер</span></div><span class="label-salary">191 507 ₽</span><div class="job-salary">300 000 ₽</div><script type="application/ld+json">{"@type":"JobPosting","title":"Python Developer","hiringOrganization":{"name":"Сбер","logo":"https://hirehi.ru/static/uploads/logo.webp"},"jobLocation":{"address":{"addressLocality":"Москва"}},"description":"private text","baseSalary":{"currency":"RUB","value":{"minValue":200000,"maxValue":250000,"unitText":"MONTH"}}}</script>`, "Сбер", "Python Developer", "Москва", "", 200000, 250000, "RUB", "month", ""},
 		{"https://hh.ru/vacancy/123", `<h1 data-qa="vacancy-title">Developer</h1><a data-qa="vacancy-company-name">Acme</a><span data-qa="vacancy-salary">50&nbsp;000 ₽ за месяц, на руки</span><p data-qa="work-formats-text">Формат работы: удалённо</p><span data-qa="vacancy-view-raw-address">Ростов-на-Дону</span>`, "Acme", "Developer", "Ростов-на-Дону", "удалённо", 50000, 50000, "RUB", "month", "net"},
 		{"https://getmatch.ru/vacancies/19879", `<section class="b-vacancy-header"><h1>Golang</h1><h2>в <a href="/companies/example">Example</a></h2><h3>250 000 —‍ 350 000 ₽/‍мес на руки</h3></section><div class="b-vacancy-locations__group"><span class="tag__title">📍 Россия</span><span class="tag__title">Удалённо</span></div>`, "Example", "Golang", "Россия", "Удалённо", 250000, 350000, "RUB", "month", "net"},
 		{"https://hirify.me/jobs/1090398", `<div class="vacancy-header"><div class="company-name">Example</div><h1>Analyst</h1><div class="common-detail-item"><div class="label">Work format</div><div class="value">remote (Global)</div></div><div class="common-detail-item"><div class="label">Country</div><div class="value">Russia/Kazakhstan</div></div></div><article><h1>Recommendation</h1></article><script type="application/ld+json">{"@type":"JobPosting","title":"Analyst","hiringOrganization":{"name":"Example"},"description":"private text","baseSalary":{"currency":"USD","value":{"minValue":2000,"maxValue":3000,"unitText":"MONTH"}}}</script>`, "Example", "Analyst", "Russia/Kazakhstan", "remote (Global)", 2000, 3000, "USD", "month", ""},
@@ -43,8 +44,11 @@ func TestSiteMetadata(t *testing.T) {
 			if f.Salary == nil || f.Salary.Min == nil || f.Salary.Max == nil || *f.Salary.Min != tc.min || *f.Salary.Max != tc.max || f.Salary.Currency != tc.currency || f.Salary.Period != tc.period || f.Salary.Tax != tc.tax {
 				t.Fatalf("unexpected salary: %+v", f.Salary)
 			}
+			if strings.Contains(tc.html, `"description":"private text"`) && f.VacancyText != "private text" {
+				t.Fatal("vacancy description missing")
+			}
 			b, _ := json.Marshal(p)
-			if strings.Contains(string(b), "private") || strings.Contains(string(b), "Recommendation") {
+			if strings.Contains(string(b), "Recommendation") {
 				t.Fatal(string(b))
 			}
 		})
@@ -152,5 +156,17 @@ func TestFetchFailuresAndSuccess(t *testing.T) {
 	_, err := fetch(ctx, &http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) { return nil, r.Context().Err() })}, "https://hh.ru/vacancy/123")
 	if err == nil {
 		t.Fatal("cancellation ignored")
+	}
+}
+
+func TestDescriptionKeepsFullTextAndExcludesPageChrome(t *testing.T) {
+	full := strings.Repeat("Требование SQL. ", 100)
+	p, err := Parse(strings.NewReader(`<h1 data-qa="vacancy-title">Engineer</h1><div data-qa="vacancy-description"><p>`+full+`</p><script>secret script</script><p hidden>private hidden comment</p></div><aside>private chat</aside>`), "https://hh.ru/vacancy/123")
+	if err != nil || p.Fields.VacancyText != strings.TrimSpace(full) {
+		t.Fatal(p, err)
+	}
+	p, err = Parse(strings.NewReader(`<script type="application/ld+json">{"@type":"JobPosting","title":"Engineer","description":"`+full+`"}</script>`), "https://hh.ru/vacancy/123")
+	if err != nil || p.Fields.VacancyText != strings.TrimSpace(full) {
+		t.Fatal("structured description truncated", p, err)
 	}
 }

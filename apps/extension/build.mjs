@@ -111,6 +111,7 @@ const manifest = {
         "https://*.geekjob.ru/vacancy/*",
         "https://*.career.habr.com/vacancies*",
         "https://*.huntflow.io/vacancy/*",
+        "https://*.hirehi.ru/*/*",
       ],
       js: ["content.js"],
       run_at: "document_idle",

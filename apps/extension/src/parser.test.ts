@@ -9,6 +9,35 @@ import {
 const doc = (html: string) =>
   new DOMParser().parseFromString(html, "text/html");
 describe("hh.ru DOM parser", () => {
+  it("detects the archived title on vacancy 137730069 without adding its date to the position", () => {
+    // Minimal public markup from hh.ru/vacancy/137730069, 2026-10-28.
+    const page = doc(
+      '<h1 data-qa="vacancy-title">Руководитель проектного офиса/Руководитель направления<div data-qa="vacancy-title-archived-text">В&nbsp;архиве с<!-- -->&nbsp;<time datetime="2026-10-24T07:01:58.264Z">24&nbsp;октября&nbsp;2026</time></div></h1><a data-qa="vacancy-company-name">Конвей Плюс</a><div data-qa="vacancy-response-status">Вы откликнулись</div>',
+    );
+    const parsed = parsePage(page, "https://hh.ru/vacancy/137730069");
+    expect(parsed.vacancy?.position).toBe(
+      "Руководитель проектного офиса/Руководитель направления",
+    );
+    expect(parsed.observations).toEqual([
+      {
+        hhId: "137730069",
+        status: "vacancy_closed",
+        url: "https://hh.ru/vacancy/137730069",
+      },
+    ]);
+    expect(
+      page.querySelector('[data-qa="vacancy-title-archived-text"]'),
+    ).not.toBeNull();
+  });
+  it("prioritizes the legacy archive message over an earlier response", () => {
+    const parsed = parsePage(
+      doc(
+        '<h1>Developer</h1><div data-qa="vacancy-response-status">Вы откликнулись</div><div data-qa="vacancy-archived-message">Вакансия в архиве</div>',
+      ),
+      "https://hh.ru/vacancy/123",
+    );
+    expect(parsed.observations[0]?.status).toBe("vacancy_closed");
+  });
   it("offers recent responses using the actual hh date and company fields, not employer activity", () => {
     const row = (id: number, date: string) =>
       `<div data-qa="negotiations-item"><span data-qa="negotiations-tag">Отказ</span><a href="/vacancy/${id}"><span data-qa="negotiations-item-vacancy">Developer</span></a><div data-qa="negotiations-item-company">Example</div><div data-qa="negotiations-item-date">${date}</div><span>Был онлайн сегодня</span><p>private conversation</p></div>`;
@@ -183,7 +212,7 @@ describe("hh.ru DOM parser", () => {
     );
     expect(p.observations[0].status).toBe("applied");
   });
-  it("falls back to structured job data without leaking descriptions", () => {
+  it("collects structured public job description separately from metadata", () => {
     const p = parsePage(
       doc(
         '<script type="application/ld+json">{"@graph":[{"@type":"JobPosting","title":"Developer","hiringOrganization":{"name":"Example"},"description":"secret","jobLocation":{"address":{"addressLocality":"Казань"}},"baseSalary":{"currency":"USD","value":{"minValue":2000,"maxValue":3000,"unitText":"MONTH"}}}]}</script>',
@@ -196,7 +225,7 @@ describe("hh.ru DOM parser", () => {
       location: "Казань",
       salary: { min: 2000, max: 3000, currency: "USD" },
     });
-    expect(JSON.stringify(p)).not.toContain("secret");
+    expect(p.vacancy?.ai?.text).toBe("secret");
   });
   it("reads only visible row statuses and excludes chat messages", () => {
     const p = parsePage(
@@ -305,7 +334,7 @@ describe("additional job sites", () => {
       salary: { min: 2000, max: 3000, currency: "USD" },
     });
     expect(p.observations).toEqual([]);
-    expect(JSON.stringify(p)).not.toContain("private text");
+    expect(p.vacancy?.ai?.text).toBe("private text");
   });
   it("reads LinkedIn job data and only explicit application statuses", () => {
     const p = parsePage(
@@ -347,7 +376,7 @@ describe("additional job sites", () => {
       salary: { min: 40000, max: 60000, currency: "RUB" },
     });
     expect(p.observations).toEqual([]);
-    expect(JSON.stringify(p)).not.toContain("private text");
+    expect(p.vacancy?.ai?.text).toBe("private text");
   });
   it("reads Habr Career public vacancy details and salary", () => {
     const p = parsePage(
@@ -366,7 +395,7 @@ describe("additional job sites", () => {
       salary: { min: 270000, max: 285000, currency: "RUB" },
     });
     expect(p.observations).toEqual([]);
-    expect(JSON.stringify(p)).not.toContain("private text");
+    expect(p.vacancy?.ai?.text).toBe("private text");
   });
   it("reads Huntflow public vacancy details and salary", () => {
     const p = parsePage(
@@ -599,4 +628,30 @@ describe("saved job lists", () => {
     ])
       expect(parsePage(doc(row), url).observations).toEqual([]);
   });
+});
+
+// HireHi markup checked on 2026-10-28: market estimates and recommendations are not vacancy salary.
+it("reads HireHi metadata and description without collecting market salaries", () => {
+  const parsed = parsePage(
+    doc(
+      `<h1 class="vacancy-title">Python Developer</h1><div class="vacancy-header"><span class="vacancy-company-name">Сбер</span></div><span class="label-salary">191 507 ₽</span><div class="job-salary">300 000 ₽</div><script type="application/ld+json">{"@type":"JobPosting","title":"Python Developer","hiringOrganization":{"name":"Сбер","logo":"https://hirehi.ru/static/uploads/logo.webp"},"jobLocation":{"address":{"addressLocality":"Москва"}},"description":"private text","baseSalary":{"currency":"RUB","value":{"minValue":200000,"maxValue":250000,"unitText":"MONTH"}}}</script>`,
+    ),
+    "https://hirehi.ru/development/python-188571?from=search",
+  );
+  expect(parsed.supported).toBe(true);
+  expect(parsed.vacancy).toMatchObject({
+    url: "https://hirehi.ru/development/python-188571",
+    company: "Сбер",
+    position: "Python Developer",
+    location: "Москва",
+    companyLogo: "https://hirehi.ru/static/uploads/logo.webp",
+    salary: { min: 200000, max: 250000, currency: "RUB" },
+  });
+  expect(parsed.observations).toEqual([]);
+  expect(parsed.vacancy?.ai?.text).toBe("private text");
+});
+
+it("collects only the vacancy description, strips hidden content and preserves word boundaries",()=>{
+ const p=parsePage(doc(`<h1 data-qa="vacancy-title">Engineer</h1><div data-qa="vacancy-company-name">Example</div><div data-qa="vacancy-description"><p>SQL</p><p>Python</p><script>secret script</script><p hidden>private comment</p></div><aside>private chat</aside>`),"https://hh.ru/vacancy/123");
+ expect(p.vacancy?.ai?.text).toBe("SQL Python");expect(JSON.stringify(p)).not.toContain("private");expect(JSON.stringify(p)).not.toContain("secret script");
 });

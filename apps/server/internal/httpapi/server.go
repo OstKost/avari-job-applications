@@ -48,6 +48,7 @@ type identity struct {
 type key int
 
 func (s *Server) Handler() http.Handler {
+	_ = s.Store.StartAI()
 	s.limits = map[string][]time.Time{}
 	s.LoginGate = make(chan struct{}, 4)
 	mux := http.NewServeMux()
@@ -165,6 +166,9 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 			}
 		}
 		limit := int64(256 * 1024)
+		if strings.HasPrefix(r.URL.Path, "/api/v1/applications") || r.URL.Path == "/api/v1/observations" {
+			limit = 1024 * 1024
+		}
 		if r.URL.Path == "/api/v1/journal/import/preview" || r.URL.Path == "/api/v1/journal/import" {
 			limit = 32 * 1024 * 1024
 		} else if r.Method == "POST" && (r.URL.Path == "/api/v1/resumes" || (strings.HasPrefix(r.URL.Path, "/api/v1/resumes/") && strings.HasSuffix(r.URL.Path, "/versions"))) {

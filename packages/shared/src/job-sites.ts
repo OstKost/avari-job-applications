@@ -1,5 +1,5 @@
 export const jobSitesLabel =
-  "hh.ru, LinkedIn, Getmatch, Hirify, Geekjob, Хабр Карьера и Huntflow";
+  "hh.ru, LinkedIn, Getmatch, Hirify, Geekjob, Хабр Карьера, Huntflow и HireHi";
 export type JobSite =
   | "hh"
   | "linkedin"
@@ -7,7 +7,8 @@ export type JobSite =
   | "hirify"
   | "geekjob"
   | "habr"
-  | "huntflow";
+  | "huntflow"
+  | "hirehi";
 
 export function jobSite(raw: string): JobSite | undefined {
   try {
@@ -22,6 +23,7 @@ export function jobSite(raw: string): JobSite | undefined {
       geekjob: "geekjob.ru",
       habr: "career.habr.com",
       huntflow: "huntflow.io",
+      hirehi: "hirehi.ru",
     })) {
       if (url.hostname === domain || url.hostname.endsWith("." + domain))
         return site as JobSite;
@@ -54,9 +56,18 @@ export function jobIdentity(raw: string) {
   if (site === "habr") id = url.pathname.match(/^\/vacancies\/(\d+)\/?$/)?.[1];
   if (site === "huntflow")
     id = url.pathname.match(/^\/vacancy\/([a-zA-Z0-9_-]+)\/?$/)?.[1];
+  if (site === "hirehi") {
+    const match = url.pathname.match(/^\/([a-z0-9-]+\/[a-z0-9-]+-(\d+))\/?$/);
+    if (!match || /^(?:vacancies|companies|blog)\//.test(match[1])) return;
+    return { site, id: match[2], url: `https://hirehi.ru/${match[1]}` };
+  }
   if (!id) return;
   if (site === "huntflow") {
-    return { site, id, url: `https://${url.hostname.toLowerCase()}/vacancy/${id}` };
+    return {
+      site,
+      id,
+      url: `https://${url.hostname.toLowerCase()}/vacancy/${id}`,
+    };
   }
   const canonical =
     {

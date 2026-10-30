@@ -1,5 +1,6 @@
 import {
   emptyApplication,
+ emptyAIFields,
   jobIdentity,
   jobSite,
   jobResponsesSite,
@@ -139,10 +140,7 @@ function imageSrc(
   return "";
 }
 
-export function normalizeLogoURL(
-  raw: string,
-  baseURL?: string,
-): string {
+export function normalizeLogoURL(raw: string, baseURL?: string): string {
   const trimmed = clean(raw);
   if (!trimmed) return "";
   try {
@@ -510,12 +508,16 @@ function parseOtherSite(doc: Document, rawURL: string): Snapshot {
       ],
       status: [] as string[],
     },
+    hirehi: {
+      position: [".vacancy-title"],
+      company: [".vacancy-header .vacancy-company-name"],
+      location: [] as string[],
+      salary: [] as string[],
+      status: [] as string[],
+    },
     huntflow: {
       position: ["h1[class*='_position_']", "h1"],
-      company: [
-        "a[class*='_link_'] img[alt='logo']",
-        "img[class*='_logo_']",
-      ],
+      company: ["a[class*='_link_'] img[alt='logo']", "img[class*='_logo_']"],
       location: [] as string[],
       salary: [
         "div[class*='_salary_']",
@@ -553,6 +555,7 @@ function parseOtherSite(doc: Document, rawURL: string): Snapshot {
         ".company-logo img",
         ".company_logo img",
         ".vacancy-header img",
+        "img.vacancy-company-logo",
         "img[class*='_logo_']",
       ],
       rawURL,
@@ -693,6 +696,12 @@ function parseBasePage(doc: Document, rawURL: string): Snapshot {
     vacancy.url = "https://hh.ru/vacancy/" + id;
     vacancy.position =
       text(doc, ['[data-qa="vacancy-title"]', "h1"]) || job?.title || "";
+    const archivedTitle = text(doc, [
+      '[data-qa="vacancy-title-archived-text"]',
+    ]);
+    if (archivedTitle) {
+      vacancy.position = clean(vacancy.position.replace(archivedTitle, ""));
+    }
     vacancy.company =
       text(doc, [
         '[data-qa="vacancy-company-name"]',
@@ -761,30 +770,33 @@ function parseBasePage(doc: Document, rawURL: string): Snapshot {
       };
     }
     const explicit = text(doc, [
-      '[data-qa="vacancy-response-status"]',
       '[data-qa="vacancy-archived-message"]',
+      '[data-qa="vacancy-response-status"]',
     ]);
     const buttonStatus = text(doc, [
       '[data-qa="vacancy-response-link-top"]',
       '[data-qa="vacancy-response-link-bottom"]',
     ]);
-    const candidate = explicit
-      ? statusFromText(explicit)
-      : statusFromText(buttonStatus);
-    const parsedStatus = explicit
-      ? candidate
-      : [
-            "applied",
-            "waiting",
-            "viewed",
-            "invited",
-            "interview",
-            "rejected",
-            "vacancy_closed",
-            "hired",
-          ].includes(candidate)
+    const candidate = archivedTitle
+      ? "vacancy_closed"
+      : explicit
+        ? statusFromText(explicit)
+        : statusFromText(buttonStatus);
+    const parsedStatus =
+      archivedTitle || explicit
         ? candidate
-        : "";
+        : [
+              "applied",
+              "waiting",
+              "viewed",
+              "invited",
+              "interview",
+              "rejected",
+              "vacancy_closed",
+              "hired",
+            ].includes(candidate)
+          ? candidate
+          : "";
     return {
       supported: true,
       kind: "vacancy",
@@ -902,6 +914,25 @@ function isFavorite(root: ParentNode): boolean {
 }
 export function parsePage(doc: Document, rawURL: string): Snapshot {
   const snapshot = parseBasePage(doc, rawURL);
+ if (snapshot.vacancy) {
+    const plain = (node: ParentNode) => {
+      const copy=node.cloneNode(true) as ParentNode;
+      copy.querySelectorAll("script,style,noscript,[hidden],[aria-hidden='true']").forEach(n=>n.remove());
+      copy.querySelectorAll("p,div,li,br,h1,h2,h3,h4,section,article").forEach(n=>{n.before(" ");n.after(" ")});
+      return clean(copy.textContent ?? "");
+    };
+    const identity=jobIdentity(rawURL);
+    const about=identity?.site==="linkedin"?doc.getElementById("JobDetails_AboutTheJob_"+identity.id):null;
+    const selectors = ['[data-qa="vacancy-description"]', '.vacancy-description', '.description__text', '.show-more-less-html__markup', '.vacancy__description', '.b-vacancy-description', '.vacancy-description__text', '.job-description', '.vacancy .description'];
+    let description=about?plain(about):"";
+    const scope=identity?.site==="linkedin"?doc.querySelector(`[data-job-id="${identity.id}"]`)??doc:doc;
+    if(!description)for(const selector of selectors){for(const node of scope.querySelectorAll<HTMLElement>(selector)){if(node.closest('[hidden],[aria-hidden="true"]')||doc.defaultView?.getComputedStyle(node).display==="none")continue;description=plain(node);if(description)break}if(description)break}
+    if (!description) {
+      const job=structuredJob(doc);const linked=typeof job?.url==="string"?jobIdentity(new URL(job.url,rawURL).href):undefined;
+      if (typeof job?.description === "string" && (!linked||linked.url===identity?.url)) { const template=doc.createElement("template"); template.innerHTML=job.description; description=plain(template.content); }
+    }
+    if (description) snapshot.vacancy.ai = {...emptyAIFields(),text:Array.from(description).slice(0,100000).join(""),source:"extension"};
+  }
   if (jobSite(rawURL) !== "hh") return parseFavorites(doc, rawURL, snapshot);
   const url = new URL(rawURL);
   if (snapshot.vacancy && isFavorite(doc)) {

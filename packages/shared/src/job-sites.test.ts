@@ -3,6 +3,10 @@ import { jobIdentity, jobSite, observationBelongsToPage } from "./job-sites";
 
 describe("job identity", () => {
   it.each([
+    [
+      "https://www.hirehi.ru/development/python-razrabotchik-188571/?from=search",
+      "https://hirehi.ru/development/python-razrabotchik-188571",
+    ],
     ["https://spb.hh.ru/vacancy/123?from=search", "https://hh.ru/vacancy/123"],
     [
       "https://ru.linkedin.com/jobs/view/developer-at-example-123/?trackingId=x",
@@ -50,6 +54,11 @@ describe("job identity", () => {
     "not a url",
   ])("rejects %s", (raw) => expect(jobSite(raw)).toBeUndefined());
   it.each([
+    "https://hirehi.ru/",
+    "https://hirehi.ru/vacancies/development",
+    "https://hirehi.ru/companies/company-123",
+    "https://hirehi.ru/blog/article-123",
+    "https://hirehi.ru/development/python-188571/apply",
     "https://getmatch.ru/vacancies",
     "https://hirify.me/",
     "https://geekjob.ru/vacancies",

@@ -65,7 +65,7 @@ export function TransferPanel({
       const data: Journal = JSON.parse(await file.text());
       if (
         data.format !== "avari-journal" ||
-        data.version !== 1 ||
+        ![1,2].includes(data.version) ||
         !data.settings
       )
         throw new Error(

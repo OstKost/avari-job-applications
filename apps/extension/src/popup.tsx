@@ -259,6 +259,7 @@ function Popup() {
         : undefined;
       if (generation !== reloadGeneration.current) return;
       setDetail(currentDetail);
+      setCaptureGroup(currentDetail?.application.groups?.[0] ?? "");
       setLastScanned(new Date());
 
       // Notify if an existing saved vacancy was detected on the current page
@@ -410,6 +411,60 @@ function Popup() {
       setBusy(false);
     }
   };
+  const changeGroup = async () => {
+    if (!detail || busy) return;
+    setBusy(true);
+    setError(undefined);
+    try {
+      await api("/applications/" + detail.application.id, "PUT", {
+        ...detail.application,
+        groups: captureGroup.trim() ? [captureGroup.trim()] : [],
+      });
+      saved("Группа обновлена");
+    } catch (e) {
+      notifyError(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const groupPicker = (
+    <>
+      <FieldInput label="Группа (необязательно)">
+        <input
+          list="capture-groups"
+          maxLength={100}
+          disabled={busy}
+          value={captureGroup}
+          onChange={(e) => setCaptureGroup(e.target.value)}
+          placeholder="Выберите или создайте"
+        />
+      </FieldInput>
+      <datalist id="capture-groups">
+        {Array.from(new Set(data.applications.flatMap((a) => a.groups ?? [])))
+          .filter(Boolean)
+          .map((group) => (
+            <option key={group} value={group} />
+          ))}
+      </datalist>
+      {detail &&
+        captureGroup.trim() !== (detail.application.groups?.[0] ?? "") && (
+          <button disabled={busy} onClick={() => void changeGroup()}>
+            {busy ? "Сохраняем…" : "Сохранить группу"}
+          </button>
+        )}
+    </>
+  );
+  const vacancyLink =
+    detail && server ? (
+      <a
+        className="popup-link"
+        href={server + "/applications/" + detail.application.id}
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        <span>Открыть вакансию в приложении</span> <ArrowUpRight size={16} />
+      </a>
+    ) : null;
   const pending = data.proposals.filter((p) => p.status === "pending");
   const logout = async () => {
     try {
@@ -944,27 +999,14 @@ function Popup() {
                     items={stages}
                   />
                 </FieldInput>
+                {groupPicker}
+                {vacancyLink}
               </>
             ) : snapshot.vacancy ? (
               <>
                 <h2>{snapshot.vacancy.company}</h2>
                 <p>{snapshot.vacancy.position}</p>
-                <FieldInput label="Группа (необязательно)">
-                  <input
-                    list="capture-groups"
-                    maxLength={100}
-                    value={captureGroup}
-                    onChange={(e) => setCaptureGroup(e.target.value)}
-                    placeholder="Выберите или создайте"
-                  />
-                </FieldInput>
-                <datalist id="capture-groups">
-                  {Array.from(
-                    new Set(data.applications.flatMap((a) => a.groups ?? [])),
-                  ).map((group) => (
-                    <option key={group} value={group} />
-                  ))}
-                </datalist>
+                {groupPicker}
                 <button
                   className="primary"
                   disabled={
@@ -1135,6 +1177,8 @@ function Popup() {
                       items={stages}
                     />
                   </FieldInput>
+                  {groupPicker}
+                  {vacancyLink}
                   <div className="actions detail-actions">
                     <button
                       onClick={() =>
@@ -1213,6 +1257,7 @@ function Popup() {
                   <p>
                     {snapshot.vacancy.position || "Проверьте название позиции"}
                   </p>
+                  {groupPicker}
                   <div className="actions">
                     <button
                       className="capture-action primary"
@@ -1263,6 +1308,9 @@ function Popup() {
                           kind: "application",
                           value: {
                             ...snapshot.vacancy!,
+                            groups: captureGroup.trim()
+                              ? [captureGroup.trim()]
+                              : [],
                             savedDate: dateToday(user.timezone),
                           },
                         })

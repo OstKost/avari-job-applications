@@ -232,14 +232,18 @@ test("real MV3 extension: login, DOM capture, save, dedup, proposal confirmation
         name: /Редактировать перед сохранением/,
       }),
     ).toBeVisible();
-    await popup.locator(".popup").screenshot({ path: "test-results/extension-overview.png" });
+    await popup
+      .locator(".popup")
+      .screenshot({ path: "test-results/extension-overview.png" });
     await popup
       .getByRole("button", {
         name: /Редактировать перед сохранением/,
       })
       .click();
     await expect(popup.getByLabel("Компания *")).toHaveValue("Бета Компания");
-    await popup.locator(".popup").screenshot({ path: "test-results/extension-edit.png" });
+    await popup
+      .locator(".popup")
+      .screenshot({ path: "test-results/extension-edit.png" });
     await popup.getByLabel("Контакт рекрутера").fill("Draft survives closure");
     await popup.close();
     popup = await context.newPage();
@@ -256,7 +260,9 @@ test("real MV3 extension: login, DOM capture, save, dedup, proposal confirmation
     await expect(
       popup.getByRole("button", { name: "Изменить этап", exact: true }),
     ).toBeVisible();
-    await popup.locator(".popup").screenshot({ path: "test-results/extension-saved.png" });
+    await popup
+      .locator(".popup")
+      .screenshot({ path: "test-results/extension-saved.png" });
     await hh.locator('[data-qa="vacancy-response-link-top"]').evaluate((el) => {
       el.textContent = "Вы откликнулись";
     });
@@ -269,7 +275,9 @@ test("real MV3 extension: login, DOM capture, save, dedup, proposal confirmation
     await expect(
       popup.getByRole("button", { name: "Применить", exact: true }),
     ).toBeVisible();
-    await popup.locator(".popup").screenshot({ path: "test-results/extension-update.png" });
+    await popup
+      .locator(".popup")
+      .screenshot({ path: "test-results/extension-update.png" });
     await popup.screenshot({
       path: "test-results/extension-proposal-dark.png",
       fullPage: true,
@@ -543,6 +551,26 @@ test("real MV3 extension: login, DOM capture, save, dedup, proposal confirmation
     await expect(
       inline.getByText("Уже сохранена", { exact: true }),
     ).toBeVisible();
+    await expect(inline.getByLabel("Группа (необязательно)")).toHaveValue(
+      "Удалённая работа",
+    );
+    const vacancyLink = inline.getByRole("link", {
+      name: "Открыть вакансию в приложении",
+    });
+    await expect(vacancyLink).toHaveAttribute(
+      "href",
+      new RegExp(`^${process.env.AVARI_TEST_URL}/applications/`),
+    );
+    await inline.getByLabel("Группа (необязательно)").fill("Руководство");
+    await inline
+      .getByRole("button", { name: "Сохранить группу", exact: true })
+      .click();
+    await expect(
+      inline.getByRole("button", { name: "Сохранить группу", exact: true }),
+    ).toHaveCount(0);
+    await expect(inline.getByLabel("Группа (необязательно)")).toHaveValue(
+      "Руководство",
+    );
     await inline.getByRole("button", { name: "Этап", exact: true }).click();
     await inline
       .locator('[role="menuitemradio"][data-value="applied"]')
@@ -559,6 +587,17 @@ test("real MV3 extension: login, DOM capture, save, dedup, proposal confirmation
     await expect(
       inline.getByRole("button", { name: "Этап", exact: true }),
     ).toContainText("Отклик");
+    await expect(inline.getByLabel("Группа (необязательно)")).toHaveValue(
+      "Руководство",
+    );
+    await inline.getByLabel("Группа (необязательно)").fill("");
+    await inline
+      .getByRole("button", { name: "Сохранить группу", exact: true })
+      .click();
+    await expect(
+      inline.getByRole("button", { name: "Сохранить группу", exact: true }),
+    ).toHaveCount(0);
+    await expect(inline.getByLabel("Группа (необязательно)")).toHaveValue("");
     await quick.screenshot({ path: "test-results/extension-quick-popup.png" });
     await quick.close();
 

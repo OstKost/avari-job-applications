@@ -1,3 +1,4 @@
+import { AIProfiles } from "./AI";
 import { createWebAPI, assertServerMutationAllowed, requireLiveVerification } from "./offline/policy";
 import { useState, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -15,6 +16,7 @@ import {
 import {
   dateLabel,
   type Resume,
+ type Application,
   type ResumeVersion,
 } from "@avari/shared";
 import { Modal, ErrorBox, Empty, FieldInput } from "@avari/shared/ui";
@@ -38,7 +40,7 @@ function formatBytes(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function ResumeManager() {
+export function ResumeManager({applications=[],userId=""}:{applications?:Application[];userId?:string}) {
   const client = useQueryClient();
   const resumesQuery = useQuery({
     queryKey: ["resumes"],
@@ -208,6 +210,7 @@ export function ResumeManager() {
 
   return (
     <div className="resume-manager">
+ <AIProfiles applications={applications} userId={userId} />
       <div
         style={{
           display: "flex",

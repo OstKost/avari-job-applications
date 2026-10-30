@@ -1493,7 +1493,11 @@ export function ApplicationForm({
           />
         </FieldInput>
       </div>
-      <h3>Условия и контакты</h3>
+      <details className="panel"><summary>Текст вакансии и краткое описание</summary>
+ <FieldInput label="Полный текст вакансии"><textarea rows={8} maxLength={100000} value={a.ai?.text ?? ""} onChange={e=>setA(p=>({...p,ai:{...(p.ai ?? {text:"",summary:"",skills:[],source:"manual",processedAt:"",provider:"",model:"",textHash:"",stale:false}),text:e.target.value,source:"manual",stale:!!p.ai?.processedAt}}))} /></FieldInput>
+ <FieldInput label="Краткое описание (до 400 символов)"><textarea rows={3} value={a.ai?.summary ?? ""} onChange={e=>setA(p=>({...p,ai:{...(p.ai ?? {text:"",summary:"",skills:[],source:"manual",processedAt:"",provider:"",model:"",textHash:"",stale:false}),summary:e.target.value}}))} /><small>{Array.from(a.ai?.summary ?? "").length}/400</small></FieldInput>
+ </details>
+ <h3>Условия и контакты</h3>
       <div className="form-grid">
         <FieldInput label="Зарплата от">
           <input

@@ -1,3 +1,4 @@
+import { AISettingsPanel, AIVacancyPanel, AIWorkspace, SkillTags } from "./AI";
 import { MCPSettings } from "./MCPSettings";
 import { Auth } from "./Auth";
 import { Brand } from "./Brand";
@@ -233,6 +234,8 @@ function PageTracking() {
       title = "Отклики — Avari.Jobs";
     } else if (pathname === "/favorites") {
       title = "Избранные вакансии — Avari.Jobs";
+    } else if (pathname === "/skills") {
+      title = "Навыки и ИИ — Avari.Jobs";
     } else if (pathname === "/resumes") {
       title = "Резюме — Avari.Jobs";
     } else if (pathname.startsWith("/applications/")) {
@@ -456,7 +459,7 @@ function PublicPage({ privacy }: { privacy: boolean }) {
             <p>
               Расширение читает открытую вами страницу вакансии или список
               откликов на hh.ru, LinkedIn, Getmatch, Hirify, Geekjob, Habr
-              Career и Huntflow исключительно в момент вашего взаимодействия.
+              Career, Huntflow и HireHi исключительно в момент вашего взаимодействия.
               Оно извлекает сведения о вакансиях (должность, компания, зарплата,
               город, описание) и откликах и отправляет их только в настроенный
               вами Avari.Jobs. Пароли, cookies и личную переписку на площадках
@@ -939,7 +942,8 @@ function Workspace({ user, personal = false, pendingShare, consumeShare }: {
                       label: "Предложения",
                       icon: GitCompareArrows,
                     },
-                    { path: "/settings", label: "Настройки", icon: Settings },
+                    { path: "/skills", label: "Навыки и ИИ", icon: Sliders },
+ { path: "/settings", label: "Настройки", icon: Settings },
                   ],
                 },
               ].map(({ title, links }) => (
@@ -1139,6 +1143,7 @@ function Workspace({ user, personal = false, pendingShare, consumeShare }: {
                           <span className="nav-count">{pending.length}</span>
                         )}
                       </NavLink>
+                      <NavLink to="/skills" className="mobile-drawer-link" onClick={() => setMobileMenuOpen(false)} data-tone="blue"><Sliders size={20}/><span>Навыки и ИИ</span></NavLink>
                       <NavLink
                         to="/settings"
                         className="mobile-drawer-link"
@@ -1304,7 +1309,8 @@ function Workspace({ user, personal = false, pendingShare, consumeShare }: {
                     path="/applications/:id"
                     element={<ApplicationDetail />}
                   />
-                  <Route path="/resumes" element={<ResumeManager />} />
+                  <Route path="/resumes" element={<ResumeManager applications={data.applications} userId={user.id} />} />
+ <Route path="/skills" element={<AIWorkspace applications={data.applications} userId={user.id} />} />
                   <Route path="/proposals" element={<Proposals />} />
                   <Route path="/settings" element={<SettingsPage />} />
                   <Route
@@ -2546,7 +2552,9 @@ function Applications({ favoriteOnly = false }: { favoriteOnly?: boolean }) {
                   ? "Хабр Карьера"
                   : site === "huntflow"
                     ? "Huntflow"
-                    : "Вакансия";
+                    : site === "hirehi"
+                      ? "HireHi"
+                      : "Вакансия";
 
     return (
       <tr
@@ -2589,6 +2597,7 @@ function Applications({ favoriteOnly = false }: { favoriteOnly?: boolean }) {
             {
               <div className="company-taxonomy">
                 {renderGroup(a)}
+                {!!a.ai?.skills.length && <span className="company-tags" title={a.ai.skills.map(s=>"#"+s.name).join(" ")}>{a.ai.skills.slice(0,5).map(s=>"#"+s.name).join(" ")}{a.ai.skills.length>5?` +${a.ai.skills.length-5}`:""}</span>}
                 {!!a.tags?.length && (
                   <span
                     className="company-tags"
@@ -2799,6 +2808,8 @@ function Applications({ favoriteOnly = false }: { favoriteOnly?: boolean }) {
             </small>
           )}
         </div>
+        {a.ai?.summary && <p>{a.ai.summary}</p>}
+        <SkillTags skills={a.ai?.skills ?? []} />
         <footer>
           <BadgeDropdown
             value={a.state}
@@ -4050,6 +4061,7 @@ function ApplicationDetail() {
             geekjob: "Geekjob",
             habr: "Хабр Карьера",
             huntflow: "Huntflow",
+            hirehi: "HireHi",
           }[site]
         : url.hostname.replace(/^www\./, "");
       if (["https:", "http:"].includes(url.protocol))
@@ -4404,7 +4416,8 @@ function ApplicationDetail() {
           <ErrorBox error={tagError} />
         </section>
       </div>
-      <div className="detail-grid" style={{ marginTop: 24 }}>
+      <AIVacancyPanel application={a} onChanged={() => { void q.refetch(); refresh(); }} />
+ <div className="detail-grid" style={{ marginTop: 24 }}>
         <div>
           <section className="panel">
             <div className="section-head">
@@ -4482,6 +4495,7 @@ function ApplicationDetail() {
                 <article className="history-event" key={e.id}>
                   <strong>
                     {{
+                      ai_processed: "Описание и навыки обработаны ИИ",
                       created: "Вакансия добавлена",
                       updated: "Запись обновлена",
                       task: "Изменение задачи",
@@ -5118,10 +5132,11 @@ function SettingsPage() {
     }
   };
   const [activeTab, setActiveTab] = useState<
-    "general" | "calendar" | "fields" | "extension" | "transfer" | "mcp"
+    "general" | "calendar" | "fields" | "extension" | "transfer" | "mcp" | "ai"
   >("general");
   useEffect(() => {
     if (settingsLocation.hash === "#updates") setActiveTab("general");
+ if (settingsLocation.hash === "#ai") setActiveTab("ai");
   }, [settingsLocation.hash]);
   const connectedExtensionsCount =
     sessions.data?.filter((s) => s.kind === "extension").length ?? 0;
@@ -5195,8 +5210,9 @@ function SettingsPage() {
         <button type="button" role="tab" aria-selected={activeTab === "mcp"} className={activeTab === "mcp" ? "active" : ""} onClick={() => setActiveTab("mcp")}>
           <Monitor size={15} /> MCP / Codex
         </button>
+        <button type="button" role="tab" aria-selected={activeTab === "ai"} className={activeTab === "ai" ? "active" : ""} onClick={() => setActiveTab("ai")}>ИИ</button>
       </div>
-      <div className="settings">
+ <div className="settings">
         <ErrorBox error={error} />
         {success && (
           <div className="success notice" role="status">
@@ -5204,7 +5220,8 @@ function SettingsPage() {
           </div>
         )}
         <div key={activeTab} className="settings-tab-pane">
-          {activeTab === "mcp" && <MCPSettings api={api} />}
+          {activeTab === "ai" && <AISettingsPanel />}
+ {activeTab === "mcp" && <MCPSettings api={api} />}
           {activeTab === "transfer" && (
             <TransferPanel
               user={user}
