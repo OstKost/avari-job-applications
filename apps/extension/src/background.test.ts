@@ -318,6 +318,53 @@ it("enriches existing application companyLogo on revisit without overwriting man
   expect(conflictPutCalls).toBe(1); // exactly 1 attempt, no blind retry loops
 });
 
+it.each(["/applications", "/observations"])(
+  "retries %s without AI data for older servers",
+  async (path) => {
+    const { send } = await background("https://example.com/", {
+      server: "https://avari.example.com",
+      token: "secret-token",
+    });
+    const bodies: any[] = [];
+    const keys: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, options: any) => {
+        bodies.push(JSON.parse(options.body));
+        keys.push(options.headers["Idempotency-Key"]);
+        return bodies.length === 1
+          ? {
+              ok: false,
+              status: 400,
+              json: async () => ({ error: "Некорректный JSON запроса" }),
+            }
+          : { ok: true, status: 200, json: async () => ({ id: "saved" }) };
+      }),
+    );
+    const vacancy = {
+      company: "Corp",
+      position: "Engineer",
+      companyLogo: "https://example.com/logo.png",
+      ai: { text: "Description" },
+    };
+    const res = await send({
+      type: "API",
+      path,
+      method: "POST",
+      body: path === "/applications" ? vacancy : { candidate: vacancy },
+      key: "retry-key",
+    });
+    expect(res.ok).toBe(true);
+    expect(bodies).toHaveLength(2);
+    const initial = path === "/applications" ? bodies[0] : bodies[0].candidate;
+    const retried = path === "/applications" ? bodies[1] : bodies[1].candidate;
+    expect(initial.ai).toEqual({ text: "Description" });
+    expect(retried.ai).toBeUndefined();
+    expect(retried.companyLogo).toBe(vacancy.companyLogo);
+    expect(keys[0]).toBe(keys[1]);
+  },
+);
+
 it("strips companyLogo on compatibility retry when server rejects with invalid JSON/unknown fields, but not for other errors", async () => {
   const fetchMock = vi.fn();
   vi.stubGlobal("fetch", fetchMock);

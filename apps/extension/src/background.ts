@@ -77,6 +77,25 @@ function stripLogo(val: unknown): { payload: unknown; hadLogo: boolean } {
   }
   return { payload: clone, hadLogo };
 }
+function stripAI(val: unknown): { payload: unknown; hadAI: boolean } {
+  if (!val || typeof val !== "object") return { payload: val, hadAI: false };
+  const clone = { ...(val as Record<string, any>) };
+  let hadAI = false;
+  if ("ai" in clone) {
+    delete clone.ai;
+    hadAI = true;
+  }
+  if (
+    clone.candidate &&
+    typeof clone.candidate === "object" &&
+    "ai" in clone.candidate
+  ) {
+    clone.candidate = { ...clone.candidate };
+    delete clone.candidate.ai;
+    hadAI = true;
+  }
+  return { payload: clone, hadAI };
+}
 async function request(
   path: string,
   method = "GET",
@@ -118,6 +137,10 @@ async function request(
       data.error === "Некорректный JSON запроса" &&
       preparedBody !== undefined
     ) {
+      const { payload: withoutAI, hadAI } = stripAI(preparedBody);
+      if (hadAI) {
+        return await request(path, method, withoutAI, key);
+      }
       const { payload: fallbackBody, hadLogo } = stripLogo(preparedBody);
       if (hadLogo) {
         return await request(path, method, fallbackBody, key);
